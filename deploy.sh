@@ -10,7 +10,7 @@ npm ci
 # Schema changes: run `npm run db:push` MANUALLY and review its plan —
 # drizzle-kit can propose destructive statements.
 # Catalog/admin seed is idempotent, safe on every deploy:
-npm run db:seed
+# npm run db:seed
 
 # Build while the old server keeps serving from .next; brief blip on restart.
 npm run build
