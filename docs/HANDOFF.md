@@ -45,6 +45,7 @@ error/loading/not-found boundaries.
 **V1 code complete.** Remaining before launch (V1.1):
 1. `.env` — confirm all names in `.env.example` exist locally (esp. `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `EMAIL_*`, `STRIPE_*` incl. `STRIPE_MEMBERSHIP_PRICE_ID` + webhook secret, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `FREE_ACCESS_UNTIL`). Admin role already seeded for the owner email.
 2. Stripe dashboard: create the monthly membership Price; point a webhook at `/api/stripe/webhook` (events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`).
+2b. Test accounts seeded via `npm run db:seed-accounts` (idempotent, edit `db/seed-accounts.ts` to change): admin squaremaxtech@gmail.com · customer uncommonfavour32@gmail.com · worker maxwellwedderburn32@gmail.com (profile "Maxx", 4 services + add-ons + availability, verified) · support managestorymaker@gmail.com · driver maxwellwedderburn@outlook.com. All sign in via magic link (or Google where the email is a Google account).
 3. Booking **reminder** emails need a scheduled job (e.g. `scripts/send-reminders.ts` via PM2 cron) — not yet written.
 4. ~~Media is URL-based~~ → local uploads implemented (stored in `uploads/` on
    the VPS; include in backups). Move to object storage only if video traffic
