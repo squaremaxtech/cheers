@@ -6,6 +6,7 @@ import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, sessions, users, verificationTokens } from "@/db/schema";
+import type { UserRow } from "@/types";
 
 export const authOptions: NextAuthOptions = {
   adapter: DrizzleAdapter(db, {
@@ -50,8 +51,6 @@ export const authOptions: NextAuthOptions = {
     },
   },
 };
-
-export type UserRow = typeof users.$inferSelect;
 
 // Returns the signed-in user's full DB row, or null when signed out.
 export async function getUserRow(): Promise<UserRow | null> {

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { memberships } from "@/db/schema";
+import type { MembershipRow } from "@/types";
 
 // Feature flag: platform-wide free access until this date (empty = disabled).
 export function freeAccessActive(): boolean {
@@ -9,8 +10,6 @@ export function freeAccessActive(): boolean {
   const date = new Date(until);
   return !Number.isNaN(date.getTime()) && date.getTime() > Date.now();
 }
-
-export type MembershipRow = typeof memberships.$inferSelect;
 
 export async function getMembership(
   userId: string

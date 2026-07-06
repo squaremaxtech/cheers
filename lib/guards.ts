@@ -1,14 +1,27 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { workers } from "@/db/schema";
-import { getUserRow, type UserRow } from "@/lib/auth";
-
-export type WorkerRow = typeof workers.$inferSelect;
+import { getUserRow } from "@/lib/auth";
+import type { UserRow, WorkerRow } from "@/types";
 
 export class GuardError extends Error {
   constructor(public code: "unauthorized" | "forbidden") {
     super(code);
   }
+}
+
+// Map a thrown error to a user-safe action error message.
+export function guardErrorMessage(error: unknown): string {
+  if (error instanceof GuardError) {
+    return error.code === "forbidden"
+      ? "You do not have permission to do that."
+      : "You must be signed in to do that.";
+  }
+  console.error(
+    "action failed:",
+    error instanceof Error ? error.message : error
+  );
+  return "Something went wrong. Please try again.";
 }
 
 // Signed-in, non-suspended user or throw.

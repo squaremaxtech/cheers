@@ -1,26 +1,93 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Cheers — dark luxury theme. Single dark theme by design. */
+@theme {
+  --color-base: #0c0a09; /* page background */
+  --color-surface: #171412; /* cards, panels */
+  --color-raised: #201c19; /* hover / elevated surfaces */
+  --color-hairline: #2c2724; /* borders */
+  --color-ink: #faf7f2; /* primary text */
+  --color-muted: #a89f94; /* secondary text */
+  --color-faint: #6b6259; /* tertiary text */
+  --color-gold: #d6b25e; /* accent */
+  --color-gold-soft: #e3c47a;
+  --color-wine: #7c2d3e; /* deep accent for gradients */
+  --color-success: #4ade80;
+  --color-danger: #f87171;
+  --color-warn: #fbbf24;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display), Georgia, serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-base);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Serif display headings */
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Shared surfaces */
+.card {
+  @apply rounded-2xl border border-hairline bg-surface;
+}
+
+.hairline-top {
+  @apply border-t border-hairline;
+}
+
+/* Form controls */
+.input {
+  @apply w-full rounded-xl border border-hairline bg-raised px-4 py-2.5 text-sm text-ink placeholder:text-faint outline-none transition-colors focus:border-gold/60;
+}
+
+.label {
+  @apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted;
+}
+
+/* Buttons */
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.btn-gold {
+  @apply btn bg-gold text-base hover:bg-gold-soft;
+}
+
+.btn-outline {
+  @apply btn border border-hairline text-ink hover:border-gold/50 hover:text-gold-soft;
+}
+
+.btn-ghost {
+  @apply btn text-muted hover:bg-raised hover:text-ink;
+}
+
+.btn-danger {
+  @apply btn border border-danger/40 text-danger hover:bg-danger/10;
+}
+
+/* Subtle gold shimmer divider used on marketing pages */
+.gold-line {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(214, 178, 94, 0.5),
+    transparent
+  );
+}
+
+::selection {
+  background: rgba(214, 178, 94, 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

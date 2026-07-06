@@ -1,0 +1,489 @@
+"use server";
+
+import { and, eq, inArray } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+import { db } from "@/db";
+import {
+  bookings,
+  serviceAddons,
+  serviceTypes,
+  workers,
+  workerServices,
+} from "@/db/schema";
+import { err, ok, ERR } from "@/lib/action-result";
+import { writeAudit } from "@/lib/audit";
+import {
+  canTransition,
+  customerCanCancel,
+  generateBookingCode,
+  generateSafetyPin,
+  transitionBooking,
+} from "@/lib/bookings";
+import { platformFeeCents } from "@/lib/constants";
+import { guardErrorMessage, requireUser } from "@/lib/guards";
+import type { ActionResult, BookingRow, UserRow } from "@/types";
+import { hasMembershipAccess } from "@/lib/membership";
+import { notify, notifyAdmins } from "@/lib/notify";
+import {
+  bookingDecisionSchema,
+  cancelBookingSchema,
+  createBookingSchema,
+  reassignBookingSchema,
+  rescheduleBookingSchema,
+} from "@/schemas/booking";
+
+// Resolve a booking plus the actor's relationship to it.
+async function loadBookingFor(user: UserRow, bookingId: string) {
+  const [booking] = await db
+    .select()
+    .from(bookings)
+    .where(eq(bookings.id, bookingId));
+  if (!booking) return null;
+
+  const [worker] = await db
+    .select()
+    .from(workers)
+    .where(eq(workers.id, booking.workerId));
+
+  const isCustomer = booking.customerId === user.id;
+  const isWorker = worker?.userId === user.id;
+  const isAdmin = user.role === "admin";
+  return { booking, worker, isCustomer, isWorker, isAdmin };
+}
+
+async function notifyBookingParties(
+  booking: BookingRow,
+  opts: {
+    type: string;
+    customer?: { title: string; body: string };
+    worker?: { title: string; body: string };
+    admins?: { title: string; body: string };
+  }
+): Promise<void> {
+  const meta = { bookingId: booking.id, code: booking.code };
+  if (opts.customer) {
+    await notify({ userId: booking.customerId, type: opts.type, meta, ...opts.customer });
+  }
+  if (opts.worker) {
+    const [worker] = await db
+      .select({ userId: workers.userId })
+      .from(workers)
+      .where(eq(workers.id, booking.workerId));
+    if (worker) {
+      await notify({ userId: worker.userId, type: opts.type, meta, ...opts.worker });
+    }
+  }
+  if (opts.admins) {
+    await notifyAdmins({ type: opts.type, meta, ...opts.admins });
+  }
+}
+
+// --- Create (customer) --------------------------------------------------------
+
+export async function createBooking(
+  input: unknown
+): Promise<ActionResult<{ bookingId: string }>> {
+  try {
+    const user = await requireUser();
+    const parsed = createBookingSchema.safeParse(input);
+    if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
+    const data = parsed.data;
+
+    if (!(await hasMembershipAccess(user.id))) {
+      return err("An active membership is required to book. Visit Membership to join.");
+    }
+
+    const start = new Date(`${data.date}T${data.startTime}`);
+    if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) {
+      return err("Pick a date and time in the future.");
+    }
+
+    const [worker] = await db
+      .select()
+      .from(workers)
+      .where(
+        and(
+          eq(workers.id, data.workerId),
+          eq(workers.active, true),
+          eq(workers.suspended, false)
+        )
+      );
+    if (!worker) return err("This worker is not currently accepting bookings.");
+    if (worker.userId === user.id) return err("You cannot book yourself.");
+
+    const [service] = await db
+      .select({
+        ws: workerServices,
+        typeName: serviceTypes.name,
+      })
+      .from(workerServices)
+      .innerJoin(serviceTypes, eq(workerServices.serviceTypeId, serviceTypes.id))
+      .where(
+        and(
+          eq(workerServices.workerId, worker.id),
+          eq(workerServices.serviceTypeId, data.serviceTypeId),
+          eq(workerServices.enabled, true)
+        )
+      );
+    if (!service) return err("That service is not offered by this worker.");
+
+    let addonRows: { name: string; priceCents: number }[] = [];
+    if (data.addonIds.length > 0) {
+      addonRows = await db
+        .select({ name: serviceAddons.name, priceCents: serviceAddons.priceCents })
+        .from(serviceAddons)
+        .where(
+          and(
+            inArray(serviceAddons.id, data.addonIds),
+            eq(serviceAddons.workerServiceId, service.ws.id)
+          )
+        );
+      if (addonRows.length !== data.addonIds.length) {
+        return err("One or more selected add-ons are unavailable.");
+      }
+    }
+
+    const priceCents = service.ws.priceCents;
+    const addonsCents = addonRows.reduce((sum, a) => sum + a.priceCents, 0);
+
+    const [booking] = await db
+      .insert(bookings)
+      .values({
+        code: generateBookingCode(),
+        customerId: user.id,
+        workerId: worker.id,
+        serviceTypeId: data.serviceTypeId,
+        serviceName: service.typeName,
+        date: data.date,
+        startTime: data.startTime,
+        durationMinutes: data.durationMinutes,
+        address: data.address,
+        lat: data.lat,
+        lng: data.lng,
+        instructions: data.instructions,
+        priceCents,
+        addonsCents,
+        platformFeeCents: platformFeeCents(priceCents + addonsCents),
+        addons: addonRows,
+        safetyPin: generateSafetyPin(),
+      })
+      .returning();
+
+    await notifyBookingParties(booking, {
+      type: "booking_submitted",
+      customer: {
+        title: `Booking ${booking.code} submitted`,
+        body: `Your request with ${worker.stageName} on ${data.date} at ${data.startTime} is awaiting acceptance.`,
+      },
+      worker: {
+        title: "New booking request",
+        body: `New request for ${service.typeName} on ${data.date} at ${data.startTime}. Accept or decline in your dashboard.`,
+      },
+      admins: {
+        title: `New booking ${booking.code}`,
+        body: `${service.typeName} with ${worker.stageName} on ${data.date}.`,
+      },
+    });
+
+    revalidatePath("/bookings");
+    return ok({ bookingId: booking.id });
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// --- Accept / decline (worker or admin) ---------------------------------------
+
+export async function acceptBooking(input: unknown): Promise<ActionResult<undefined>> {
+  try {
+    const user = await requireUser();
+    const parsed = bookingDecisionSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const ctx = await loadBookingFor(user, parsed.data.bookingId);
+    if (!ctx) return err(ERR.notFound);
+    if (!ctx.isWorker && !ctx.isAdmin) return err(ERR.forbidden);
+    if (!canTransition(ctx.booking.status, "accepted", ctx.isAdmin)) {
+      return err("This booking can no longer be accepted.");
+    }
+
+    await transitionBooking({
+      booking: ctx.booking,
+      to: "accepted",
+      actorUserId: user.id,
+      note: parsed.data.note,
+    });
+    if (ctx.isAdmin) {
+      await writeAudit({
+        actorUserId: user.id,
+        action: "booking.accept",
+        entity: "bookings",
+        entityId: ctx.booking.id,
+      });
+    }
+
+    await notifyBookingParties(ctx.booking, {
+      type: "booking_accepted",
+      customer: {
+        title: `Booking ${ctx.booking.code} accepted — payment required`,
+        body: "Your booking was accepted. Complete payment to confirm your reservation.",
+      },
+    });
+
+    revalidatePath("/worker/bookings");
+    revalidatePath("/bookings");
+    revalidatePath("/admin/bookings");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+export async function declineBooking(input: unknown): Promise<ActionResult<undefined>> {
+  try {
+    const user = await requireUser();
+    const parsed = bookingDecisionSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const ctx = await loadBookingFor(user, parsed.data.bookingId);
+    if (!ctx) return err(ERR.notFound);
+    if (!ctx.isWorker && !ctx.isAdmin) return err(ERR.forbidden);
+    if (!canTransition(ctx.booking.status, "declined", ctx.isAdmin)) {
+      return err("This booking can no longer be declined.");
+    }
+
+    await transitionBooking({
+      booking: ctx.booking,
+      to: "declined",
+      actorUserId: user.id,
+      note: parsed.data.note,
+    });
+    if (ctx.isAdmin) {
+      await writeAudit({
+        actorUserId: user.id,
+        action: "booking.decline",
+        entity: "bookings",
+        entityId: ctx.booking.id,
+      });
+    }
+
+    await notifyBookingParties(ctx.booking, {
+      type: "booking_declined",
+      customer: {
+        title: `Booking ${ctx.booking.code} declined`,
+        body: "Unfortunately this request was declined. Browse other available workers anytime.",
+      },
+    });
+
+    revalidatePath("/worker/bookings");
+    revalidatePath("/bookings");
+    revalidatePath("/admin/bookings");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// --- Cancel (customer ≥5h rule / worker / admin force) -------------------------
+
+export async function cancelBooking(input: unknown): Promise<ActionResult<undefined>> {
+  try {
+    const user = await requireUser();
+    const parsed = cancelBookingSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const ctx = await loadBookingFor(user, parsed.data.bookingId);
+    if (!ctx) return err(ERR.notFound);
+    if (!ctx.isCustomer && !ctx.isWorker && !ctx.isAdmin) return err(ERR.forbidden);
+    if (!canTransition(ctx.booking.status, "cancelled", ctx.isAdmin)) {
+      return err("This booking can no longer be cancelled.");
+    }
+    if (ctx.isCustomer && !ctx.isAdmin && !customerCanCancel(ctx.booking)) {
+      return err("Bookings can only be cancelled at least 5 hours before the start time.");
+    }
+
+    await db
+      .update(bookings)
+      .set({ cancellationReason: parsed.data.reason })
+      .where(eq(bookings.id, ctx.booking.id));
+    await transitionBooking({
+      booking: ctx.booking,
+      to: "cancelled",
+      actorUserId: user.id,
+      note: parsed.data.reason,
+    });
+    if (ctx.isAdmin && !ctx.isCustomer && !ctx.isWorker) {
+      await writeAudit({
+        actorUserId: user.id,
+        action: "booking.force_cancel",
+        entity: "bookings",
+        entityId: ctx.booking.id,
+        after: { reason: parsed.data.reason },
+      });
+    }
+
+    await notifyBookingParties(ctx.booking, {
+      type: "booking_cancelled",
+      customer: {
+        title: `Booking ${ctx.booking.code} cancelled`,
+        body: "This booking has been cancelled. If you already paid, a refund will be processed.",
+      },
+      worker: {
+        title: `Booking ${ctx.booking.code} cancelled`,
+        body: "A booking on your schedule was cancelled.",
+      },
+    });
+
+    revalidatePath("/worker/bookings");
+    revalidatePath("/bookings");
+    revalidatePath("/admin/bookings");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// --- Reschedule (either party while pending/accepted/confirmed) ----------------
+
+export async function rescheduleBooking(
+  input: unknown
+): Promise<ActionResult<undefined>> {
+  try {
+    const user = await requireUser();
+    const parsed = rescheduleBookingSchema.safeParse(input);
+    if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
+
+    const ctx = await loadBookingFor(user, parsed.data.bookingId);
+    if (!ctx) return err(ERR.notFound);
+    if (!ctx.isCustomer && !ctx.isWorker && !ctx.isAdmin) return err(ERR.forbidden);
+    const reschedulable = ["pending", "accepted", "confirmed"];
+    if (!ctx.isAdmin && !reschedulable.some((s) => s === ctx.booking.status)) {
+      return err("This booking can no longer be rescheduled.");
+    }
+
+    const start = new Date(`${parsed.data.date}T${parsed.data.startTime}`);
+    if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) {
+      return err("Pick a date and time in the future.");
+    }
+
+    await db
+      .update(bookings)
+      .set({
+        date: parsed.data.date,
+        startTime: parsed.data.startTime,
+        updatedAt: new Date(),
+      })
+      .where(eq(bookings.id, ctx.booking.id));
+
+    await notifyBookingParties(ctx.booking, {
+      type: "booking_rescheduled",
+      customer: {
+        title: `Booking ${ctx.booking.code} rescheduled`,
+        body: `New time: ${parsed.data.date} at ${parsed.data.startTime}.`,
+      },
+      worker: {
+        title: `Booking ${ctx.booking.code} rescheduled`,
+        body: `New time: ${parsed.data.date} at ${parsed.data.startTime}.`,
+      },
+    });
+
+    revalidatePath("/worker/bookings");
+    revalidatePath("/bookings");
+    revalidatePath("/admin/bookings");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// --- Complete (worker or admin) ------------------------------------------------
+
+export async function completeBooking(input: unknown): Promise<ActionResult<undefined>> {
+  try {
+    const user = await requireUser();
+    const parsed = bookingDecisionSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const ctx = await loadBookingFor(user, parsed.data.bookingId);
+    if (!ctx) return err(ERR.notFound);
+    if (!ctx.isWorker && !ctx.isAdmin) return err(ERR.forbidden);
+    if (!canTransition(ctx.booking.status, "completed", ctx.isAdmin)) {
+      return err("Only confirmed bookings can be completed.");
+    }
+
+    await transitionBooking({
+      booking: ctx.booking,
+      to: "completed",
+      actorUserId: user.id,
+      note: parsed.data.note,
+    });
+
+    await notifyBookingParties(ctx.booking, {
+      type: "review_request",
+      customer: {
+        title: "How was your experience?",
+        body: `Booking ${ctx.booking.code} is complete. Leave a review from your booking history.`,
+      },
+    });
+
+    revalidatePath("/worker/bookings");
+    revalidatePath("/bookings");
+    revalidatePath("/admin/bookings");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// --- Reassign (admin only) -----------------------------------------------------
+
+export async function reassignBooking(input: unknown): Promise<ActionResult<undefined>> {
+  try {
+    const user = await requireUser();
+    if (user.role !== "admin") return err(ERR.forbidden);
+    const parsed = reassignBookingSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const ctx = await loadBookingFor(user, parsed.data.bookingId);
+    if (!ctx) return err(ERR.notFound);
+
+    const [newWorker] = await db
+      .select()
+      .from(workers)
+      .where(eq(workers.id, parsed.data.newWorkerId));
+    if (!newWorker) return err("Target worker not found.");
+
+    await db
+      .update(bookings)
+      .set({ workerId: newWorker.id, updatedAt: new Date() })
+      .where(eq(bookings.id, ctx.booking.id));
+    await writeAudit({
+      actorUserId: user.id,
+      action: "booking.reassign",
+      entity: "bookings",
+      entityId: ctx.booking.id,
+      before: { workerId: ctx.booking.workerId },
+      after: { workerId: newWorker.id, note: parsed.data.note },
+    });
+
+    await notify({
+      userId: newWorker.userId,
+      type: "booking_reassigned",
+      title: "A booking was assigned to you",
+      body: `Booking ${ctx.booking.code} on ${ctx.booking.date} was reassigned to you by the Cheers team.`,
+    });
+    await notifyBookingParties({ ...ctx.booking, workerId: newWorker.id }, {
+      type: "booking_reassigned",
+      customer: {
+        title: `Booking ${ctx.booking.code} update`,
+        body: `Your booking will now be handled by ${newWorker.stageName}.`,
+      },
+    });
+
+    revalidatePath("/admin/bookings");
+    revalidatePath("/bookings");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}

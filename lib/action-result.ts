@@ -1,8 +1,6 @@
-// Uniform return type for all server actions.
-export type ActionResult<T = undefined> =
-  | { ok: true; data: T }
-  | { ok: false; error: string };
+import type { ActionResult } from "@/types";
 
+// Helpers for the uniform server-action return type (see types.ts).
 export function ok<T>(data: T): ActionResult<T> {
   return { ok: true, data };
 }

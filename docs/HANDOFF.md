@@ -17,13 +17,13 @@
 |---|---|
 | Research (modified Next.js docs, polyscout conventions) | ✅ (see §7) |
 | Architecture doc (this file + SPEC.md) | ✅ |
-| Dependency install | ❌ |
-| Foundation (env, db client, drizzle config) | ❌ |
-| Drizzle schemas | ❌ |
-| Auth (NextAuth magic link + Google, RBAC) | ❌ |
-| Zod schemas + server actions | ❌ |
-| Stripe + Nodemailer | ❌ |
-| UI components / design system | ❌ |
+| Dependency install | ✅ |
+| Foundation (env, db client, drizzle config) | ✅ |
+| Drizzle schemas | ✅ (`db/schema.ts`) |
+| Auth (NextAuth magic link + Google, RBAC) | ✅ (`lib/auth.ts`, `lib/guards.ts`, login/verify pages) |
+| Zod schemas + server actions | ✅ (`schemas/*`, `actions/*` — worker, bookings, payments, memberships, reviews, favorites, notifications, account, admin) |
+| Stripe + Nodemailer | ✅ (checkout + subscription + webhook `app/api/stripe/webhook`, `lib/mailer.ts`, `lib/notify.ts`) |
+| UI components / design system | ✅ (globals.css theme, ui primitives, SiteHeader/Footer) |
 | Public pages | ❌ |
 | Customer area | ❌ |
 | Worker dashboard | ❌ |
@@ -179,6 +179,7 @@ export async function createX(formData: FormData) { /* zod parse, auth guard, db
 
 - Commit after each completed build-order step with a descriptive message (owner pulls from GitHub on other machines).
 - Update §2 status table + §8 checkboxes in the SAME commit as the work.
-- Never expose `workers.realName` or worker `userId`→email in public-facing queries/components.
+- Never expose `workers.realName` or worker `userId`→email in public-facing queries/components. Use `PublicWorker` from `types.ts`.
+- **Owner preference: shared types live in root `types.ts`** (row types, DTOs, ActionResult) — import via `@/types`; do not export types from lib modules.
 - All admin mutations write an `audit_logs` row.
 - Keep service names professional/non-explicit; workers cannot create new service types.
