@@ -7,6 +7,7 @@ import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, sessions, users, verificationTokens } from "@/db/schema";
+import { mailFrom, smtpConfig } from "@/lib/mailer";
 import type { UserRow } from "@/types";
 
 export const authOptions: NextAuthOptions = {
@@ -22,15 +23,8 @@ export const authOptions: NextAuthOptions = {
   },
   providers: [
     EmailProvider({
-      server: {
-        host: process.env.EMAIL_SERVER_HOST,
-        port: Number(process.env.EMAIL_SERVER_PORT ?? 587),
-        auth: {
-          user: process.env.EMAIL_SERVER_USER,
-          pass: process.env.EMAIL_SERVER_PASSWORD,
-        },
-      },
-      from: process.env.EMAIL_FROM ?? `Cheers <${process.env.EMAIL_SERVER_USER}>`,
+      server: smtpConfig,
+      from: mailFrom,
     }),
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? "",

@@ -1,13 +1,32 @@
 import nodemailer from "nodemailer";
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_SERVER_HOST,
-  port: Number(process.env.EMAIL_SERVER_PORT ?? 587),
+// SMTP settings resolve from either naming convention: EMAIL_SERVER_* (this
+// project's .env.example) or SMTP_* (the owner's existing .env). Gmail defaults.
+export const smtpConfig = {
+  host:
+    process.env.EMAIL_SERVER_HOST ?? process.env.SMTP_HOST ?? "smtp.gmail.com",
+  port: Number(process.env.EMAIL_SERVER_PORT ?? process.env.SMTP_PORT ?? 587),
+  secure:
+    (process.env.SMTP_SECURE ?? "").toLowerCase() === "true" ||
+    Number(process.env.EMAIL_SERVER_PORT ?? process.env.SMTP_PORT ?? 587) === 465,
   auth: {
-    user: process.env.EMAIL_SERVER_USER,
-    pass: process.env.EMAIL_SERVER_PASSWORD,
+    user: process.env.EMAIL_SERVER_USER ?? process.env.SMTP_USER,
+    pass: process.env.EMAIL_SERVER_PASSWORD ?? process.env.SMTP_PASS,
   },
-});
+};
+
+// "Name <addr>" passes through; a bare address with stray brackets is cleaned.
+function cleanFrom(raw: string): string {
+  return raw.includes("<") ? raw : raw.replace(/[<>]/g, "").trim();
+}
+
+export const mailFrom = cleanFrom(
+  process.env.EMAIL_FROM ??
+    process.env.SMTP_FROM ??
+    `Cheers <${smtpConfig.auth.user ?? ""}>`
+);
+
+const transporter = nodemailer.createTransport(smtpConfig);
 
 // Fire-and-forget email. A failed email must never break a mutation,
 // so this logs and swallows errors instead of throwing.
@@ -18,7 +37,7 @@ export async function sendEmail(opts: {
 }): Promise<void> {
   try {
     await transporter.sendMail({
-      from: process.env.EMAIL_FROM ?? `Cheers <${process.env.EMAIL_SERVER_USER}>`,
+      from: mailFrom,
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
