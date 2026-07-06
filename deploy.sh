@@ -1,0 +1,21 @@
+#!/bin/bash
+set -e
+cd "$(dirname "$0")"
+
+git pull origin master
+
+# Reproducible install from package-lock.json (never mutates the lockfile)
+npm ci
+
+# Schema changes: run `npm run db:push` MANUALLY and review its plan —
+# drizzle-kit can propose destructive statements.
+# Catalog/admin seed is idempotent, safe on every deploy:
+npm run db:seed
+
+# Build while the old server keeps serving from .next; brief blip on restart.
+npm run build
+
+pm2 startOrRestart ecosystem.config.js
+pm2 save
+
+echo "Deployment complete."
