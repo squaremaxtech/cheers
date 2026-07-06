@@ -13,6 +13,11 @@ const playfair = Playfair_Display({
   subsets: ["latin"],
 });
 
+// Every page renders per-request: the app is auth- and DB-backed throughout,
+// so build-time prerendering would both require DB access during `next build`
+// and bake stale data into static HTML.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: {
     default: "Cheers — Premium Event Companions & Wellness, Jamaica",
