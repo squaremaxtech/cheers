@@ -183,3 +183,4 @@ export async function createX(formData: FormData) { /* zod parse, auth guard, db
 - **Owner preference: shared types live in root `types.ts`** (row types, DTOs, ActionResult) — import via `@/types`; do not export types from lib modules.
 - All admin mutations write an `audit_logs` row.
 - Keep service names professional/non-explicit; workers cannot create new service types.
+- **Design language (owner directive): velvet/suede luxury.** Plush, tactile, classy: `.card` velvet sheen + soft deep shadows, `.velvet` burgundy panel, suede grain overlay (body::before), gradient gold buttons, wine/velvet tones, Playfair Display headings, rounded-2xl. All defined in `app/globals.css` — reuse these utilities in new UI.

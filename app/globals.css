@@ -11,7 +11,8 @@
   --color-faint: #6b6259; /* tertiary text */
   --color-gold: #d6b25e; /* accent */
   --color-gold-soft: #e3c47a;
-  --color-wine: #7c2d3e; /* deep accent for gradients */
+  --color-wine: #7c2d3e; /* deep velvet accent for gradients */
+  --color-velvet: #2a1218; /* plush burgundy-black for deep surfaces */
   --color-success: #4ade80;
   --color-danger: #f87171;
   --color-warn: #fbbf24;
@@ -21,9 +22,31 @@
 }
 
 body {
-  background: var(--color-base);
+  background:
+    radial-gradient(
+      120% 90% at 50% -10%,
+      rgba(124, 45, 62, 0.14),
+      transparent 60%
+    ),
+    var(--color-base);
   color: var(--color-ink);
   font-family: var(--font-sans);
+}
+
+/* Suede grain: a whisper of texture over every surface */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+body > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* Serif display headings */
@@ -31,9 +54,26 @@ body {
   font-family: var(--font-display);
 }
 
-/* Shared surfaces */
+/* Shared surfaces — velvet: soft sheen from above, plush shadow below */
 .card {
-  @apply rounded-2xl border border-hairline bg-surface;
+  @apply rounded-2xl border border-hairline;
+  background:
+    linear-gradient(170deg, rgba(250, 247, 242, 0.03), transparent 45%),
+    var(--color-surface);
+  box-shadow:
+    0 1px 0 rgba(250, 247, 242, 0.04) inset,
+    0 18px 40px -24px rgba(0, 0, 0, 0.7);
+}
+
+/* Deep velvet panel for hero/feature moments */
+.velvet {
+  background:
+    linear-gradient(170deg, rgba(250, 247, 242, 0.04), transparent 50%),
+    radial-gradient(
+      130% 100% at 50% 0%,
+      rgba(124, 45, 62, 0.35),
+      var(--color-velvet) 70%
+    );
 }
 
 .hairline-top {
@@ -55,7 +95,15 @@ body {
 }
 
 .btn-gold {
-  @apply btn bg-gold text-base hover:bg-gold-soft;
+  @apply btn text-base;
+  background: linear-gradient(180deg, var(--color-gold-soft), var(--color-gold));
+  box-shadow:
+    0 1px 0 rgba(250, 247, 242, 0.35) inset,
+    0 10px 24px -12px rgba(214, 178, 94, 0.55);
+}
+
+.btn-gold:hover {
+  filter: brightness(1.06);
 }
 
 .btn-outline {
