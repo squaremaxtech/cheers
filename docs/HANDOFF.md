@@ -23,15 +23,22 @@
 | Auth (NextAuth magic link + Google, RBAC) | ✅ (`lib/auth.ts`, `lib/guards.ts`, login/verify pages) |
 | Zod schemas + server actions | ✅ (`schemas/*`, `actions/*` — worker, bookings, payments, memberships, reviews, favorites, notifications, account, admin) |
 | Stripe + Nodemailer | ✅ (checkout + subscription + webhook `app/api/stripe/webhook`, `lib/mailer.ts`, `lib/notify.ts`) |
-| UI components / design system | ✅ (globals.css theme, ui primitives, SiteHeader/Footer) |
-| Public pages | ❌ |
-| Customer area | ❌ |
-| Worker dashboard | ❌ |
-| Admin dashboard | ❌ |
-| Seed script | ❌ |
-| Verify (typecheck, build, migrate) | ❌ |
+| UI components / design system | ✅ (globals.css velvet/suede theme, ui primitives, SiteHeader/Footer, DashboardShell) |
+| Public pages | ✅ (home, browse grid/list/swipe + filters, worker profile, about/contact/faq/privacy/terms) |
+| Customer area | ✅ (dashboard, book/[workerId] w/ maps autocomplete, bookings + detail w/ pay/tip/cancel/reschedule/review/PIN, favorites, membership) |
+| Worker dashboard | ✅ (onboarding, overview + visibility toggle, profile, media, services+add-ons, availability, bookings w/ accept/decline/complete/cash, earnings) |
+| Admin dashboard | ✅ (overview metrics, workers w/ verify-hide-suspend, bookings w/ full override + reassign, payments + refunds + weekly payouts, reviews moderation, reports + CSV export, settings) + /driver transport view |
+| Seed script | ✅ (`npm run db:seed` — catalog seeded on VPS; admin stub created for owner email) |
+| Verify (typecheck, build, db push) | ✅ `tsc --noEmit` clean, `next build` succeeds, schema pushed to VPS db `cheers`, catalog + admin seeded (2026-07-05) |
 
-**Next action:** (updated continuously) — see §8 Build Order; start at the first ❌ row.
+**V1 code complete.** Remaining before launch (V1.1):
+1. `.env` — confirm all names in `.env.example` exist locally (esp. `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `EMAIL_*`, `STRIPE_*` incl. `STRIPE_MEMBERSHIP_PRICE_ID` + webhook secret, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `FREE_ACCESS_UNTIL`). Admin role already seeded for the owner email.
+2. Stripe dashboard: create the monthly membership Price; point a webhook at `/api/stripe/webhook` (events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`).
+3. Booking **reminder** emails need a scheduled job (e.g. `scripts/send-reminders.ts` via PM2 cron) — not yet written.
+4. Media is URL-based; real file uploads (S3/UploadThing) are future work.
+5. PDF report export = browser print for now (CSV export is real).
+6. Safety: PIN is live; wellness-check button + location tracking are structural placeholders per spec.
+7. Run `npm run lint` and smoke-test flows end-to-end with `npm run dev` (google/email login → onboard worker → enable service → book → accept → pay via Stripe test mode → complete → review → moderate).
 
 ## 3. Key Decisions
 

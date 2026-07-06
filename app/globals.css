@@ -89,13 +89,17 @@ body > * {
   @apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted;
 }
 
-/* Buttons */
-.btn {
+/* Buttons — .btn is the shared base, variants layer on top */
+.btn,
+.btn-gold,
+.btn-outline,
+.btn-ghost,
+.btn-danger {
   @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .btn-gold {
-  @apply btn text-base;
+  @apply text-base;
   background: linear-gradient(180deg, var(--color-gold-soft), var(--color-gold));
   box-shadow:
     0 1px 0 rgba(250, 247, 242, 0.35) inset,
@@ -107,15 +111,15 @@ body > * {
 }
 
 .btn-outline {
-  @apply btn border border-hairline text-ink hover:border-gold/50 hover:text-gold-soft;
+  @apply border border-hairline text-ink hover:border-gold/50 hover:text-gold-soft;
 }
 
 .btn-ghost {
-  @apply btn text-muted hover:bg-raised hover:text-ink;
+  @apply text-muted hover:bg-raised hover:text-ink;
 }
 
 .btn-danger {
-  @apply btn border border-danger/40 text-danger hover:bg-danger/10;
+  @apply border border-danger/40 text-danger hover:bg-danger/10;
 }
 
 /* Subtle gold shimmer divider used on marketing pages */
