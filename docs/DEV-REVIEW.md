@@ -106,7 +106,7 @@ Amounts are **integer cents** everywhere. Fee = 5% of service+add-ons
       first real sign-in, verify in DB that no *second* user row was created
       for your email and your role is still `admin`.
 - [ ] `NEXTAUTH_SECRET` strength; `NEXTAUTH_URL` must be the public HTTPS URL
-      in production (it also feeds Stripe redirect URLs via `lib/stripe.ts`
+      in production (it  also feeds Stripe redirect URLs via `lib/stripe.ts`
       `appUrl`).
 
 ## 5. Input validation & injection surface
