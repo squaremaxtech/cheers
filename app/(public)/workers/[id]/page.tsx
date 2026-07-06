@@ -22,6 +22,23 @@ import { publicWorkerColumns } from "@/lib/workers";
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+export async function generateMetadata(props: PageProps<"/workers/[id]">) {
+  const { id } = await props.params;
+  const [worker] = await db
+    .select({ stageName: workers.stageName, bio: workers.bio })
+    .from(workers)
+    .where(
+      and(eq(workers.id, id), eq(workers.active, true), eq(workers.suspended, false))
+    );
+  if (!worker) return { title: "Profile" };
+  return {
+    title: worker.stageName,
+    description:
+      worker.bio?.slice(0, 155) ??
+      `Book ${worker.stageName} on Cheers — premium wellness & entertainment, Jamaica.`,
+  };
+}
+
 export default async function WorkerProfilePage(
   props: PageProps<"/workers/[id]">
 ) {

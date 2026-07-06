@@ -12,7 +12,8 @@ export default async function AdminWorkersPage() {
   const rows = await db
     .select()
     .from(workers)
-    .orderBy(desc(workers.createdAt));
+    .orderBy(desc(workers.createdAt))
+    .limit(200);
 
   return (
     <div>

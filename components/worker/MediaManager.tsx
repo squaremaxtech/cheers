@@ -1,25 +1,19 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { addWorkerMedia, deleteWorkerMedia } from "@/actions/worker";
+import FileUploadButton from "@/components/ui/FileUploadButton";
 import type { WorkerMediaRow } from "@/types";
 
 export default function MediaManager({ media }: { media: WorkerMediaRow[] }) {
   const router = useRouter();
-  const [url, setUrl] = useState("");
-  const [type, setType] = useState<"photo" | "video">("photo");
-  const [busy, setBusy] = useState(false);
 
-  async function handleAdd(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setBusy(true);
+  async function handleUploaded(url: string, file: File) {
+    const type = file.type.startsWith("video/") ? "video" : "photo";
     const res = await addWorkerMedia({ type, url });
-    setBusy(false);
     if (res.ok) {
-      toast.success("Media added");
-      setUrl("");
+      toast.success(`${type === "video" ? "Video" : "Photo"} added`);
       router.refresh();
     } else {
       toast.error(res.error);
@@ -38,39 +32,20 @@ export default function MediaManager({ media }: { media: WorkerMediaRow[] }) {
 
   return (
     <div className="space-y-6">
-      <form onSubmit={handleAdd} className="card flex flex-wrap items-end gap-3 p-5">
-        <div className="min-w-56 flex-1">
-          <label className="label" htmlFor="m-url">
-            Media URL
-          </label>
-          <input
-            id="m-url"
-            type="url"
-            required
-            placeholder="https://…"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="input"
-          />
-        </div>
+      <div className="card flex flex-wrap items-center justify-between gap-3 p-5">
         <div>
-          <label className="label" htmlFor="m-type">
-            Type
-          </label>
-          <select
-            id="m-type"
-            className="input"
-            value={type}
-            onChange={(e) => setType(e.target.value === "video" ? "video" : "photo")}
-          >
-            <option value="photo">Photo</option>
-            <option value="video">Video</option>
-          </select>
+          <p className="text-sm text-ink">Photos & videos</p>
+          <p className="mt-0.5 text-xs text-faint">
+            JPG, PNG, WebP, GIF, MP4, WebM — up to 50 MB. Stored on this
+            server; the first photo becomes your cover.
+          </p>
         </div>
-        <button type="submit" className="btn-gold" disabled={busy}>
-          {busy ? "Adding…" : "Add"}
-        </button>
-      </form>
+        <FileUploadButton
+          label="Upload photo / video"
+          className="btn-gold"
+          onUploaded={handleUploaded}
+        />
+      </div>
 
       {media.length === 0 ? (
         <p className="text-sm text-faint">No media yet — add your first photo above.</p>

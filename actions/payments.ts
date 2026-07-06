@@ -11,8 +11,27 @@ import { CURRENCY } from "@/lib/constants";
 import { guardErrorMessage, requireAdmin, requireUser, requireWorker } from "@/lib/guards";
 import { notify, notifyAdmins } from "@/lib/notify";
 import { appUrl, stripe } from "@/lib/stripe";
-import { cashPaymentSchema, checkoutSchema, refundSchema } from "@/schemas/payment";
-import type { ActionResult } from "@/types";
+import {
+  cashCollectedSchema,
+  checkoutSchema,
+  chooseCashSchema,
+  refundSchema,
+} from "@/schemas/payment";
+import type { ActionResult, BookingRow } from "@/types";
+
+async function hasSucceededPayment(bookingId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(
+      and(eq(payments.bookingId, bookingId), eq(payments.status, "succeeded"))
+    );
+  return Boolean(row);
+}
+
+function serviceTotalCents(booking: BookingRow): number {
+  return booking.priceCents + booking.addonsCents;
+}
 
 // --- Card payment via Stripe Checkout (customer, after acceptance) ------------
 
@@ -37,9 +56,20 @@ export async function createBookingCheckout(
     if (booking.status !== "accepted") {
       return err("This booking is not awaiting payment.");
     }
+    if (await hasSucceededPayment(booking.id)) {
+      return err("This booking is already paid.");
+    }
+
+    // Invalidate any earlier attempts so only one live payment path exists.
+    await db
+      .update(payments)
+      .set({ status: "failed", updatedAt: new Date() })
+      .where(
+        and(eq(payments.bookingId, booking.id), eq(payments.status, "pending"))
+      );
 
     const tipCents = parsed.data.tipCents;
-    const serviceTotal = booking.priceCents + booking.addonsCents;
+    const serviceTotal = serviceTotalCents(booking);
 
     // Pending payment row first so the webhook has something to confirm.
     const [payment] = await db
@@ -80,6 +110,8 @@ export async function createBookingCheckout(
       mode: "payment",
       customer_email: user.email,
       line_items: lineItems,
+      // Sessions die after 30 minutes so stale tabs can't charge later.
+      expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
       metadata: {
         kind: "booking",
         bookingId: booking.id,
@@ -97,14 +129,100 @@ export async function createBookingCheckout(
   }
 }
 
-// --- Cash payment (worker records collection + uploads proof) ------------------
+// --- Cash at meeting (customer commits, worker confirms collection) -----------
 
-export async function recordCashPayment(
+export async function chooseCashPayment(
+  input: unknown
+): Promise<ActionResult<undefined>> {
+  try {
+    const user = await requireUser();
+    const parsed = chooseCashSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const [booking] = await db
+      .select()
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.id, parsed.data.bookingId),
+          eq(bookings.customerId, user.id)
+        )
+      );
+    if (!booking) return err(ERR.notFound);
+    if (booking.status !== "accepted") {
+      return err("This booking is not awaiting payment.");
+    }
+    if (await hasSucceededPayment(booking.id)) {
+      return err("This booking is already paid.");
+    }
+
+    const tipCents = parsed.data.tipCents;
+
+    // Replace any earlier attempt with the cash expectation.
+    await db
+      .update(payments)
+      .set({ status: "failed", updatedAt: new Date() })
+      .where(
+        and(eq(payments.bookingId, booking.id), eq(payments.status, "pending"))
+      );
+    await db.insert(payments).values({
+      bookingId: booking.id,
+      customerId: user.id,
+      amountCents: serviceTotalCents(booking) + tipCents,
+      tipCents,
+      platformFeeCents: booking.platformFeeCents,
+      method: "cash",
+      status: "pending",
+    });
+
+    await db
+      .update(bookings)
+      .set({ tipCents, updatedAt: new Date() })
+      .where(eq(bookings.id, booking.id));
+    await transitionBooking({
+      booking,
+      to: "confirmed",
+      actorUserId: user.id,
+      note: "customer chose cash at meeting",
+    });
+
+    const total = serviceTotalCents(booking) + tipCents;
+    await notify({
+      userId: booking.customerId,
+      type: "booking_confirmed",
+      title: `Booking ${booking.code} confirmed — cash at meeting`,
+      body: `Please have the amount ready in cash at your booking. Your PIN is in the booking details.`,
+    });
+    const [worker] = await db
+      .select({ userId: workers.userId })
+      .from(workers)
+      .where(eq(workers.id, booking.workerId));
+    if (worker) {
+      await notify({
+        userId: worker.userId,
+        type: "booking_confirmed",
+        title: `Booking ${booking.code} confirmed — collect cash`,
+        body: `The customer will pay cash at the meeting. Collect the full amount and record it with proof afterwards.`,
+        meta: { bookingId: booking.id, amountCents: String(total) },
+      });
+    }
+
+    revalidatePath("/bookings");
+    revalidatePath("/worker/bookings");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// Worker confirms cash was collected. Amount is server-derived from the
+// booking; the worker supplies only the tip actually received plus proof.
+export async function recordCashCollected(
   input: unknown
 ): Promise<ActionResult<undefined>> {
   try {
     const { user, worker } = await requireWorker();
-    const parsed = cashPaymentSchema.safeParse(input);
+    const parsed = cashCollectedSchema.safeParse(input);
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
 
     const [booking] = await db
@@ -120,30 +238,58 @@ export async function recordCashPayment(
     if (booking.status !== "accepted" && booking.status !== "confirmed") {
       return err("Cash can only be recorded for accepted or confirmed bookings.");
     }
-
-    await db.insert(payments).values({
-      bookingId: booking.id,
-      customerId: booking.customerId,
-      amountCents: parsed.data.amountCents,
-      tipCents: parsed.data.tipCents,
-      platformFeeCents: booking.platformFeeCents,
-      method: "cash",
-      status: "succeeded",
-      cashProofUrl: parsed.data.proofUrl,
-    });
-
-    if (parsed.data.tipCents > 0 || booking.tipCents === 0) {
-      await db
-        .update(bookings)
-        .set({ tipCents: parsed.data.tipCents, updatedAt: new Date() })
-        .where(eq(bookings.id, booking.id));
+    if (await hasSucceededPayment(booking.id)) {
+      return err("A payment was already recorded for this booking.");
     }
+
+    const tipCents = parsed.data.tipCents;
+    const amountCents = serviceTotalCents(booking) + tipCents;
+
+    // Reuse the customer's pending cash expectation if there is one.
+    const [pendingCash] = await db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(
+        and(
+          eq(payments.bookingId, booking.id),
+          eq(payments.method, "cash"),
+          eq(payments.status, "pending")
+        )
+      );
+    if (pendingCash) {
+      await db
+        .update(payments)
+        .set({
+          amountCents,
+          tipCents,
+          status: "succeeded",
+          cashProofUrl: parsed.data.proofUrl,
+          updatedAt: new Date(),
+        })
+        .where(eq(payments.id, pendingCash.id));
+    } else {
+      await db.insert(payments).values({
+        bookingId: booking.id,
+        customerId: booking.customerId,
+        amountCents,
+        tipCents,
+        platformFeeCents: booking.platformFeeCents,
+        method: "cash",
+        status: "succeeded",
+        cashProofUrl: parsed.data.proofUrl,
+      });
+    }
+
+    await db
+      .update(bookings)
+      .set({ tipCents, updatedAt: new Date() })
+      .where(eq(bookings.id, booking.id));
     if (booking.status === "accepted") {
       await transitionBooking({
         booking,
         to: "confirmed",
         actorUserId: user.id,
-        note: "cash payment recorded",
+        note: "cash collected",
       });
     }
 
@@ -151,12 +297,13 @@ export async function recordCashPayment(
       userId: booking.customerId,
       type: "payment_received",
       title: `Payment received for ${booking.code}`,
-      body: "Your cash payment was recorded. Your booking is confirmed.",
+      body: "Your cash payment was recorded. Thank you!",
     });
     await notifyAdmins({
       type: "payment_received",
-      title: `Cash payment recorded — ${booking.code}`,
-      body: `Worker recorded a cash payment with proof. Review it in the admin payments view.`,
+      title: `Cash collected — ${booking.code}`,
+      body: "A worker recorded a cash collection with proof. Review it in the admin payments view.",
+      meta: { bookingId: booking.id },
     });
 
     revalidatePath("/worker/bookings");
@@ -188,16 +335,23 @@ export async function refundPayment(input: unknown): Promise<ActionResult<undefi
       });
     }
 
+    // CAS so a concurrent webhook redelivery can't fight this write.
     await db
       .update(payments)
       .set({ status: "refunded", updatedAt: new Date() })
-      .where(eq(payments.id, payment.id));
+      .where(
+        and(eq(payments.id, payment.id), eq(payments.status, "succeeded"))
+      );
 
     const [booking] = await db
       .select()
       .from(bookings)
       .where(eq(bookings.id, payment.bookingId));
-    if (booking && booking.status !== "refunded") {
+    if (
+      booking &&
+      booking.status !== "refunded" &&
+      booking.status !== "cancelled"
+    ) {
       await transitionBooking({
         booking,
         to: "refunded",
@@ -217,7 +371,7 @@ export async function refundPayment(input: unknown): Promise<ActionResult<undefi
       userId: payment.customerId,
       type: "payment_refunded",
       title: "Your payment was refunded",
-      body: `A refund was issued for booking ${booking?.code ?? ""}. Card refunds take 5-10 business days.`,
+      body: `A refund was issued for booking ${booking?.code ?? ""}. Card refunds take 5-10 business days; cash refunds are arranged by our team.`,
     });
 
     revalidatePath("/admin/payments");

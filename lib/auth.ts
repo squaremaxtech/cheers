@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { NextAuthOptions } from "next-auth";
 import { getServerSession } from "next-auth";
 import EmailProvider from "next-auth/providers/email";
@@ -53,10 +54,12 @@ export const authOptions: NextAuthOptions = {
 };
 
 // Returns the signed-in user's full DB row, or null when signed out.
-export async function getUserRow(): Promise<UserRow | null> {
+// Wrapped in React cache(): header, layout, and page all call this in one
+// request — it runs once.
+export const getUserRow = cache(async (): Promise<UserRow | null> => {
   const session = await getServerSession(authOptions);
   const id = session?.user?.id;
   if (!id) return null;
   const [user] = await db.select().from(users).where(eq(users.id, id));
   return user ?? null;
-}
+});

@@ -90,7 +90,9 @@ function ServiceRow({
   async function handleAddAddon(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!current) return;
-    const form = new FormData(e.currentTarget);
+    // Capture before await: React nulls currentTarget after the sync phase.
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
     const res = await addServiceAddon({
       workerServiceId: current.id,
       name: form.get("name"),
@@ -99,7 +101,7 @@ function ServiceRow({
     });
     if (res.ok) {
       toast.success("Add-on added");
-      e.currentTarget.reset();
+      formEl.reset();
       router.refresh();
     } else {
       toast.error(res.error);

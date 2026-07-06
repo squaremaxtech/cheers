@@ -1,9 +1,9 @@
 "use server";
 
-import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { bookings, payments, payouts, users, workers } from "@/db/schema";
+import { bookings, payments, payouts, sessions, users, workers } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
 import { writeAudit } from "@/lib/audit";
 import { guardErrorMessage, requireAdmin } from "@/lib/guards";
@@ -92,6 +92,11 @@ export async function adminSuspendUser(input: unknown): Promise<ActionResult<und
       .update(users)
       .set({ suspended: parsed.data.suspended, updatedAt: new Date() })
       .where(eq(users.id, user.id));
+    // Revoke live sessions immediately — suspension must not wait for the
+    // next sign-in attempt.
+    if (parsed.data.suspended) {
+      await db.delete(sessions).where(eq(sessions.userId, user.id));
+    }
     await writeAudit({
       actorUserId: admin.id,
       action: parsed.data.suspended ? "user.suspend" : "user.unsuspend",
@@ -106,9 +111,12 @@ export async function adminSuspendUser(input: unknown): Promise<ActionResult<und
   }
 }
 
-// Compute pending weekly payouts from succeeded payments on completed bookings
-// in the given period. Idempotent: re-running a period replaces its pending
-// payouts (paid payouts are never touched).
+// Compute pending weekly payouts from succeeded payments on completed
+// bookings in the given period. Each booking is linked to its payout via
+// bookings.payoutId, so a booking can NEVER be paid out twice — re-runs and
+// overlapping periods only pick up bookings not yet covered. Re-running a
+// period releases and rebuilds its *pending* payouts; paid payouts and their
+// bookings are never touched.
 export async function generateWeeklyPayouts(input: {
   periodStart: string; // YYYY-MM-DD
   periodEnd: string;
@@ -119,78 +127,114 @@ export async function generateWeeklyPayouts(input: {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart) || !/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) {
       return err(ERR.badRequest);
     }
+    if (periodEnd < periodStart) return err(ERR.badRequest);
 
-    const completed = await db
-      .select({
-        bookingId: bookings.id,
-        workerId: bookings.workerId,
-        priceCents: bookings.priceCents,
-        addonsCents: bookings.addonsCents,
-        platformFeeCents: bookings.platformFeeCents,
-      })
-      .from(bookings)
-      .where(
-        and(
-          eq(bookings.status, "completed"),
-          gte(bookings.date, periodStart),
-          lte(bookings.date, periodEnd)
-        )
-      );
-    if (completed.length === 0) return ok({ created: 0 });
+    const created = await db.transaction(async (tx) => {
+      // Release bookings held by this period's still-pending payouts, then
+      // drop those payouts (regeneration).
+      const pendingPayouts = await tx
+        .select({ id: payouts.id })
+        .from(payouts)
+        .where(
+          and(
+            eq(payouts.periodStart, periodStart),
+            eq(payouts.periodEnd, periodEnd),
+            eq(payouts.status, "pending")
+          )
+        );
+      if (pendingPayouts.length > 0) {
+        const ids = pendingPayouts.map((p) => p.id);
+        await tx
+          .update(bookings)
+          .set({ payoutId: null })
+          .where(inArray(bookings.payoutId, ids));
+        await tx.delete(payouts).where(inArray(payouts.id, ids));
+      }
 
-    const paidRows = await db
-      .select({ bookingId: payments.bookingId, tipCents: payments.tipCents })
-      .from(payments)
-      .where(
-        and(
-          eq(payments.status, "succeeded"),
-          inArray(payments.bookingId, completed.map((b) => b.bookingId))
-        )
-      );
-    const paidBookings = new Map(paidRows.map((p) => [p.bookingId, p]));
+      // Only completed bookings in the period not already covered by a payout.
+      const completed = await tx
+        .select({
+          bookingId: bookings.id,
+          workerId: bookings.workerId,
+          priceCents: bookings.priceCents,
+          addonsCents: bookings.addonsCents,
+          platformFeeCents: bookings.platformFeeCents,
+        })
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.status, "completed"),
+            isNull(bookings.payoutId),
+            gte(bookings.date, periodStart),
+            lte(bookings.date, periodEnd)
+          )
+        );
+      if (completed.length === 0) return 0;
 
-    // Worker earns service total minus platform fee; tips pass through 100%.
-    const byWorker = new Map<string, { amountCents: number; tipsCents: number }>();
-    for (const b of completed) {
-      const payment = paidBookings.get(b.bookingId);
-      if (!payment) continue; // unpaid bookings are not payable
-      const entry = byWorker.get(b.workerId) ?? { amountCents: 0, tipsCents: 0 };
-      entry.amountCents += b.priceCents + b.addonsCents - b.platformFeeCents;
-      entry.tipsCents += payment.tipCents;
-      byWorker.set(b.workerId, entry);
-    }
-    if (byWorker.size === 0) return ok({ created: 0 });
+      // Sum tips across ALL succeeded payments per booking (card + cash).
+      const paidRows = await tx
+        .select({ bookingId: payments.bookingId, tipCents: payments.tipCents })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.status, "succeeded"),
+            inArray(payments.bookingId, completed.map((b) => b.bookingId))
+          )
+        );
+      const tipsByBooking = new Map<string, number>();
+      for (const p of paidRows) {
+        tipsByBooking.set(
+          p.bookingId,
+          (tipsByBooking.get(p.bookingId) ?? 0) + p.tipCents
+        );
+      }
 
-    // Replace pending payouts for this exact period.
-    await db
-      .delete(payouts)
-      .where(
-        and(
-          eq(payouts.periodStart, periodStart),
-          eq(payouts.periodEnd, periodEnd),
-          eq(payouts.status, "pending")
-        )
-      );
-    await db.insert(payouts).values(
-      Array.from(byWorker.entries()).map(([workerId, sums]) => ({
-        workerId,
-        periodStart,
-        periodEnd,
-        amountCents: sums.amountCents,
-        tipsCents: sums.tipsCents,
-      }))
-    );
+      // Worker earns service total minus platform fee; tips pass through 100%.
+      const byWorker = new Map<
+        string,
+        { amountCents: number; tipsCents: number; bookingIds: string[] }
+      >();
+      for (const b of completed) {
+        if (!tipsByBooking.has(b.bookingId)) continue; // unpaid: not payable
+        const entry =
+          byWorker.get(b.workerId) ??
+          { amountCents: 0, tipsCents: 0, bookingIds: [] };
+        entry.amountCents += b.priceCents + b.addonsCents - b.platformFeeCents;
+        entry.tipsCents += tipsByBooking.get(b.bookingId) ?? 0;
+        entry.bookingIds.push(b.bookingId);
+        byWorker.set(b.workerId, entry);
+      }
+      if (byWorker.size === 0) return 0;
+
+      for (const [workerId, sums] of byWorker) {
+        const [payout] = await tx
+          .insert(payouts)
+          .values({
+            workerId,
+            periodStart,
+            periodEnd,
+            amountCents: sums.amountCents,
+            tipsCents: sums.tipsCents,
+          })
+          .returning({ id: payouts.id });
+        await tx
+          .update(bookings)
+          .set({ payoutId: payout.id })
+          .where(inArray(bookings.id, sums.bookingIds));
+      }
+      return byWorker.size;
+    });
 
     await writeAudit({
       actorUserId: admin.id,
       action: "payouts.generate",
       entity: "payouts",
       entityId: `${periodStart}..${periodEnd}`,
-      after: { workers: byWorker.size },
+      after: { workers: created },
     });
 
     revalidatePath("/admin/payments");
-    return ok({ created: byWorker.size });
+    return ok({ created });
   } catch (error) {
     return err(guardErrorMessage(error));
   }
@@ -209,10 +253,15 @@ export async function markPayoutPaid(input: unknown): Promise<ActionResult<undef
     if (!payout) return err(ERR.notFound);
     if (payout.status === "paid") return err("Payout is already marked paid.");
 
-    await db
+    // CAS: a concurrent regenerate may have deleted/replaced this payout.
+    const updated = await db
       .update(payouts)
       .set({ status: "paid", paidAt: new Date(), note: parsed.data.note })
-      .where(eq(payouts.id, payout.id));
+      .where(and(eq(payouts.id, payout.id), eq(payouts.status, "pending")))
+      .returning({ id: payouts.id });
+    if (updated.length === 0) {
+      return err("This payout was just regenerated. Refresh and try again.");
+    }
     await writeAudit({
       actorUserId: admin.id,
       action: "payout.mark_paid",

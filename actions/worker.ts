@@ -138,13 +138,19 @@ export async function addWorkerMedia(
       .where(eq(workerMedia.workerId, worker.id));
     if (existing.length >= 20) return err("Media limit reached (20 items).");
 
+    // max+1, not count: deletions leave gaps and count would collide.
+    const nextSort =
+      existing.length === 0
+        ? 0
+        : Math.max(...existing.map((m) => m.sortOrder)) + 1;
+
     const [row] = await db
       .insert(workerMedia)
       .values({
         workerId: worker.id,
         type: parsed.data.type,
         url: parsed.data.url,
-        sortOrder: existing.length,
+        sortOrder: nextSort,
       })
       .returning({ id: workerMedia.id });
 

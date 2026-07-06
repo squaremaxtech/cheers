@@ -1,20 +1,43 @@
 import { z } from "zod";
 import { BODY_TYPES, JAMAICA_PARISHES, LANGUAGES } from "@/lib/constants";
 
+// Optional-and-clearable fields: "" / null / undefined all mean "clear to null",
+// so the profile editor can remove previously saved values.
+function clearableString(max: number) {
+  return z.preprocess(
+    (v) => (v === "" || v == null ? null : v),
+    z.union([z.null(), z.string().trim().max(max)])
+  );
+}
+
+function clearableInt(min: number, max: number) {
+  return z.preprocess(
+    (v) => (v === "" || v == null ? null : v),
+    z.union([z.null(), z.coerce.number().int().min(min).max(max)])
+  );
+}
+
+function clearableEnum<T extends readonly [string, ...string[]]>(values: T) {
+  return z.preprocess(
+    (v) => (v === "" || v == null ? null : v),
+    z.union([z.null(), z.enum(values)])
+  );
+}
+
 export const workerProfileSchema = z.object({
   stageName: z
     .string()
     .trim()
     .min(2, "Stage name must be at least 2 characters")
     .max(40),
-  realName: z.string().trim().max(120).optional(),
-  bio: z.string().trim().max(2000).optional(),
+  realName: clearableString(120),
+  bio: clearableString(2000),
   age: z.coerce.number().int().min(18, "Workers must be 18+").max(99),
-  heightCm: z.coerce.number().int().min(120).max(230).optional(),
-  bodyType: z.enum(BODY_TYPES).optional(),
+  heightCm: clearableInt(120, 230),
+  bodyType: clearableEnum(BODY_TYPES),
   languages: z.array(z.enum(LANGUAGES)).max(LANGUAGES.length).default([]),
   parish: z.enum(JAMAICA_PARISHES),
-  city: z.string().trim().max(80).optional(),
+  city: clearableString(80),
   baseRateCents: z.coerce.number().int().min(0).max(10_000_000),
 });
 
@@ -33,9 +56,18 @@ export const serviceAddonSchema = z.object({
   description: z.string().trim().max(300).optional(),
 });
 
+// Accepts absolute http(s) URLs or files uploaded to this server (/api/media/…).
+export const mediaUrl = z
+  .string()
+  .max(2000)
+  .refine(
+    (v) => v.startsWith("/api/media/") || /^https?:\/\/\S+$/.test(v),
+    "Must be an uploaded file or a valid URL"
+  );
+
 export const mediaSchema = z.object({
   type: z.enum(["photo", "video"]),
-  url: z.string().url().max(2000),
+  url: mediaUrl,
 });
 
 const timeString = z

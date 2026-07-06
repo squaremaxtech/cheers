@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { bookings, memberships, payments, workers } from "@/db/schema";
 import { transitionBooking } from "@/lib/bookings";
@@ -12,6 +12,10 @@ async function handleBookingPaid(session: Stripe.Checkout.Session): Promise<void
   const bookingId = session.metadata?.bookingId;
   if (!paymentId || !bookingId) return;
 
+  // Async payment methods complete the session before funds settle — only
+  // treat fully-paid sessions as money in hand.
+  if (session.payment_status !== "paid") return;
+
   const paymentIntentId =
     typeof session.payment_intent === "string"
       ? session.payment_intent
@@ -21,7 +25,52 @@ async function handleBookingPaid(session: Stripe.Checkout.Session): Promise<void
     .select()
     .from(payments)
     .where(eq(payments.id, paymentId));
-  if (!payment || payment.status === "succeeded") return; // idempotent
+  // Idempotency: only a pending payment may be promoted. Redelivered events
+  // must never flip a refunded/failed payment back to succeeded.
+  if (!payment || payment.status !== "pending") return;
+
+  const [booking] = await db
+    .select()
+    .from(bookings)
+    .where(eq(bookings.id, bookingId));
+  if (!booking) return;
+
+  // Conflict: the booking left "accepted" (cancelled/declined/completed or
+  // paid via another route) while this checkout session was open. The money
+  // was captured — refund it immediately instead of pretending it confirmed.
+  if (booking.status !== "accepted") {
+    await db
+      .update(payments)
+      .set({
+        status: "refunded",
+        stripePaymentIntentId: paymentIntentId,
+        updatedAt: new Date(),
+      })
+      .where(eq(payments.id, paymentId));
+    if (paymentIntentId) {
+      try {
+        await stripe().refunds.create({ payment_intent: paymentIntentId });
+      } catch (error) {
+        console.error(
+          "conflict auto-refund failed:",
+          error instanceof Error ? error.message : error
+        );
+        await notifyAdmins({
+          type: "refund_required",
+          title: `Manual refund required — ${booking.code}`,
+          body: "A card payment completed for a booking that is no longer awaiting payment, and the automatic refund failed. Refund it from Stripe.",
+          meta: { bookingId: booking.id, paymentId },
+        });
+      }
+    }
+    await notify({
+      userId: booking.customerId,
+      type: "payment_refunded",
+      title: `Payment refunded — ${booking.code}`,
+      body: "This booking changed before your payment completed, so we refunded it automatically. Nothing further is needed.",
+    });
+    return;
+  }
 
   await db
     .update(payments)
@@ -30,26 +79,24 @@ async function handleBookingPaid(session: Stripe.Checkout.Session): Promise<void
       stripePaymentIntentId: paymentIntentId,
       updatedAt: new Date(),
     })
-    .where(eq(payments.id, paymentId));
-
-  const [booking] = await db
-    .select()
-    .from(bookings)
-    .where(eq(bookings.id, bookingId));
-  if (!booking) return;
+    .where(and(eq(payments.id, paymentId), eq(payments.status, "pending")));
 
   await db
     .update(bookings)
     .set({ tipCents: payment.tipCents, updatedAt: new Date() })
     .where(eq(bookings.id, booking.id));
 
-  if (booking.status === "accepted") {
+  try {
     await transitionBooking({
       booking,
       to: "confirmed",
       actorUserId: null,
       note: "card payment succeeded",
     });
+  } catch {
+    // Lost a race with a concurrent transition; Stripe will redeliver and the
+    // pending-only guard makes the retry a no-op. Status stays consistent.
+    return;
   }
 
   await notify({
@@ -109,30 +156,27 @@ async function handleMembershipCheckout(
     periodEnd = subscriptionPeriodEnd(sub);
   }
 
-  const [existing] = await db
-    .select({ id: memberships.id })
-    .from(memberships)
-    .where(eq(memberships.userId, userId));
-  if (existing) {
-    await db
-      .update(memberships)
-      .set({
-        status: "active",
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: subscriptionId,
-        currentPeriodEnd: periodEnd,
-        updatedAt: new Date(),
-      })
-      .where(eq(memberships.id, existing.id));
-  } else {
-    await db.insert(memberships).values({
+  // Upsert on the unique userId index — concurrent webhook deliveries can't
+  // race a select-then-insert into a duplicate.
+  await db
+    .insert(memberships)
+    .values({
       userId,
       status: "active",
       stripeCustomerId: customerId,
       stripeSubscriptionId: subscriptionId,
       currentPeriodEnd: periodEnd,
+    })
+    .onConflictDoUpdate({
+      target: memberships.userId,
+      set: {
+        status: "active",
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subscriptionId,
+        currentPeriodEnd: periodEnd,
+        updatedAt: new Date(),
+      },
     });
-  }
 
   await notify({
     userId,
@@ -147,16 +191,44 @@ async function handleSubscriptionChange(sub: Stripe.Subscription): Promise<void>
     .select()
     .from(memberships)
     .where(eq(memberships.stripeSubscriptionId, sub.id));
-  if (!membership) return;
 
+  if (membership) {
+    await db
+      .update(memberships)
+      .set({
+        status: membershipStatusFrom(sub),
+        currentPeriodEnd: subscriptionPeriodEnd(sub),
+        updatedAt: new Date(),
+      })
+      .where(eq(memberships.id, membership.id));
+    return;
+  }
+
+  // subscription.updated can arrive before checkout.session.completed —
+  // fall back to the userId we stamped on the subscription's metadata.
+  const userId = sub.metadata?.userId;
+  if (!userId) return;
+  const customerId =
+    typeof sub.customer === "string" ? sub.customer : sub.customer.id;
   await db
-    .update(memberships)
-    .set({
+    .insert(memberships)
+    .values({
+      userId,
       status: membershipStatusFrom(sub),
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: sub.id,
       currentPeriodEnd: subscriptionPeriodEnd(sub),
-      updatedAt: new Date(),
     })
-    .where(eq(memberships.id, membership.id));
+    .onConflictDoUpdate({
+      target: memberships.userId,
+      set: {
+        status: membershipStatusFrom(sub),
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: sub.id,
+        currentPeriodEnd: subscriptionPeriodEnd(sub),
+        updatedAt: new Date(),
+      },
+    });
 }
 
 export async function POST(req: Request): Promise<Response> {

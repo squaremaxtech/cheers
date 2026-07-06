@@ -9,7 +9,9 @@ import {
   completeBooking,
   declineBooking,
 } from "@/actions/bookings";
-import { recordCashPayment } from "@/actions/payments";
+import { recordCashCollected } from "@/actions/payments";
+import FileUploadButton from "@/components/ui/FileUploadButton";
+import { formatCents } from "@/lib/constants";
 import type { ActionResult, BookingStatus } from "@/types";
 
 export default function WorkerBookingActions({
@@ -24,6 +26,7 @@ export default function WorkerBookingActions({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [showCash, setShowCash] = useState(false);
+  const [proofUrl, setProofUrl] = useState("");
 
   async function run(fn: () => Promise<ActionResult<undefined>>, success: string) {
     setBusy(true);
@@ -39,18 +42,22 @@ export default function WorkerBookingActions({
 
   async function handleCash(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!proofUrl) {
+      toast.error("Upload a photo of the collected cash / receipt first.");
+      return;
+    }
     const form = new FormData(e.currentTarget);
     setBusy(true);
-    const res = await recordCashPayment({
+    const res = await recordCashCollected({
       bookingId,
-      amountCents: Math.round(Number(form.get("amount") ?? 0) * 100),
       tipCents: Math.round(Number(form.get("tip") ?? 0) * 100),
-      proofUrl: form.get("proofUrl"),
+      proofUrl,
     });
     setBusy(false);
     if (res.ok) {
-      toast.success("Cash payment recorded");
+      toast.success("Cash collection recorded");
       setShowCash(false);
+      setProofUrl("");
       router.refresh();
     } else {
       toast.error(res.error);
@@ -88,7 +95,7 @@ export default function WorkerBookingActions({
             disabled={busy}
             onClick={() => setShowCash((v) => !v)}
           >
-            Record cash payment
+            Record cash collected
           </button>
         )}
 
@@ -122,30 +129,33 @@ export default function WorkerBookingActions({
       </div>
 
       {showCash && (
-        <form onSubmit={handleCash} className="flex flex-wrap items-end gap-2">
-          <div className="w-28">
-            <label className="label">Amount ($)</label>
-            <input
-              name="amount"
-              type="number"
-              min={0}
-              step="0.01"
-              required
-              defaultValue={(serviceTotalCents / 100).toString()}
-              className="input"
+        <form onSubmit={handleCash} className="space-y-3">
+          <p className="text-xs text-muted">
+            Collect {formatCents(serviceTotalCents)} plus any tip. The service
+            amount is fixed — enter only the tip you actually received.
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-24">
+              <label className="label">Tip ($)</label>
+              <input
+                name="tip"
+                type="number"
+                min={0}
+                step="0.01"
+                defaultValue="0"
+                className="input"
+              />
+            </div>
+            <FileUploadButton
+              label={proofUrl ? "✓ Proof uploaded" : "Upload proof photo"}
+              accept="image/jpeg,image/png,image/webp"
+              className={proofUrl ? "btn-outline text-success" : "btn-outline"}
+              onUploaded={(url) => setProofUrl(url)}
             />
+            <button type="submit" className="btn-gold" disabled={busy || !proofUrl}>
+              Record collection
+            </button>
           </div>
-          <div className="w-24">
-            <label className="label">Tip ($)</label>
-            <input name="tip" type="number" min={0} step="0.01" defaultValue="0" className="input" />
-          </div>
-          <div className="min-w-48 flex-1">
-            <label className="label">Proof photo URL</label>
-            <input name="proofUrl" type="url" required placeholder="https://…" className="input" />
-          </div>
-          <button type="submit" className="btn-gold" disabled={busy}>
-            Record
-          </button>
         </form>
       )}
     </div>

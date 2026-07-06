@@ -13,6 +13,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type { AdapterAccount } from "next-auth/adapters";
 
@@ -310,6 +311,11 @@ export const bookings = pgTable(
     cancellationReason: text("cancellation_reason"),
     // Safety: customer shares this PIN with the worker at meeting time
     safetyPin: text("safety_pin"),
+    // Set when this booking's earnings are included in a payout — a booking
+    // can only ever be paid out once (prevents double-pay structurally).
+    payoutId: uuid("payout_id").references((): AnyPgColumn => payouts.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   },

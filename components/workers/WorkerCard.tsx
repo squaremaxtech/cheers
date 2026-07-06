@@ -2,7 +2,7 @@ import Link from "next/link";
 import Badge from "@/components/ui/Badge";
 import StarRating from "@/components/ui/StarRating";
 import { formatCents } from "@/lib/constants";
-import type { PublicWorkerWithPhoto } from "@/lib/workers";
+import type { PublicWorkerWithPhoto } from "@/types";
 
 export default function WorkerCard({
   worker,

@@ -41,6 +41,7 @@ export async function notify(opts: {
 }
 
 // Notify every admin (new bookings, payments, new users, reviews).
+// Batched: one select, one insert, parallel emails — not 2N+1 queries.
 export async function notifyAdmins(opts: {
   type: string;
   title: string;
@@ -49,11 +50,28 @@ export async function notifyAdmins(opts: {
 }): Promise<void> {
   try {
     const admins = await db
-      .select({ id: users.id })
+      .select({ id: users.id, email: users.email })
       .from(users)
       .where(eq(users.role, "admin"));
+    if (admins.length === 0) return;
+
+    await db.insert(notifications).values(
+      admins.map((a) => ({
+        userId: a.id,
+        type: opts.type,
+        title: opts.title,
+        body: opts.body,
+        meta: opts.meta,
+      }))
+    );
     await Promise.all(
-      admins.map((a) => notify({ userId: a.id, ...opts }))
+      admins.map((a) =>
+        sendEmail({
+          to: a.email,
+          subject: `Cheers — ${opts.title}`,
+          html: emailLayout(opts.title, `<p>${opts.body}</p>`),
+        })
+      )
     );
   } catch (error) {
     console.error(

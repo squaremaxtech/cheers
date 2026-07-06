@@ -3,11 +3,11 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { toggleFavorite } from "@/actions/favorites";
+import { addFavorite } from "@/actions/favorites";
 import Badge from "@/components/ui/Badge";
 import StarRating from "@/components/ui/StarRating";
 import { formatCents } from "@/lib/constants";
-import type { PublicWorkerWithPhoto } from "@/lib/workers";
+import type { PublicWorkerWithPhoto } from "@/types";
 
 // Swipe left = skip, swipe right = interested (saves to favorites).
 export default function SwipeDeck({
@@ -26,10 +26,10 @@ export default function SwipeDeck({
     setDx(0);
     setIndex((i) => i + 1);
     if (interested) {
-      const res = await toggleFavorite(current.id);
-      if (res.ok && res.data.favorited) {
+      const res = await addFavorite(current.id);
+      if (res.ok) {
         toast.success(`${current.stageName} saved to favorites`);
-      } else if (!res.ok) {
+      } else {
         toast.error(res.error);
       }
     }

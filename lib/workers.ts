@@ -1,7 +1,11 @@
 import { and, asc, desc, eq, gte, ilike, inArray, lte, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { serviceTypes, workerMedia, workers, workerServices } from "@/db/schema";
-import type { PublicWorker } from "@/types";
+import type {
+  BrowseFilters,
+  PublicWorker,
+  PublicWorkerWithPhoto,
+} from "@/types";
 
 // The ONLY columns public queries may select. realName/userId stay private.
 export const publicWorkerColumns = {
@@ -19,20 +23,6 @@ export const publicWorkerColumns = {
   avgRating: workers.avgRating,
   reviewCount: workers.reviewCount,
 };
-
-export type BrowseFilters = {
-  q?: string;
-  parish?: string;
-  service?: string; // service type slug
-  minAge?: number;
-  maxAge?: number;
-  maxPriceCents?: number;
-  minRatingX100?: number;
-  language?: string;
-  verified?: boolean;
-};
-
-export type PublicWorkerWithPhoto = PublicWorker & { photoUrl: string | null };
 
 export async function getPublicWorkers(
   filters: BrowseFilters

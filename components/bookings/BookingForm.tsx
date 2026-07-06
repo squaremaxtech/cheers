@@ -221,11 +221,14 @@ export default function BookingForm({
             value={duration}
             onChange={(e) => setDuration(Number(e.target.value))}
           >
-            {BOOKING_DURATIONS_MINUTES.map((d) => (
-              <option key={d} value={d}>
-                {d < 120 ? `${d} min` : `${d / 60} hours`}
-              </option>
-            ))}
+            {/* Standard durations plus this service's own duration */}
+            {[...new Set([selectedService?.durationMinutes ?? 60, ...BOOKING_DURATIONS_MINUTES])]
+              .sort((a, b) => a - b)
+              .map((d) => (
+                <option key={d} value={d}>
+                  {d < 120 ? `${d} min` : `${d / 60} hours`}
+                </option>
+              ))}
           </select>
         </div>
       </fieldset>

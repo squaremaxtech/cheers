@@ -8,6 +8,23 @@ import { err, ok } from "@/lib/action-result";
 import { guardErrorMessage, requireUser } from "@/lib/guards";
 import type { ActionResult } from "@/types";
 
+// Idempotent add — used by swipe-right, which must never UN-favorite.
+export async function addFavorite(
+  workerId: string
+): Promise<ActionResult<undefined>> {
+  try {
+    const user = await requireUser();
+    await db
+      .insert(favorites)
+      .values({ customerId: user.id, workerId })
+      .onConflictDoNothing();
+    revalidatePath("/favorites");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
 export async function toggleFavorite(
   workerId: string
 ): Promise<ActionResult<{ favorited: boolean }>> {

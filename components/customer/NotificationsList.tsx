@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import {
   markAllNotificationsRead,
@@ -12,6 +13,8 @@ export default function NotificationsList({
 }: {
   notifications: NotificationRow[];
 }) {
+  const router = useRouter();
+
   if (notifications.length === 0) {
     return <p className="text-sm text-faint">Nothing yet.</p>;
   }
@@ -26,7 +29,8 @@ export default function NotificationsList({
           className="mb-3 text-xs text-gold hover:text-gold-soft"
           onClick={async () => {
             const res = await markAllNotificationsRead();
-            if (!res.ok) toast.error(res.error);
+            if (res.ok) router.refresh();
+            else toast.error(res.error);
           }}
         >
           Mark all read
@@ -38,8 +42,11 @@ export default function NotificationsList({
             <button
               type="button"
               className="w-full text-left"
-              onClick={() => {
-                if (n.readAt === null) markNotificationRead(n.id);
+              onClick={async () => {
+                if (n.readAt !== null) return;
+                const res = await markNotificationRead(n.id);
+                if (res.ok) router.refresh();
+                else toast.error(res.error);
               }}
             >
               <p

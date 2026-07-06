@@ -9,6 +9,7 @@ import NotificationsList from "@/components/customer/NotificationsList";
 import ProfileForm from "@/components/customer/ProfileForm";
 import { getUserRow } from "@/lib/auth";
 import { freeAccessActive, getMembership } from "@/lib/membership";
+import { statusTone } from "@/lib/status";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -90,17 +91,7 @@ export default async function CustomerDashboard() {
                   </span>
                   <span className="flex items-center gap-3">
                     <span className="text-muted">{b.date}</span>
-                    <Badge
-                      tone={
-                        b.status === "confirmed" || b.status === "completed"
-                          ? "success"
-                          : b.status === "declined" || b.status === "cancelled"
-                            ? "danger"
-                            : "warn"
-                      }
-                    >
-                      {b.status}
-                    </Badge>
+                    <Badge tone={statusTone(b.status)}>{b.status}</Badge>
                   </span>
                 </Link>
               </li>

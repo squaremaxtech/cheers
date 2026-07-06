@@ -47,6 +47,20 @@ export type MembershipRow = typeof memberships.$inferSelect;
 export type ReviewRow = typeof reviews.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
 
+// --- Browse / search ---------------------------------------------------------------
+
+export type BrowseFilters = {
+  q?: string;
+  parish?: string;
+  service?: string; // service type slug
+  minAge?: number;
+  maxAge?: number;
+  maxPriceCents?: number;
+  minRatingX100?: number;
+  language?: string;
+  verified?: boolean;
+};
+
 // --- Public-facing DTOs -----------------------------------------------------------
 // PublicWorker deliberately excludes realName and userId — never widen it.
 
@@ -66,3 +80,5 @@ export type PublicWorker = Pick<
   | "avgRating"
   | "reviewCount"
 >;
+
+export type PublicWorkerWithPhoto = PublicWorker & { photoUrl: string | null };

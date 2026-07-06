@@ -8,6 +8,10 @@ export const PLATFORM_FEE_PERCENT = Number(
 
 export const CURRENCY = "usd"; // Stripe currency; amounts stored as integer cents
 
+// All booking dates/times are Jamaica wall-clock time (UTC-5, no DST).
+// Parsing must pin this offset — server timezone must never matter.
+export const JAMAICA_UTC_OFFSET = "-05:00";
+
 export const JAMAICA_PARISHES = [
   "Kingston",
   "St. Andrew",

@@ -1,7 +1,7 @@
 import EmptyState from "@/components/ui/EmptyState";
 import SwipeDeck from "@/components/workers/SwipeDeck";
 import WorkerCard from "@/components/workers/WorkerCard";
-import type { PublicWorkerWithPhoto } from "@/lib/workers";
+import type { PublicWorkerWithPhoto } from "@/types";
 
 export default function BrowseResults({
   workers,

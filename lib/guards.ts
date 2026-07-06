@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { workers } from "@/db/schema";
 import { getUserRow } from "@/lib/auth";
+import { ConflictError } from "@/lib/bookings";
 import type { UserRow, WorkerRow } from "@/types";
 
 export class GuardError extends Error {
@@ -16,6 +17,9 @@ export function guardErrorMessage(error: unknown): string {
     return error.code === "forbidden"
       ? "You do not have permission to do that."
       : "You must be signed in to do that.";
+  }
+  if (error instanceof ConflictError) {
+    return "This was just updated by someone else. Refresh and try again.";
   }
   console.error(
     "action failed:",
@@ -50,6 +54,8 @@ export async function requireStaff(): Promise<UserRow> {
 }
 
 // The signed-in worker's profile row (plus user row) or throw.
+// Admin-suspended workers keep read access to their pages but every
+// worker action goes through here and is blocked.
 export async function requireWorker(): Promise<{
   user: UserRow;
   worker: WorkerRow;
@@ -59,6 +65,6 @@ export async function requireWorker(): Promise<{
     .select()
     .from(workers)
     .where(eq(workers.userId, user.id));
-  if (!worker) throw new GuardError("forbidden");
+  if (!worker || worker.suspended) throw new GuardError("forbidden");
   return { user, worker };
 }

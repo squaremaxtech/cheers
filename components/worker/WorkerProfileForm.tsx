@@ -35,16 +35,17 @@ export default function WorkerProfileForm({
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    // Empty strings are sent as-is: the schema treats "" as "clear this field".
     const payload = {
       stageName: form.get("stageName"),
-      realName: form.get("realName") || undefined,
-      bio: form.get("bio") || undefined,
+      realName: form.get("realName"),
+      bio: form.get("bio"),
       age: form.get("age"),
-      heightCm: form.get("heightCm") || undefined,
-      bodyType: form.get("bodyType") || undefined,
+      heightCm: form.get("heightCm"),
+      bodyType: form.get("bodyType"),
       languages,
       parish: form.get("parish"),
-      city: form.get("city") || undefined,
+      city: form.get("city"),
       baseRateCents: Math.round(Number(form.get("baseRate") ?? 0) * 100),
     };
     setBusy(true);

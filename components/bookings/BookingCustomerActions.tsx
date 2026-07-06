@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { cancelBooking, rescheduleBooking } from "@/actions/bookings";
-import { createBookingCheckout } from "@/actions/payments";
+import { chooseCashPayment, createBookingCheckout } from "@/actions/payments";
 import { formatCents } from "@/lib/constants";
 import type { BookingStatus } from "@/types";
 
@@ -15,11 +15,13 @@ export default function BookingCustomerActions({
   status,
   canCancel,
   serviceTotalCents,
+  stripeConfigured,
 }: {
   bookingId: string;
   status: BookingStatus;
   canCancel: boolean;
   serviceTotalCents: number;
+  stripeConfigured: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -33,13 +35,25 @@ export default function BookingCustomerActions({
   const reschedulable =
     status === "pending" || status === "accepted" || status === "confirmed";
 
-  async function handlePay() {
+  async function handlePayCard() {
     setBusy(true);
     const res = await createBookingCheckout({ bookingId, tipCents });
     if (res.ok) {
       window.location.href = res.data.url;
     } else {
       setBusy(false);
+      toast.error(res.error);
+    }
+  }
+
+  async function handlePayCash() {
+    setBusy(true);
+    const res = await chooseCashPayment({ bookingId, tipCents });
+    setBusy(false);
+    if (res.ok) {
+      toast.success("Confirmed — pay cash at your meeting");
+      router.refresh();
+    } else {
       toast.error(res.error);
     }
   }
@@ -97,7 +111,8 @@ export default function BookingCustomerActions({
       {status === "accepted" && (
         <div>
           <p className="text-sm text-ink">
-            Accepted — complete payment to confirm your booking.
+            Accepted — choose how you&apos;d like to pay to confirm your
+            booking.
           </p>
           <div className="mt-4">
             <p className="label">Add a tip? (100% goes to your worker)</p>
@@ -118,16 +133,33 @@ export default function BookingCustomerActions({
               ))}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handlePay}
-            disabled={busy}
-            className="btn-gold mt-4 w-full"
-          >
-            {busy
-              ? "Redirecting…"
-              : `Pay ${formatCents(serviceTotalCents + tipCents)} securely`}
-          </button>
+          <div className="mt-4 flex flex-col gap-2">
+            {stripeConfigured && (
+              <button
+                type="button"
+                onClick={handlePayCard}
+                disabled={busy}
+                className="btn-gold w-full"
+              >
+                {busy
+                  ? "Working…"
+                  : `Pay ${formatCents(serviceTotalCents + tipCents)} by card`}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handlePayCash}
+              disabled={busy}
+              className={stripeConfigured ? "btn-outline w-full" : "btn-gold w-full"}
+            >
+              {busy
+                ? "Working…"
+                : `Pay ${formatCents(serviceTotalCents + tipCents)} cash at meeting`}
+            </button>
+            <p className="text-center text-xs text-faint">
+              Cash bookings confirm instantly — have the exact amount ready.
+            </p>
+          </div>
         </div>
       )}
 

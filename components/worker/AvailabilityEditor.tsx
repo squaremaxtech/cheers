@@ -64,7 +64,9 @@ export default function AvailabilityEditor({
 
   async function handleBlockDate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
+    // Capture before await: React nulls currentTarget after the sync phase.
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
     const res = await addAvailabilityException({
       date: form.get("date"),
       available: false,
@@ -72,7 +74,7 @@ export default function AvailabilityEditor({
     });
     if (res.ok) {
       toast.success("Date blocked");
-      e.currentTarget.reset();
+      formEl.reset();
       router.refresh();
     } else {
       toast.error(res.error);

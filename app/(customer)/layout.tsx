@@ -18,7 +18,7 @@ export default async function CustomerLayout({
   children: React.ReactNode;
 }) {
   const user = await getUserRow();
-  if (!user) redirect("/login");
+  if (!user || user.suspended) redirect("/login");
 
   return (
     <>

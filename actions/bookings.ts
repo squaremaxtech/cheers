@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
+  bookingEvents,
   bookings,
   serviceAddons,
   serviceTypes,
@@ -17,9 +18,11 @@ import {
   customerCanCancel,
   generateBookingCode,
   generateSafetyPin,
+  parseBookingStart,
   transitionBooking,
 } from "@/lib/bookings";
-import { platformFeeCents } from "@/lib/constants";
+import { BOOKING_DURATIONS_MINUTES, platformFeeCents } from "@/lib/constants";
+import { refundBookingPayments } from "@/lib/refunds";
 import { guardErrorMessage, requireUser } from "@/lib/guards";
 import type { ActionResult, BookingRow, UserRow } from "@/types";
 import { hasMembershipAccess } from "@/lib/membership";
@@ -93,7 +96,7 @@ export async function createBooking(
       return err("An active membership is required to book. Visit Membership to join.");
     }
 
-    const start = new Date(`${data.date}T${data.startTime}`);
+    const start = parseBookingStart(data.date, data.startTime);
     if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) {
       return err("Pick a date and time in the future.");
     }
@@ -126,6 +129,12 @@ export async function createBooking(
         )
       );
     if (!service) return err("That service is not offered by this worker.");
+
+    // Standard durations plus the worker's own duration for this service.
+    const durationAllowed =
+      BOOKING_DURATIONS_MINUTES.some((d) => d === data.durationMinutes) ||
+      data.durationMinutes === service.ws.durationMinutes;
+    if (!durationAllowed) return err("Invalid duration.");
 
     let addonRows: { name: string; priceCents: number }[] = [];
     if (data.addonIds.length > 0) {
@@ -203,6 +212,9 @@ export async function acceptBooking(input: unknown): Promise<ActionResult<undefi
     const ctx = await loadBookingFor(user, parsed.data.bookingId);
     if (!ctx) return err(ERR.notFound);
     if (!ctx.isWorker && !ctx.isAdmin) return err(ERR.forbidden);
+    if (ctx.isWorker && !ctx.isAdmin && ctx.worker?.suspended) {
+      return err(ERR.forbidden);
+    }
     if (!canTransition(ctx.booking.status, "accepted", ctx.isAdmin)) {
       return err("This booking can no longer be accepted.");
     }
@@ -322,11 +334,14 @@ export async function cancelBooking(input: unknown): Promise<ActionResult<undefi
       });
     }
 
+    // Auto-refund card payments; escalate cash/failures to admins.
+    await refundBookingPayments(ctx.booking);
+
     await notifyBookingParties(ctx.booking, {
       type: "booking_cancelled",
       customer: {
         title: `Booking ${ctx.booking.code} cancelled`,
-        body: "This booking has been cancelled. If you already paid, a refund will be processed.",
+        body: "This booking has been cancelled. Card payments are refunded automatically; our team follows up on anything else.",
       },
       worker: {
         title: `Booking ${ctx.booking.code} cancelled`,
@@ -360,8 +375,15 @@ export async function rescheduleBooking(
     if (!ctx.isAdmin && !reschedulable.some((s) => s === ctx.booking.status)) {
       return err("This booking can no longer be rescheduled.");
     }
+    // Customers get the same 5-hour window as cancellation — otherwise a
+    // last-minute reschedule-then-cancel defeats the cancellation policy.
+    if (ctx.isCustomer && !ctx.isAdmin && !customerCanCancel(ctx.booking)) {
+      return err(
+        "Bookings can only be rescheduled at least 5 hours before the start time."
+      );
+    }
 
-    const start = new Date(`${parsed.data.date}T${parsed.data.startTime}`);
+    const start = parseBookingStart(parsed.data.date, parsed.data.startTime);
     if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) {
       return err("Pick a date and time in the future.");
     }
@@ -374,6 +396,14 @@ export async function rescheduleBooking(
         updatedAt: new Date(),
       })
       .where(eq(bookings.id, ctx.booking.id));
+    // Reschedules keep their status but must appear in the event log.
+    await db.insert(bookingEvents).values({
+      bookingId: ctx.booking.id,
+      fromStatus: ctx.booking.status,
+      toStatus: ctx.booking.status,
+      actorUserId: user.id,
+      note: `rescheduled ${ctx.booking.date} ${ctx.booking.startTime.slice(0, 5)} → ${parsed.data.date} ${parsed.data.startTime}`,
+    });
 
     await notifyBookingParties(ctx.booking, {
       type: "booking_rescheduled",

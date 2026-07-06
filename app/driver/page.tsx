@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Driver — Transport Schedule" };
 // No customer contact details, no payment info.
 export default async function DriverPage() {
   const user = await getUserRow();
-  if (!user) redirect("/login");
+  if (!user || user.suspended) redirect("/login");
   if (user.role !== "driver" && user.role !== "admin") redirect("/dashboard");
 
   const today = new Date().toISOString().slice(0, 10);

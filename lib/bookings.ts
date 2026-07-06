@@ -1,9 +1,16 @@
 import { randomBytes, randomInt } from "crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { bookingEvents, bookings } from "@/db/schema";
-import { CANCEL_MIN_HOURS } from "@/lib/constants";
+import { CANCEL_MIN_HOURS, JAMAICA_UTC_OFFSET } from "@/lib/constants";
 import type { BookingRow, BookingStatus } from "@/types";
+
+// Thrown when a compare-and-swap status update loses a race.
+export class ConflictError extends Error {
+  constructor() {
+    super("conflict");
+  }
+}
 
 // Human-readable booking reference, e.g. CH-4F7K2A
 export function generateBookingCode(): string {
@@ -19,9 +26,15 @@ export function generateSafetyPin(): string {
   return String(randomInt(0, 10000)).padStart(4, "0");
 }
 
+// Parse a booking's date + time as Jamaica wall-clock time regardless of the
+// server's timezone. Accepts "HH:MM" (forms) and "HH:MM:SS" (pg time column).
+export function parseBookingStart(date: string, startTime: string): Date {
+  const time = startTime.length === 5 ? `${startTime}:00` : startTime;
+  return new Date(`${date}T${time}${JAMAICA_UTC_OFFSET}`);
+}
+
 export function bookingStartDate(booking: BookingRow): Date {
-  // booking.date is "YYYY-MM-DD", startTime is "HH:MM:SS"
-  return new Date(`${booking.date}T${booking.startTime}`);
+  return parseBookingStart(booking.date, booking.startTime);
 }
 
 export function customerCanCancel(booking: BookingRow): boolean {
@@ -52,22 +65,33 @@ export function canTransition(
 }
 
 // Move a booking to a new status and record the event. Caller is responsible
-// for permission checks and notifications.
+// for permission checks and notifications. The update is a compare-and-swap on
+// the status read by the caller — a concurrent transition loses the race and
+// throws ConflictError instead of silently overwriting.
 export async function transitionBooking(opts: {
   booking: BookingRow;
   to: BookingStatus;
   actorUserId: string | null;
   note?: string;
 }): Promise<void> {
-  await db
-    .update(bookings)
-    .set({ status: opts.to, updatedAt: new Date() })
-    .where(eq(bookings.id, opts.booking.id));
-  await db.insert(bookingEvents).values({
-    bookingId: opts.booking.id,
-    fromStatus: opts.booking.status,
-    toStatus: opts.to,
-    actorUserId: opts.actorUserId,
-    note: opts.note,
+  await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(bookings)
+      .set({ status: opts.to, updatedAt: new Date() })
+      .where(
+        and(
+          eq(bookings.id, opts.booking.id),
+          eq(bookings.status, opts.booking.status)
+        )
+      )
+      .returning({ id: bookings.id });
+    if (updated.length === 0) throw new ConflictError();
+    await tx.insert(bookingEvents).values({
+      bookingId: opts.booking.id,
+      fromStatus: opts.booking.status,
+      toStatus: opts.to,
+      actorUserId: opts.actorUserId,
+      note: opts.note,
+    });
   });
 }

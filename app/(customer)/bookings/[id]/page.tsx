@@ -124,6 +124,7 @@ export default async function BookingDetailPage(
         status={booking.status}
         canCancel={customerCanCancel(booking)}
         serviceTotalCents={total}
+        stripeConfigured={Boolean(process.env.STRIPE_SECRET_KEY)}
       />
 
       {booking.status === "completed" && !existingReview && (

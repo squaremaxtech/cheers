@@ -24,7 +24,8 @@ export default async function BookingsPage() {
     .from(bookings)
     .innerJoin(workers, eq(bookings.workerId, workers.id))
     .where(eq(bookings.customerId, user.id))
-    .orderBy(desc(bookings.createdAt));
+    .orderBy(desc(bookings.createdAt))
+    .limit(100);
 
   return (
     <div>

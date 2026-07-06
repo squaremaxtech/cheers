@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { serviceTypes } from "@/db/schema";
 import BrowseFiltersBar from "@/components/workers/BrowseFiltersBar";
 import BrowseResults from "@/components/workers/BrowseResults";
-import { getPublicWorkers, type BrowseFilters } from "@/lib/workers";
+import { getPublicWorkers } from "@/lib/workers";
+import type { BrowseFilters } from "@/types";
 
 export const metadata: Metadata = { title: "Browse Workers" };
 
