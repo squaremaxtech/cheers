@@ -36,8 +36,10 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     session({ session, user }) {
       session.user.id = user.id;
-      session.user.role = user.role;
-      session.user.suspended = user.suspended;
+      // Fallbacks mirror the DB column defaults; see types/next-auth.d.ts for
+      // why the adapter types carry these as optional.
+      session.user.role = user.role ?? "customer";
+      session.user.suspended = user.suspended ?? false;
       return session;
     },
     signIn({ user }) {

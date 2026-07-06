@@ -13,23 +13,28 @@ declare module "next-auth" {
   }
 
   interface User {
-    role: Role;
-    suspended: boolean;
+    role?: Role;
+    suspended?: boolean;
   }
 }
 
+// role/suspended are declared OPTIONAL on purpose: npm may install a second,
+// nested copy of @auth/core under @auth/drizzle-adapter (it did on the VPS),
+// and augmentations only reach the copy TypeScript resolves from here. With
+// required fields, the un-augmented nested copy's AdapterUser is no longer
+// assignable and `next build` fails. Optional fields keep every copy
+// compatible; consumers default them (the DB columns are NOT NULL, so the
+// values are always present at runtime).
 declare module "next-auth/adapters" {
   interface AdapterUser {
-    role: Role;
-    suspended: boolean;
+    role?: Role;
+    suspended?: boolean;
   }
 }
 
-// @auth/drizzle-adapter is typed against @auth/core; keep its AdapterUser in
-// sync so the adapter remains assignable to next-auth v4's Adapter type.
 declare module "@auth/core/adapters" {
   interface AdapterUser {
-    role: Role;
-    suspended: boolean;
+    role?: Role;
+    suspended?: boolean;
   }
 }
