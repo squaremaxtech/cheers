@@ -10,7 +10,7 @@ npm ci
 # Idempotent hand-written migration (roles/slugs/safety tables) — safe on
 # every deploy. For OTHER schema changes run `npm run db:push` MANUALLY and
 # review its plan; drizzle-kit can propose destructive statements.
-npm run db:migrate
+# npm run db:migrate
 # Catalog/admin seed is idempotent, safe on every deploy:
 # npm run db:seed
 

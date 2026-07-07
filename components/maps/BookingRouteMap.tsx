@@ -53,6 +53,10 @@ export default function BookingRouteMap({
 
   useEffect(() => {
     if (!isLoaded || !routeKey || !origin || !destination) {
+      // Clearing stale directions when the route goes away is the
+      // DirectionsService pattern; the async route() callback below is the
+      // primary setter.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDirections(null);
       lastRouteKey.current = "";
       return;

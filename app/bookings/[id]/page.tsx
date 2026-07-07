@@ -99,6 +99,9 @@ export default async function BookingRoomPage(
     (e) => e.toStatus === "in_progress"
   )?.createdAt;
   const wellnessAnchor = lastCheck?.createdAt ?? inProgressSince ?? null;
+  // Server component renders per-request (app is force-dynamic), so reading
+  // the clock here is per-request, not a purity hazard.
+  // eslint-disable-next-line react-hooks/purity
   const wellnessOverdue =
     booking.status === "in_progress" &&
     wellnessAnchor !== null &&
