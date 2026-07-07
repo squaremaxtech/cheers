@@ -150,6 +150,7 @@ export default function WorkerBookingActions({
               label={proofUrl ? "✓ Proof uploaded" : "Upload proof photo"}
               accept="image/jpeg,image/png,image/webp"
               className={proofUrl ? "btn-outline text-success" : "btn-outline"}
+              kind="receipt"
               onUploaded={(url) => setProofUrl(url)}
             />
             <button type="submit" className="btn-gold" disabled={busy || !proofUrl}>

@@ -10,6 +10,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:migrate": "tsx db/migrate-updates.ts",
+    "db:migrate-uploads": "tsx db/migrate-uploads.ts",
     "db:seed": "tsx db/seed.ts",
     "typecheck": "tsc --noEmit",
     "db:seed-accounts": "tsx db/seed-accounts.ts"

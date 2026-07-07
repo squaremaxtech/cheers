@@ -1,6 +1,12 @@
 import { and, asc, desc, eq, gte, ilike, inArray, lte, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { serviceTypes, workerMedia, workers, workerServices } from "@/db/schema";
+import {
+  serviceCategories,
+  serviceTypes,
+  workerMedia,
+  workers,
+  workerServices,
+} from "@/db/schema";
 import type {
   BrowseFilters,
   PublicWorker,
@@ -45,15 +51,20 @@ export async function getPublicWorkers(
   }
   if (filters.verified) conditions.push(eq(workers.verified, true));
 
-  // Service filter: workers with that service type enabled.
+  // Service filter: a service CATEGORY slug — workers with any enabled
+  // service in that category match.
   if (filters.service) {
     const offering = await db
       .select({ workerId: workerServices.workerId })
       .from(workerServices)
       .innerJoin(serviceTypes, eq(workerServices.serviceTypeId, serviceTypes.id))
+      .innerJoin(
+        serviceCategories,
+        eq(serviceTypes.categoryId, serviceCategories.id)
+      )
       .where(
         and(
-          eq(serviceTypes.slug, filters.service),
+          eq(serviceCategories.slug, filters.service),
           eq(workerServices.enabled, true)
         )
       );

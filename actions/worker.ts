@@ -16,6 +16,7 @@ import {
 import { err, ok, ERR } from "@/lib/action-result";
 import { guardErrorMessage, requireUser, requireWorker } from "@/lib/guards";
 import { uniqueWorkerSlug } from "@/lib/slug";
+import { deleteUpload } from "@/lib/uploads";
 import type { ActionResult } from "@/types";
 import { notifyAdmins } from "@/lib/notify";
 import {
@@ -204,11 +205,24 @@ export async function deleteWorkerMedia(
 ): Promise<ActionResult<undefined>> {
   try {
     const { worker } = await requireWorker();
-    await db
+    const [removed] = await db
       .delete(workerMedia)
       .where(
         and(eq(workerMedia.id, mediaId), eq(workerMedia.workerId, worker.id))
-      );
+      )
+      .returning({ url: workerMedia.url });
+
+    // Remove the file from disk too — unless another media row still points
+    // at the same upload (possible if a URL was added twice).
+    if (removed) {
+      const [stillUsed] = await db
+        .select({ id: workerMedia.id })
+        .from(workerMedia)
+        .where(eq(workerMedia.url, removed.url))
+        .limit(1);
+      if (!stillUsed) await deleteUpload(removed.url, worker.userId);
+    }
+
     revalidatePath("/worker/media");
     revalidatePath(`/workers/${worker.slug}`);
     return ok(undefined);

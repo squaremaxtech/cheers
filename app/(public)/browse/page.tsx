@@ -1,7 +1,7 @@
-import { asc, eq } from "drizzle-orm";
+import { asc } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { serviceTypes } from "@/db/schema";
+import { serviceCategories } from "@/db/schema";
 import BrowseFiltersBar from "@/components/workers/BrowseFiltersBar";
 import BrowseResults from "@/components/workers/BrowseResults";
 import { getPublicWorkers } from "@/lib/workers";
@@ -33,12 +33,14 @@ export default async function BrowsePage(props: PageProps<"/browse">) {
   };
   const view = firstParam(params.view) ?? "grid";
 
+  // The service filter offers the two top-level categories, not individual
+  // service types — matching workers offer ANY enabled service in the category.
   const [results, services] = await Promise.all([
     getPublicWorkers(filters),
     db
-      .select({ slug: serviceTypes.slug, name: serviceTypes.name })
-      .from(serviceTypes)
-      .orderBy(asc(serviceTypes.sortOrder)),
+      .select({ slug: serviceCategories.slug, name: serviceCategories.name })
+      .from(serviceCategories)
+      .orderBy(asc(serviceCategories.sortOrder)),
   ]);
 
   return (

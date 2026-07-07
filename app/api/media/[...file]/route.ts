@@ -4,14 +4,17 @@ import path from "path";
 import { Readable } from "stream";
 import {
   MEDIA_TYPES,
+  RECEIPTS_SUBDIR,
   SAFE_MEDIA_FOLDER,
   SAFE_MEDIA_NAME,
   UPLOADS_DIR,
+  USERS_SUBDIR,
 } from "@/lib/uploads";
 
-// Serves uploaded media from the local uploads/ directory.
-//   /api/media/<userId>/<name> — current layout (per-user subfolder)
-//   /api/media/<name>          — legacy flat files uploaded before subfolders
+// Serves uploaded media from the local uploads/ directory. Exactly two URL
+// shapes exist (older layouts are migrated forward by db/migrate-updates.ts):
+//   /api/media/users/<userId>/<name> — worker profile media
+//   /api/media/receipts/<name>       — cash proofs / dispute evidence
 // All segments are server-generated UUIDs — the strict patterns below also
 // block traversal.
 export async function GET(
@@ -21,14 +24,19 @@ export async function GET(
   const { file } = await ctx.params;
 
   let relative: string;
-  if (file.length === 1 && SAFE_MEDIA_NAME.test(file[0])) {
-    relative = file[0];
+  if (
+    file.length === 3 &&
+    file[0] === USERS_SUBDIR &&
+    SAFE_MEDIA_FOLDER.test(file[1]) &&
+    SAFE_MEDIA_NAME.test(file[2])
+  ) {
+    relative = path.join(USERS_SUBDIR, file[1], file[2]);
   } else if (
     file.length === 2 &&
-    SAFE_MEDIA_FOLDER.test(file[0]) &&
+    file[0] === RECEIPTS_SUBDIR &&
     SAFE_MEDIA_NAME.test(file[1])
   ) {
-    relative = path.join(file[0], file[1]);
+    relative = path.join(RECEIPTS_SUBDIR, file[1]);
   } else {
     return Response.json({ error: "not found" }, { status: 404 });
   }

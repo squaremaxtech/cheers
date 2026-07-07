@@ -61,8 +61,13 @@ error/loading/not-found boundaries.
   runs on deploy) rebuilt the enum and moved driver users under support.
 - **Worker slugs**: `workers.slug` (from stageName); public URLs are
   `/workers/maxx`, `/book/maxx`; old UUID links redirect.
-- **Uploads**: per-user subfolders `uploads/<userId>/…`, served by
-  `/api/media/[...file]`; legacy flat files still served.
+- **Uploads** (2026-07-07 layout): `uploads/users/<userId>/…` for worker
+  profile media, `uploads/receipts/…` for cash proofs/dispute evidence
+  (upload kind chosen via the `kind` form field on `/api/uploads`). Served by
+  `/api/media/[...file]` — ONLY these two shapes; no legacy paths. Older
+  layouts are migrated by `npm run db:migrate-uploads` (idempotent; DB URL
+  rewrite is global, file moves must run once per machine — still pending on
+  the VPS). Deleting worker media now also unlinks the file from disk.
 - **Maps**: `@react-google-maps/api` (pattern from the owner's rideFlow
   project) — booking "Where" section has JM-restricted autocomplete + map
   with click-to-pin/drag (reverse geocoded); booking room shows destination,
