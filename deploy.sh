@@ -7,8 +7,10 @@ git pull origin master
 # Reproducible install from package-lock.json (never mutates the lockfile)
 npm ci
 
-# Schema changes: run `npm run db:push` MANUALLY and review its plan —
-# drizzle-kit can propose destructive statements.
+# Idempotent hand-written migration (roles/slugs/safety tables) — safe on
+# every deploy. For OTHER schema changes run `npm run db:push` MANUALLY and
+# review its plan; drizzle-kit can propose destructive statements.
+npm run db:migrate
 # Catalog/admin seed is idempotent, safe on every deploy:
 # npm run db:seed
 

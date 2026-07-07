@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, ne, or } from "drizzle-orm";
 import { db } from "@/db";
 import { notifications, users } from "@/db/schema";
 import { emailLayout, sendEmail } from "@/lib/mailer";
@@ -40,6 +40,31 @@ export async function notify(opts: {
   }
 }
 
+async function notifyMany(
+  recipients: { id: string; email: string }[],
+  opts: { type: string; title: string; body: string; meta?: Record<string, string> }
+): Promise<void> {
+  if (recipients.length === 0) return;
+  await db.insert(notifications).values(
+    recipients.map((a) => ({
+      userId: a.id,
+      type: opts.type,
+      title: opts.title,
+      body: opts.body,
+      meta: opts.meta,
+    }))
+  );
+  await Promise.all(
+    recipients.map((a) =>
+      sendEmail({
+        to: a.email,
+        subject: `Cheers — ${opts.title}`,
+        html: emailLayout(opts.title, `<p>${opts.body}</p>`),
+      })
+    )
+  );
+}
+
 // Notify every admin (new bookings, payments, new users, reviews).
 // Batched: one select, one insert, parallel emails — not 2N+1 queries.
 export async function notifyAdmins(opts: {
@@ -53,29 +78,44 @@ export async function notifyAdmins(opts: {
       .select({ id: users.id, email: users.email })
       .from(users)
       .where(eq(users.role, "admin"));
-    if (admins.length === 0) return;
-
-    await db.insert(notifications).values(
-      admins.map((a) => ({
-        userId: a.id,
-        type: opts.type,
-        title: opts.title,
-        body: opts.body,
-        meta: opts.meta,
-      }))
-    );
-    await Promise.all(
-      admins.map((a) =>
-        sendEmail({
-          to: a.email,
-          subject: `Cheers — ${opts.title}`,
-          html: emailLayout(opts.title, `<p>${opts.body}</p>`),
-        })
-      )
-    );
+    await notifyMany(admins, opts);
   } catch (error) {
     console.error(
       "notifyAdmins failed:",
+      error instanceof Error ? error.message : error
+    );
+  }
+}
+
+// Safety escalations go wider than notifyAdmins: admins plus desk support
+// (customer_support/supervisor). Drivers are excluded — they transport
+// workers, they don't work the safety desk.
+export async function notifyStaff(opts: {
+  type: string;
+  title: string;
+  body: string;
+  meta?: Record<string, string>;
+}): Promise<void> {
+  try {
+    // "Desk support" = any support account that is not a driver — including
+    // NULL supportRole, so an account created before a sub-role is assigned
+    // still receives emergencies (mirrors isDeskSupport in lib/guards.ts).
+    const staff = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(
+        or(
+          eq(users.role, "admin"),
+          and(
+            eq(users.role, "support"),
+            or(isNull(users.supportRole), ne(users.supportRole, "driver"))
+          )
+        )
+      );
+    await notifyMany(staff, opts);
+  } catch (error) {
+    console.error(
+      "notifyStaff failed:",
       error instanceof Error ? error.message : error
     );
   }

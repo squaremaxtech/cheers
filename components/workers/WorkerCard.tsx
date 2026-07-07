@@ -16,7 +16,7 @@ export default function WorkerCard({
 
   return (
     <Link
-      href={`/workers/${worker.id}`}
+      href={`/workers/${worker.slug}`}
       className={`card group overflow-hidden transition-colors hover:border-gold/40 ${
         isList ? "flex items-stretch" : "block"
       }`}

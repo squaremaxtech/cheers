@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { bookingEvents, bookings } from "@/db/schema";
 import { CANCEL_MIN_HOURS, JAMAICA_UTC_OFFSET } from "@/lib/constants";
+import { bookingEventNow, publishBooking } from "@/lib/realtime";
 import type { BookingRow, BookingStatus } from "@/types";
 
 // Thrown when a compare-and-swap status update loses a race.
@@ -94,4 +95,6 @@ export async function transitionBooking(opts: {
       note: opts.note,
     });
   });
+  // Every status change reaches the live booking room instantly.
+  publishBooking(opts.booking.id, bookingEventNow("status"));
 }

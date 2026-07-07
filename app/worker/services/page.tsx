@@ -36,8 +36,9 @@ export default async function WorkerServicesPage() {
     <div>
       <h1 className="font-display text-2xl text-ink">Services</h1>
       <p className="mt-1 text-sm text-muted">
-        Enable the services you offer and set your own price, duration, and
-        description. Add-ons are yours to define.
+        Configure your services with your own price, duration, and description
+        — one service per category is active (bookable) at a time. Add-ons are
+        yours to define.
       </p>
       <div className="mt-6">
         <ServicesEditor

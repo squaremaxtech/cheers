@@ -1,12 +1,13 @@
 "use server";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq, asc, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
   availability,
   availabilityExceptions,
   serviceAddons,
+  serviceTypes,
   users,
   workerMedia,
   workers,
@@ -14,10 +15,12 @@ import {
 } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
 import { guardErrorMessage, requireUser, requireWorker } from "@/lib/guards";
+import { uniqueWorkerSlug } from "@/lib/slug";
 import type { ActionResult } from "@/types";
 import { notifyAdmins } from "@/lib/notify";
 import {
   availabilityExceptionSchema,
+  mediaCategorySchema,
   mediaSchema,
   serviceAddonSchema,
   weeklyAvailabilitySchema,
@@ -47,9 +50,10 @@ export async function createWorkerProfile(
       .where(eq(workers.stageName, parsed.data.stageName));
     if (taken) return err("That stage name is already taken.");
 
+    const slug = await uniqueWorkerSlug(parsed.data.stageName);
     const [worker] = await db
       .insert(workers)
-      .values({ userId: user.id, ...parsed.data })
+      .values({ userId: user.id, slug, ...parsed.data })
       .returning({ id: workers.id });
 
     // Admins keep their role; everyone else becomes a worker.
@@ -81,6 +85,9 @@ export async function updateWorkerProfile(
     const parsed = workerProfileSchema.partial().safeParse(input);
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
 
+    // Renaming regenerates the public slug; old /workers/<uuid> links still
+    // redirect, old slug links go stale (acceptable — rename is rare).
+    let slug = worker.slug;
     if (
       parsed.data.stageName &&
       parsed.data.stageName !== worker.stageName
@@ -90,15 +97,16 @@ export async function updateWorkerProfile(
         .from(workers)
         .where(eq(workers.stageName, parsed.data.stageName));
       if (taken) return err("That stage name is already taken.");
+      slug = await uniqueWorkerSlug(parsed.data.stageName, worker.id);
     }
 
     await db
       .update(workers)
-      .set({ ...parsed.data, updatedAt: new Date() })
+      .set({ ...parsed.data, slug, updatedAt: new Date() })
       .where(eq(workers.id, worker.id));
 
     revalidatePath("/worker/profile");
-    revalidatePath(`/workers/${worker.id}`);
+    revalidatePath(`/workers/${slug}`);
     return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));
@@ -150,13 +158,42 @@ export async function addWorkerMedia(
         workerId: worker.id,
         type: parsed.data.type,
         url: parsed.data.url,
+        categoryId: parsed.data.categoryId ?? null,
         sortOrder: nextSort,
       })
       .returning({ id: workerMedia.id });
 
     revalidatePath("/worker/media");
-    revalidatePath(`/workers/${worker.id}`);
+    revalidatePath(`/workers/${worker.slug}`);
     return ok({ id: row.id });
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// Tag (or untag) a media item with a service category so the public profile
+// can show media matching the selected category.
+export async function setWorkerMediaCategory(
+  input: unknown
+): Promise<ActionResult<undefined>> {
+  try {
+    const { worker } = await requireWorker();
+    const parsed = mediaCategorySchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    await db
+      .update(workerMedia)
+      .set({ categoryId: parsed.data.categoryId })
+      .where(
+        and(
+          eq(workerMedia.id, parsed.data.mediaId),
+          eq(workerMedia.workerId, worker.id)
+        )
+      );
+
+    revalidatePath("/worker/media");
+    revalidatePath(`/workers/${worker.slug}`);
+    return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));
   }
@@ -173,7 +210,7 @@ export async function deleteWorkerMedia(
         and(eq(workerMedia.id, mediaId), eq(workerMedia.workerId, worker.id))
       );
     revalidatePath("/worker/media");
-    revalidatePath(`/workers/${worker.id}`);
+    revalidatePath(`/workers/${worker.slug}`);
     return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));
@@ -182,6 +219,8 @@ export async function deleteWorkerMedia(
 
 // --- Services (fixed catalog; workers customize, never create types) ----------
 
+// A worker keeps one ACTIVE (enabled) service per category — activating a
+// service deactivates whichever sibling in the category was active before.
 export async function upsertWorkerService(
   input: unknown
 ): Promise<ActionResult<undefined>> {
@@ -189,6 +228,12 @@ export async function upsertWorkerService(
     const { worker } = await requireWorker();
     const parsed = workerServiceSchema.safeParse(input);
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
+
+    const [serviceType] = await db
+      .select({ id: serviceTypes.id, categoryId: serviceTypes.categoryId })
+      .from(serviceTypes)
+      .where(eq(serviceTypes.id, parsed.data.serviceTypeId));
+    if (!serviceType) return err(ERR.notFound);
 
     const [existing] = await db
       .select({ id: workerServices.id })
@@ -200,30 +245,57 @@ export async function upsertWorkerService(
         )
       );
 
-    if (existing) {
-      await db
-        .update(workerServices)
-        .set({
+    await db.transaction(async (tx) => {
+      // Make room first — the partial unique index on (worker, category)
+      // WHERE enabled would reject two active services in one category.
+      if (parsed.data.enabled) {
+        const demote = tx
+          .update(workerServices)
+          .set({ enabled: false, updatedAt: new Date() });
+        await (existing
+          ? demote.where(
+              and(
+                eq(workerServices.workerId, worker.id),
+                eq(workerServices.categoryId, serviceType.categoryId),
+                eq(workerServices.enabled, true),
+                ne(workerServices.id, existing.id)
+              )
+            )
+          : demote.where(
+              and(
+                eq(workerServices.workerId, worker.id),
+                eq(workerServices.categoryId, serviceType.categoryId),
+                eq(workerServices.enabled, true)
+              )
+            ));
+      }
+
+      if (existing) {
+        await tx
+          .update(workerServices)
+          .set({
+            enabled: parsed.data.enabled,
+            priceCents: parsed.data.priceCents,
+            durationMinutes: parsed.data.durationMinutes,
+            description: parsed.data.description,
+            updatedAt: new Date(),
+          })
+          .where(eq(workerServices.id, existing.id));
+      } else {
+        await tx.insert(workerServices).values({
+          workerId: worker.id,
+          serviceTypeId: parsed.data.serviceTypeId,
+          categoryId: serviceType.categoryId,
           enabled: parsed.data.enabled,
           priceCents: parsed.data.priceCents,
           durationMinutes: parsed.data.durationMinutes,
           description: parsed.data.description,
-          updatedAt: new Date(),
-        })
-        .where(eq(workerServices.id, existing.id));
-    } else {
-      await db.insert(workerServices).values({
-        workerId: worker.id,
-        serviceTypeId: parsed.data.serviceTypeId,
-        enabled: parsed.data.enabled,
-        priceCents: parsed.data.priceCents,
-        durationMinutes: parsed.data.durationMinutes,
-        description: parsed.data.description,
-      });
-    }
+        });
+      }
+    });
 
     revalidatePath("/worker/services");
-    revalidatePath(`/workers/${worker.id}`);
+    revalidatePath(`/workers/${worker.slug}`);
     return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));
@@ -261,7 +333,7 @@ export async function addServiceAddon(
       .returning({ id: serviceAddons.id });
 
     revalidatePath("/worker/services");
-    revalidatePath(`/workers/${worker.id}`);
+    revalidatePath(`/workers/${worker.slug}`);
     return ok({ id: row.id });
   } catch (error) {
     return err(guardErrorMessage(error));
@@ -317,7 +389,7 @@ export async function setWeeklyAvailability(
     }
 
     revalidatePath("/worker/availability");
-    revalidatePath(`/workers/${worker.id}`);
+    revalidatePath(`/workers/${worker.slug}`);
     return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));

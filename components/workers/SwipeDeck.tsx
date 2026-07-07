@@ -128,7 +128,7 @@ export default function SwipeDeck({
           ✕
         </button>
         <Link
-          href={`/workers/${current.id}`}
+          href={`/workers/${current.slug}`}
           className="btn-outline rounded-full px-6"
         >
           View profile

@@ -8,6 +8,7 @@ import { err, ok, ERR } from "@/lib/action-result";
 import { writeAudit } from "@/lib/audit";
 import { guardErrorMessage, requireAdmin } from "@/lib/guards";
 import { notify } from "@/lib/notify";
+import { uniqueWorkerSlug } from "@/lib/slug";
 import {
   adminSuspendUserSchema,
   adminUpdateWorkerSchema,
@@ -35,10 +36,21 @@ export async function adminUpdateWorker(input: unknown): Promise<ActionResult<un
       ...(parsed.data.suspended !== undefined && { suspended: parsed.data.suspended }),
     };
     if (Object.keys(updates).length === 0) return err(ERR.badRequest);
+    // Stage-name overrides regenerate the public URL slug too.
+    const nextStageName = parsed.data.profile?.stageName;
+    let slug = worker.slug;
+    if (nextStageName && nextStageName !== worker.stageName) {
+      const [taken] = await db
+        .select({ id: workers.id })
+        .from(workers)
+        .where(eq(workers.stageName, nextStageName));
+      if (taken) return err("That stage name is already taken.");
+      slug = await uniqueWorkerSlug(nextStageName, worker.id);
+    }
 
     await db
       .update(workers)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...updates, slug, updatedAt: new Date() })
       .where(eq(workers.id, worker.id));
     await writeAudit({
       actorUserId: admin.id,
@@ -68,7 +80,7 @@ export async function adminUpdateWorker(input: unknown): Promise<ActionResult<un
 
     revalidatePath("/admin/workers");
     revalidatePath("/browse");
-    revalidatePath(`/workers/${worker.id}`);
+    revalidatePath(`/workers/${slug}`);
     return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));

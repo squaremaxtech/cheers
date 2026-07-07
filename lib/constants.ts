@@ -48,6 +48,10 @@ export const LANGUAGES = [
 
 export const BOOKING_DURATIONS_MINUTES = [60, 90, 120, 180, 240, 360] as const;
 
+// While a booking is in progress the worker checks in on this cadence; the
+// booking room flags the check as overdue past it.
+export const WELLNESS_CHECK_INTERVAL_MINUTES = 30;
+
 export function platformFeeCents(priceCents: number): number {
   return Math.round((priceCents * PLATFORM_FEE_PERCENT) / 100);
 }

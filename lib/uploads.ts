@@ -22,6 +22,9 @@ export const MEDIA_TYPES: Record<string, string> = {
 
 export const SAFE_MEDIA_NAME = /^[a-f0-9-]+\.(jpg|jpeg|png|webp|gif|mp4|webm)$/;
 
+// Per-user subfolders are named with the owner's user id (a UUID).
+export const SAFE_MEDIA_FOLDER = /^[a-f0-9-]{36}$/;
+
 export function extensionFor(file: File): string | null {
   const byMime = Object.entries(MEDIA_TYPES).find(([, m]) => m === file.type);
   if (byMime) return byMime[0];
@@ -29,15 +32,18 @@ export function extensionFor(file: File): string | null {
   return ext in MEDIA_TYPES ? ext : null;
 }
 
-// Saves an uploaded file and returns its public URL path.
-export async function saveUpload(file: File): Promise<string> {
+// Saves an uploaded file under uploads/<ownerUserId>/ and returns its public
+// URL path. One subfolder per user keeps each user's files together.
+export async function saveUpload(file: File, ownerUserId: string): Promise<string> {
   const ext = extensionFor(file);
   if (!ext) throw new Error("unsupported file type");
   if (file.size > MAX_UPLOAD_BYTES) throw new Error("file too large");
+  if (!SAFE_MEDIA_FOLDER.test(ownerUserId)) throw new Error("bad owner id");
 
-  await mkdir(UPLOADS_DIR, { recursive: true });
+  const dir = path.join(UPLOADS_DIR, ownerUserId);
+  await mkdir(dir, { recursive: true });
   const name = `${randomUUID()}.${ext}`;
   const bytes = Buffer.from(await file.arrayBuffer());
-  await writeFile(path.join(UPLOADS_DIR, name), bytes);
-  return `/api/media/${name}`;
+  await writeFile(path.join(dir, name), bytes);
+  return `/api/media/${ownerUserId}/${name}`;
 }

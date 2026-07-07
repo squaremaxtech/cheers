@@ -3,16 +3,19 @@
 import type {
   availability,
   bookingEvents,
+  bookingLocations,
   bookings,
   memberships,
   notifications,
   payments,
   payouts,
   reviews,
+  safetyAlerts,
   serviceAddons,
   serviceCategories,
   serviceTypes,
   users,
+  wellnessChecks,
   workerMedia,
   workers,
   workerServices,
@@ -28,6 +31,7 @@ export type ActionResult<T = undefined> =
 
 export type UserRow = typeof users.$inferSelect;
 export type Role = UserRow["role"];
+export type SupportRole = NonNullable<UserRow["supportRole"]>;
 
 export type WorkerRow = typeof workers.$inferSelect;
 export type WorkerMediaRow = typeof workerMedia.$inferSelect;
@@ -46,6 +50,30 @@ export type PayoutRow = typeof payouts.$inferSelect;
 export type MembershipRow = typeof memberships.$inferSelect;
 export type ReviewRow = typeof reviews.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
+
+export type BookingLocationRow = typeof bookingLocations.$inferSelect;
+export type WellnessCheckRow = typeof wellnessChecks.$inferSelect;
+export type SafetyAlertRow = typeof safetyAlerts.$inferSelect;
+
+// The viewer's relationship to a booking — drives what the live booking room
+// shows and allows. "driver"/"staff" are support sub-type views.
+export type BookingViewerRole = "customer" | "worker" | "driver" | "staff";
+
+// Realtime events streamed to the booking room over SSE. "refresh" kinds
+// re-render server data; "location" updates the map without a refresh.
+export type BookingStreamEvent =
+  | {
+      kind: "status" | "schedule" | "payment" | "wellness" | "alert";
+      at: string;
+    }
+  | {
+      kind: "location";
+      at: string;
+      userId: string;
+      role: string;
+      lat: string;
+      lng: string;
+    };
 
 // --- Browse / search ---------------------------------------------------------------
 
@@ -68,6 +96,7 @@ export type PublicWorker = Pick<
   WorkerRow,
   | "id"
   | "stageName"
+  | "slug"
   | "bio"
   | "age"
   | "heightCm"

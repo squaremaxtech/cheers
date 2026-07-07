@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { BOOKING_DURATIONS_MINUTES } from "@/lib/constants";
 
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date");
 const timeString = z
@@ -11,13 +10,9 @@ export const createBookingSchema = z.object({
   serviceTypeId: z.string().uuid(),
   date: dateString,
   startTime: timeString,
-  durationMinutes: z.coerce
-    .number()
-    .int()
-    .refine(
-      (d) => BOOKING_DURATIONS_MINUTES.some((allowed) => allowed === d),
-      "Invalid duration"
-    ),
+  // Range check only — the action allows the standard durations plus the
+  // worker's own duration for the service, which isn't knowable here.
+  durationMinutes: z.coerce.number().int().min(15).max(720),
   address: z.string().trim().min(5, "Enter the full address").max(400),
   lat: z.string().max(30).optional(),
   lng: z.string().max(30).optional(),

@@ -53,6 +53,16 @@ export async function requireStaff(): Promise<UserRow> {
   return requireRole("admin", "support");
 }
 
+// Support sub-type checks. Drivers are support staff who transport workers;
+// they get the transport view but NOT the admin/moderation tools.
+export function isDriver(user: UserRow): boolean {
+  return user.role === "support" && user.supportRole === "driver";
+}
+
+export function isDeskSupport(user: UserRow): boolean {
+  return user.role === "support" && user.supportRole !== "driver";
+}
+
 // The signed-in worker's profile row (plus user row) or throw.
 // Admin-suspended workers keep read access to their pages but every
 // worker action goes through here and is blocked.

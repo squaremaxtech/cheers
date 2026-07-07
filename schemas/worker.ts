@@ -68,6 +68,13 @@ export const mediaUrl = z
 export const mediaSchema = z.object({
   type: z.enum(["photo", "video"]),
   url: mediaUrl,
+  // Optional service-category tag; untagged media shows for every category.
+  categoryId: z.string().uuid().nullish(),
+});
+
+export const mediaCategorySchema = z.object({
+  mediaId: z.string().uuid(),
+  categoryId: z.union([z.null(), z.string().uuid()]),
 });
 
 const timeString = z

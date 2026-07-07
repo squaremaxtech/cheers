@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { createBooking } from "@/actions/bookings";
-import AddressInput from "@/components/bookings/AddressInput";
+import LocationPicker from "@/components/maps/LocationPicker";
 import { BOOKING_DURATIONS_MINUTES, formatCents } from "@/lib/constants";
 import type { ServiceAddonRow } from "@/types";
 
@@ -15,18 +15,17 @@ type ServiceOption = {
   durationMinutes: number;
   description: string | null;
   name: string;
+  categoryName: string;
 };
 
 export default function BookingForm({
   workerId,
   services,
   addons,
-  mapsApiKey,
 }: {
   workerId: string;
   services: ServiceOption[];
   addons: ServiceAddonRow[];
-  mapsApiKey: string;
 }) {
   const router = useRouter();
   const [serviceTypeId, setServiceTypeId] = useState(
@@ -130,6 +129,9 @@ export default function BookingForm({
                   }}
                 />
                 <span className="text-sm font-medium text-ink">{s.name}</span>
+                <span className="ml-2 text-[11px] uppercase tracking-wider text-faint">
+                  {s.categoryName}
+                </span>
                 {s.description && (
                   <span className="mt-1 block pl-6 text-xs leading-5 text-muted">
                     {s.description}
@@ -238,7 +240,7 @@ export default function BookingForm({
         <legend className="label px-1">Where</legend>
         <div>
           <label className="label">Address</label>
-          <AddressInput apiKey={mapsApiKey} onChange={handleAddress} />
+          <LocationPicker onChange={handleAddress} />
         </div>
         <div>
           <label className="label" htmlFor="b-instructions">

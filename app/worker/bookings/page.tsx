@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
@@ -58,7 +59,9 @@ export default async function WorkerBookingsPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-ink">
-                    {booking.serviceName}
+                    <Link href={`/bookings/${booking.id}`} className="hover:text-gold-soft">
+                      {booking.serviceName}
+                    </Link>
                     <span className="ml-2 text-xs text-faint">{booking.code}</span>
                   </p>
                   <p className="mt-1 text-xs text-muted">
@@ -83,6 +86,12 @@ export default async function WorkerBookingsPage() {
                       “{booking.instructions}”
                     </span>
                   )}
+                  <Link
+                    href={`/bookings/${booking.id}`}
+                    className="mt-1 block text-gold"
+                  >
+                    Open live booking room → (map, PIN start, wellness checks)
+                  </Link>
                 </p>
               )}
 

@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { getUserRow } from "@/lib/auth";
+import { isDriver } from "@/lib/guards";
+import type { UserRow } from "@/types";
 
-const dashboardPath = {
-  customer: "/dashboard",
-  worker: "/worker",
-  admin: "/admin",
-  support: "/admin",
-  driver: "/driver",
-} as const;
+function dashboardPath(user: UserRow): string {
+  if (user.role === "worker") return "/worker";
+  if (user.role === "admin") return "/admin";
+  if (user.role === "support") return isDriver(user) ? "/driver" : "/admin";
+  return "/dashboard";
+}
 
 export default async function SiteHeader() {
   const user = await getUserRow();
@@ -32,7 +33,7 @@ export default async function SiteHeader() {
             FAQ
           </Link>
           {user ? (
-            <Link href={dashboardPath[user.role]} className="btn-outline ml-2">
+            <Link href={dashboardPath(user)} className="btn-outline ml-2">
               Dashboard
             </Link>
           ) : (

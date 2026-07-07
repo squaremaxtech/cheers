@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, asc, eq, gte, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
@@ -6,15 +7,17 @@ import { bookings, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import SiteHeader from "@/components/layout/SiteHeader";
 import { getUserRow } from "@/lib/auth";
+import { isDriver } from "@/lib/guards";
 
 export const metadata: Metadata = { title: "Driver — Transport Schedule" };
 
-// Read-only transport view: confirmed bookings with time + address only.
-// No customer contact details, no payment info.
+// Transport view for support staff with the driver sub-role: confirmed
+// bookings with time + address only. No customer contact details, no payment
+// info. Each row links into the live booking room for turn-by-turn tracking.
 export default async function DriverPage() {
   const user = await getUserRow();
   if (!user || user.suspended) redirect("/login");
-  if (user.role !== "driver" && user.role !== "admin") redirect("/dashboard");
+  if (!isDriver(user) && user.role !== "admin") redirect("/dashboard");
 
   const today = new Date().toISOString().slice(0, 10);
   const rows = await db
@@ -53,7 +56,11 @@ export default async function DriverPage() {
         ) : (
           <div className="mt-6 space-y-3">
             {rows.map((b) => (
-              <div key={b.id} className="card flex flex-wrap items-center justify-between gap-3 p-5">
+              <Link
+                key={b.id}
+                href={`/bookings/${b.id}`}
+                className="card flex flex-wrap items-center justify-between gap-3 p-5 hover:border-gold/30"
+              >
                 <div>
                   <p className="text-sm font-medium text-ink">
                     {b.date} · {b.startTime.slice(0, 5)}
@@ -66,7 +73,7 @@ export default async function DriverPage() {
                   </p>
                 </div>
                 <Badge tone="success">{b.status}</Badge>
-              </div>
+              </Link>
             ))}
           </div>
         )}

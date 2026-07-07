@@ -9,12 +9,14 @@
     "lint": "eslint",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:migrate": "tsx db/migrate-updates.ts",
     "db:seed": "tsx db/seed.ts",
     "typecheck": "tsc --noEmit",
     "db:seed-accounts": "tsx db/seed-accounts.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",
+    "@react-google-maps/api": "^2.20.8",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.36.4",
     "next": "16.2.10",

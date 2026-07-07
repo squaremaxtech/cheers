@@ -2,11 +2,21 @@
 
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { addWorkerMedia, deleteWorkerMedia } from "@/actions/worker";
+import {
+  addWorkerMedia,
+  deleteWorkerMedia,
+  setWorkerMediaCategory,
+} from "@/actions/worker";
 import FileUploadButton from "@/components/ui/FileUploadButton";
-import type { WorkerMediaRow } from "@/types";
+import type { ServiceCategoryRow, WorkerMediaRow } from "@/types";
 
-export default function MediaManager({ media }: { media: WorkerMediaRow[] }) {
+export default function MediaManager({
+  media,
+  categories,
+}: {
+  media: WorkerMediaRow[];
+  categories: ServiceCategoryRow[];
+}) {
   const router = useRouter();
 
   async function handleUploaded(url: string, file: File) {
@@ -30,6 +40,19 @@ export default function MediaManager({ media }: { media: WorkerMediaRow[] }) {
     }
   }
 
+  async function handleCategory(mediaId: string, categoryId: string) {
+    const res = await setWorkerMediaCategory({
+      mediaId,
+      categoryId: categoryId || null,
+    });
+    if (res.ok) {
+      toast.success("Category updated");
+      router.refresh();
+    } else {
+      toast.error(res.error);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="card flex flex-wrap items-center justify-between gap-3 p-5">
@@ -37,7 +60,9 @@ export default function MediaManager({ media }: { media: WorkerMediaRow[] }) {
           <p className="text-sm text-ink">Photos & videos</p>
           <p className="mt-0.5 text-xs text-faint">
             JPG, PNG, WebP, GIF, MP4, WebM — up to 50 MB. Stored on this
-            server; the first photo becomes your cover.
+            server; the first photo becomes your cover. Tag each item with a
+            service category so it shows when customers view that category —
+            untagged media shows everywhere.
           </p>
         </div>
         <FileUploadButton
@@ -73,6 +98,19 @@ export default function MediaManager({ media }: { media: WorkerMediaRow[] }) {
                   Video
                 </span>
               )}
+              <select
+                className="input mt-0 w-full rounded-none border-x-0 border-b-0 text-xs"
+                value={m.categoryId ?? ""}
+                onChange={(e) => handleCategory(m.id, e.target.value)}
+                aria-label="Media category"
+              >
+                <option value="">All categories</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
           ))}
         </div>

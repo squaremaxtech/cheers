@@ -11,6 +11,7 @@ import type {
 export const publicWorkerColumns = {
   id: workers.id,
   stageName: workers.stageName,
+  slug: workers.slug,
   bio: workers.bio,
   age: workers.age,
   heightCm: workers.heightCm,

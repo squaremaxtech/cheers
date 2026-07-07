@@ -8,7 +8,7 @@
 
 - Full original spec: see `docs/SPEC.md` (verbatim requirements from the owner).
 - Stack: Next.js 16.2.10 (App Router) · TypeScript · Tailwind v4 · PostgreSQL (VPS db name: `cheers`) · Drizzle ORM · Zod · Server Actions · NextAuth (magic link + Google) · Stripe (5% platform fee, tips 100% to worker) · Nodemailer · Google Maps API.
-- Roles: `customer`, `worker`, `admin`, `support`, `driver`.
+- Roles: **4 user types** — `customer`, `worker`, `support`, `admin`. Support staff carry a sub-role in `users.supportRole`: `customer_support`, `supervisor`, or `driver`.
 - `.env` already exists on the owner's machines (git-ignored, cannot be read by Claude due to permission settings). `.env.example` documents every variable the code expects — **owner must reconcile names with their real `.env`**.
 
 ## 2. Current Status
@@ -42,16 +42,48 @@ CAS booking transitions, auto-refund on cancel/conflict, suspension hardening
 (session revoke + layout gates + suspended-worker action block), and app-level
 error/loading/not-found boundaries.
 
+**2026-07-06 update (2) — realtime, safety, roles, slugs, maps, categories:**
+- **Live booking room** at `/bookings/[id]` (moved out of the customer-only
+  group): one shared URL for customer, worker, driver and desk support. SSE
+  stream (`/api/bookings/[id]/stream`, in-memory bus in `lib/realtime.ts` —
+  single pm2 fork, swap for Redis if scaling out) pushes status/payment/
+  wellness/alert/location events; non-location events trigger
+  `router.refresh()`. This Next build has no WebSocket support in route
+  handlers, so SSE is the realtime channel (per its own docs).
+- **Safety**: PIN-verified session start (`startServiceWithPin` moves
+  confirmed → in_progress), timed wellness check-ins (30-min cadence,
+  `wellness_checks`), "need help" + SOS alerts (`safety_alerts`) that notify
+  admins + desk support (`notifyStaff`), staff acknowledge/resolve, overdue
+  check warnings. Live location sharing per participant
+  (`booking_locations`, POST `/api/bookings/[id]/location`).
+- **Roles**: `user_role` enum trimmed to 4 (`driver` removed);
+  `users.supportRole` added. Migration `db/migrate-updates.ts` (idempotent,
+  runs on deploy) rebuilt the enum and moved driver users under support.
+- **Worker slugs**: `workers.slug` (from stageName); public URLs are
+  `/workers/maxx`, `/book/maxx`; old UUID links redirect.
+- **Uploads**: per-user subfolders `uploads/<userId>/…`, served by
+  `/api/media/[...file]`; legacy flat files still served.
+- **Maps**: `@react-google-maps/api` (pattern from the owner's rideFlow
+  project) — booking "Where" section has JM-restricted autocomplete + map
+  with click-to-pin/drag (reverse geocoded); booking room shows destination,
+  participants and a live driving route + distance.
+- **One active service per category**: `worker_services.categoryId` +
+  partial unique index; activating a service auto-deactivates its category
+  sibling. Public profile shows category tabs (first auto-selected) with the
+  active service and category-tagged media (`worker_media.categoryId`).
+- Bug fixes: custom service durations were rejected at booking (Zod
+  allowlist vs action logic), stale `.next/dev` types.
+
 **V1 code complete.** Remaining before launch (V1.1):
 1. `.env` — confirm all names in `.env.example` exist locally (esp. `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `EMAIL_*`, `STRIPE_*` incl. `STRIPE_MEMBERSHIP_PRICE_ID` + webhook secret, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `FREE_ACCESS_UNTIL`). Admin role already seeded for the owner email.
 2. Stripe dashboard: create the monthly membership Price; point a webhook at `/api/stripe/webhook` (events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`).
-2b. Test accounts seeded via `npm run db:seed-accounts` (idempotent, edit `db/seed-accounts.ts` to change): admin squaremaxtech@gmail.com · customer uncommonfavour32@gmail.com · worker maxwellwedderburn32@gmail.com (profile "Maxx", 4 services + add-ons + availability, verified) · support managestorymaker@gmail.com · driver maxwellwedderburn@outlook.com. All sign in via magic link (or Google where the email is a Google account).
+2b. Test accounts seeded via `npm run db:seed-accounts` (idempotent, edit `db/seed-accounts.ts` to change): admin squaremaxtech@gmail.com · customer uncommonfavour32@gmail.com · worker maxwellwedderburn32@gmail.com (profile "Maxx" at `/workers/maxx`, 4 services configured — one ACTIVE per category — + add-ons + availability, verified) · support/customer_support managestorymaker@gmail.com · support/supervisor squaremaxtech+supervisor@gmail.com · support/driver maxwellwedderburn@outlook.com. All sign in via magic link (or Google where the email is a Google account).
 3. Booking **reminder** emails need a scheduled job (e.g. `scripts/send-reminders.ts` via PM2 cron) — not yet written.
 4. ~~Media is URL-based~~ → local uploads implemented (stored in `uploads/` on
    the VPS; include in backups). Move to object storage only if video traffic
    outgrows the server.
 5. PDF report export = browser print for now (CSV export is real).
-6. Safety: PIN is live; wellness-check button + location tracking are structural placeholders per spec.
+6. ~~Safety: PIN is live; wellness-check button + location tracking are structural placeholders per spec.~~ → live as of 2026-07-06 (see the update note below): PIN-verified session start, wellness check-ins with staff escalation, SOS alerts, live location sharing in the booking room (`/bookings/[id]`, SSE realtime).
 7. Run `npm run lint` and smoke-test flows end-to-end with `npm run dev` (google/email login → onboard worker → enable service → book → accept → pay via Stripe test mode → complete → review → moderate).
 
 ## 3. Key Decisions
@@ -87,7 +119,7 @@ All tables use `uuid` PKs (`defaultRandom()`), `createdAt`/`updatedAt` timestamp
 - **notifications** — id, userId, type, title, body, readAt, meta jsonb, createdAt. (in-app mirror of every email)
 - **audit_logs** — id, actorUserId, action, entity, entityId, before/after jsonb, createdAt. (all admin overrides write here)
 
-Roles: kept as an enum on `users.role` (spec lists a `roles` table; enum is simpler and V1-sufficient — noted as deliberate simplification, revisit if per-user multi-role is ever needed. `support` = subset of admin tools, `driver` = read-only booking transport views; both enforced in `lib/auth/guards.ts`).
+Roles: kept as an enum on `users.role`, now **4 values** (`customer|worker|support|admin`) plus `users.supportRole` (`customer_support|supervisor|driver`, set iff role = support). Desk support (customer_support/supervisor) gets the admin read/moderation tools; drivers get the `/driver` transport view + booking rooms. Enforced in `lib/guards.ts` (`requireStaff`, `isDriver`, `isDeskSupport`).
 
 ## 5. Folder Structure (target)
 

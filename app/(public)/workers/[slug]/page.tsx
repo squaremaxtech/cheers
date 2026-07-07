@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
   availability,
   reviews,
   serviceAddons,
+  serviceCategories,
   serviceTypes,
   users,
   workerMedia,
@@ -14,22 +15,31 @@ import {
 } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import StarRating from "@/components/ui/StarRating";
+import CategoryShowcase, {
+  type CategoryOffering,
+} from "@/components/workers/CategoryShowcase";
 import FavoriteButton from "@/components/workers/FavoriteButton";
-import MediaGallery from "@/components/workers/MediaGallery";
 import { getUserRow } from "@/lib/auth";
 import { formatCents } from "@/lib/constants";
+import { isUuid } from "@/lib/slug";
 import { publicWorkerColumns } from "@/lib/workers";
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export async function generateMetadata(props: PageProps<"/workers/[id]">) {
-  const { id } = await props.params;
+function workerBySlugOrId(slug: string) {
+  return and(
+    isUuid(slug) ? eq(workers.id, slug) : eq(workers.slug, slug),
+    eq(workers.active, true),
+    eq(workers.suspended, false)
+  );
+}
+
+export async function generateMetadata(props: PageProps<"/workers/[slug]">) {
+  const { slug } = await props.params;
   const [worker] = await db
     .select({ stageName: workers.stageName, bio: workers.bio })
     .from(workers)
-    .where(
-      and(eq(workers.id, id), eq(workers.active, true), eq(workers.suspended, false))
-    );
+    .where(workerBySlugOrId(slug));
   if (!worker) return { title: "Profile" };
   return {
     title: worker.stageName,
@@ -40,24 +50,25 @@ export async function generateMetadata(props: PageProps<"/workers/[id]">) {
 }
 
 export default async function WorkerProfilePage(
-  props: PageProps<"/workers/[id]">
+  props: PageProps<"/workers/[slug]">
 ) {
-  const { id } = await props.params;
+  const { slug } = await props.params;
 
   const [worker] = await db
     .select(publicWorkerColumns)
     .from(workers)
-    .where(
-      and(eq(workers.id, id), eq(workers.active, true), eq(workers.suspended, false))
-    );
+    .where(workerBySlugOrId(slug));
   if (!worker) notFound();
+  // Old /workers/<uuid> links redirect to the canonical slug URL.
+  if (worker.slug !== slug) redirect(`/workers/${worker.slug}`);
 
   const [media, services, slots, workerReviews, viewer] = await Promise.all([
     db
       .select()
       .from(workerMedia)
-      .where(eq(workerMedia.workerId, id))
+      .where(eq(workerMedia.workerId, worker.id))
       .orderBy(asc(workerMedia.sortOrder)),
+    // Only ACTIVE services — one per category by construction.
     db
       .select({
         id: workerServices.id,
@@ -65,18 +76,26 @@ export default async function WorkerProfilePage(
         durationMinutes: workerServices.durationMinutes,
         description: workerServices.description,
         typeName: serviceTypes.name,
-        typeSlug: serviceTypes.slug,
+        categoryId: serviceCategories.id,
+        categoryName: serviceCategories.name,
       })
       .from(workerServices)
       .innerJoin(serviceTypes, eq(workerServices.serviceTypeId, serviceTypes.id))
-      .where(
-        and(eq(workerServices.workerId, id), eq(workerServices.enabled, true))
+      .innerJoin(
+        serviceCategories,
+        eq(workerServices.categoryId, serviceCategories.id)
       )
-      .orderBy(asc(serviceTypes.sortOrder)),
+      .where(
+        and(
+          eq(workerServices.workerId, worker.id),
+          eq(workerServices.enabled, true)
+        )
+      )
+      .orderBy(asc(serviceCategories.sortOrder), asc(serviceTypes.sortOrder)),
     db
       .select()
       .from(availability)
-      .where(eq(availability.workerId, id))
+      .where(eq(availability.workerId, worker.id))
       .orderBy(asc(availability.dayOfWeek), asc(availability.startTime)),
     db
       .select({
@@ -89,7 +108,7 @@ export default async function WorkerProfilePage(
       })
       .from(reviews)
       .innerJoin(users, eq(reviews.customerId, users.id))
-      .where(and(eq(reviews.workerId, id), eq(reviews.status, "approved")))
+      .where(and(eq(reviews.workerId, worker.id), eq(reviews.status, "approved")))
       .orderBy(desc(reviews.createdAt))
       .limit(20),
     getUserRow(),
@@ -105,6 +124,27 @@ export default async function WorkerProfilePage(
           )
       : [];
 
+  const bookHref = viewer ? `/book/${worker.slug}` : "/login";
+  const categories: CategoryOffering[] = services.map((s) => ({
+    id: s.categoryId,
+    name: s.categoryName,
+    service: {
+      id: s.id,
+      typeName: s.typeName,
+      priceCents: s.priceCents,
+      durationMinutes: s.durationMinutes,
+      description: s.description,
+      addons: addons
+        .filter((a) => a.workerServiceId === s.id)
+        .map((a) => ({
+          id: a.id,
+          name: a.name,
+          priceCents: a.priceCents,
+          description: a.description,
+        })),
+    },
+  }));
+
   const facts: [string, string][] = [];
   if (worker.age !== null) facts.push(["Age", String(worker.age)]);
   if (worker.heightCm !== null) facts.push(["Height", `${worker.heightCm} cm`]);
@@ -117,9 +157,14 @@ export default async function WorkerProfilePage(
   return (
     <div className="mx-auto max-w-6xl px-5 py-10">
       <div className="grid gap-10 lg:grid-cols-[1fr_380px]">
-        {/* Left: gallery + details */}
+        {/* Left: category tabs + gallery + active service + details */}
         <div>
-          <MediaGallery media={media} stageName={worker.stageName} />
+          <CategoryShowcase
+            stageName={worker.stageName}
+            media={media}
+            categories={categories}
+            bookHref={bookHref}
+          />
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <h1 className="font-display text-3xl text-ink">{worker.stageName}</h1>
@@ -190,45 +235,9 @@ export default async function WorkerProfilePage(
               {formatCents(worker.baseRateCents)}
             </p>
 
-            <h3 className="mt-6 text-xs font-medium uppercase tracking-wider text-muted">
-              Services
-            </h3>
-            <ul className="mt-3 space-y-3">
-              {services.length === 0 && (
-                <li className="text-sm text-faint">No services listed yet.</li>
-              )}
-              {services.map((s) => {
-                const serviceAddonList = addons.filter(
-                  (a) => a.workerServiceId === s.id
-                );
-                return (
-                  <li key={s.id} className="rounded-xl border border-hairline p-4">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <p className="text-sm font-medium text-ink">{s.typeName}</p>
-                      <p className="text-sm text-gold">
-                        {formatCents(s.priceCents)}
-                      </p>
-                    </div>
-                    <p className="mt-1 text-xs text-faint">
-                      {s.durationMinutes} min
-                    </p>
-                    {s.description && (
-                      <p className="mt-2 text-xs leading-5 text-muted">
-                        {s.description}
-                      </p>
-                    )}
-                    {serviceAddonList.length > 0 && (
-                      <p className="mt-2 text-xs text-faint">
-                        Add-ons:{" "}
-                        {serviceAddonList
-                          .map((a) => `${a.name} (+${formatCents(a.priceCents)})`)
-                          .join(" · ")}
-                      </p>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            {categories.length === 0 && (
+              <p className="mt-6 text-sm text-faint">No services listed yet.</p>
+            )}
 
             {slots.length > 0 && (
               <>
@@ -238,7 +247,7 @@ export default async function WorkerProfilePage(
                 <ul className="mt-3 space-y-1 text-sm text-muted">
                   {slots.map((s) => (
                     <li key={s.id} className="flex justify-between">
-                      <span>{dayNames[s.dayOfWeek]}</span>
+                      <span>{s.dayOfWeek >= 0 && s.dayOfWeek <= 6 ? dayNames[s.dayOfWeek] : "?"}</span>
                       <span className="text-ink">
                         {s.startTime.slice(0, 5)} – {s.endTime.slice(0, 5)}
                       </span>
@@ -248,10 +257,7 @@ export default async function WorkerProfilePage(
               </>
             )}
 
-            <Link
-              href={viewer ? `/book/${worker.id}` : "/login"}
-              className="btn-gold mt-8 w-full"
-            >
+            <Link href={bookHref} className="btn-gold mt-8 w-full">
               {viewer ? "Book now" : "Sign in to book"}
             </Link>
             <p className="mt-3 text-center text-[11px] text-faint">

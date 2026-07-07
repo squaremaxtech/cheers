@@ -1,10 +1,14 @@
 import { GuardError, requireWorker } from "@/lib/guards";
 import { MAX_UPLOAD_BYTES, saveUpload } from "@/lib/uploads";
 
-// Workers upload profile media and cash-collection proofs here.
+// Workers upload profile media and cash-collection proofs here. Files land
+// in a per-user subfolder (uploads/<userId>/) so each user's files stay
+// organised together.
 export async function POST(req: Request): Promise<Response> {
+  let ownerUserId: string;
   try {
-    await requireWorker();
+    const { user } = await requireWorker();
+    ownerUserId = user.id;
   } catch (error) {
     if (error instanceof GuardError) {
       return Response.json({ error: error.code }, { status: 403 });
@@ -30,7 +34,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    const url = await saveUpload(file);
+    const url = await saveUpload(file, ownerUserId);
     return Response.json({ url });
   } catch (error) {
     const message =

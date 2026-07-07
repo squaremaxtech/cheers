@@ -10,6 +10,7 @@ import { transitionBooking } from "@/lib/bookings";
 import { CURRENCY } from "@/lib/constants";
 import { guardErrorMessage, requireAdmin, requireUser, requireWorker } from "@/lib/guards";
 import { notify, notifyAdmins } from "@/lib/notify";
+import { bookingEventNow, publishBooking } from "@/lib/realtime";
 import { appUrl, stripe } from "@/lib/stripe";
 import {
   cashCollectedSchema,
@@ -291,6 +292,9 @@ export async function recordCashCollected(
         actorUserId: user.id,
         note: "cash collected",
       });
+    } else {
+      // No status change — push the payment update to the live room itself.
+      publishBooking(booking.id, bookingEventNow("payment"));
     }
 
     await notify({
@@ -358,6 +362,9 @@ export async function refundPayment(input: unknown): Promise<ActionResult<undefi
         actorUserId: admin.id,
         note: parsed.data.note ?? "refund issued",
       });
+    } else if (booking) {
+      // Already terminal — still surface the payment change in the room.
+      publishBooking(booking.id, bookingEventNow("payment"));
     }
 
     await writeAudit({

@@ -23,6 +23,7 @@ import {
 } from "@/lib/bookings";
 import { BOOKING_DURATIONS_MINUTES, platformFeeCents } from "@/lib/constants";
 import { refundBookingPayments } from "@/lib/refunds";
+import { bookingEventNow, publishBooking } from "@/lib/realtime";
 import { guardErrorMessage, requireUser } from "@/lib/guards";
 import type { ActionResult, BookingRow, UserRow } from "@/types";
 import { hasMembershipAccess } from "@/lib/membership";
@@ -404,6 +405,7 @@ export async function rescheduleBooking(
       actorUserId: user.id,
       note: `rescheduled ${ctx.booking.date} ${ctx.booking.startTime.slice(0, 5)} → ${parsed.data.date} ${parsed.data.startTime}`,
     });
+    publishBooking(ctx.booking.id, bookingEventNow("schedule"));
 
     await notifyBookingParties(ctx.booking, {
       type: "booking_rescheduled",
@@ -487,6 +489,15 @@ export async function reassignBooking(input: unknown): Promise<ActionResult<unde
       .update(bookings)
       .set({ workerId: newWorker.id, updatedAt: new Date() })
       .where(eq(bookings.id, ctx.booking.id));
+    // Reassignments keep their status but must appear in the room timeline.
+    await db.insert(bookingEvents).values({
+      bookingId: ctx.booking.id,
+      fromStatus: ctx.booking.status,
+      toStatus: ctx.booking.status,
+      actorUserId: user.id,
+      note: `reassigned to ${newWorker.stageName}`,
+    });
+    publishBooking(ctx.booking.id, bookingEventNow("status"));
     await writeAudit({
       actorUserId: user.id,
       action: "booking.reassign",

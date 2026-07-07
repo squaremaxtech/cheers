@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import DashboardShell from "@/components/layout/DashboardShell";
 import SiteHeader from "@/components/layout/SiteHeader";
 import { getUserRow } from "@/lib/auth";
+import { isDriver } from "@/lib/guards";
 
 const nav = [
   { href: "/admin", label: "Overview" },
@@ -13,8 +14,9 @@ const nav = [
   { href: "/admin/settings", label: "Settings" },
 ];
 
-// Admin + support share this area; server actions gate destructive
-// operations to the admin role specifically.
+// Admin + desk support (customer_support/supervisor) share this area; server
+// actions gate destructive operations to the admin role specifically.
+// Drivers are support staff too but only get the transport view.
 export default async function AdminLayout({
   children,
 }: {
@@ -23,6 +25,7 @@ export default async function AdminLayout({
   const user = await getUserRow();
   if (!user || user.suspended) redirect("/login");
   if (user.role !== "admin" && user.role !== "support") redirect("/dashboard");
+  if (isDriver(user)) redirect("/driver");
 
   return (
     <>

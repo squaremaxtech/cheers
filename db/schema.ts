@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
@@ -26,6 +27,14 @@ export const userRole = pgEnum("user_role", [
   "worker",
   "admin",
   "support",
+]);
+
+// Support staff sub-types. Only meaningful when users.role = 'support':
+// customer_support handles disputes/tickets, supervisor additionally manages
+// other support staff, driver transports workers to bookings.
+export const supportRole = pgEnum("support_role", [
+  "customer_support",
+  "supervisor",
   "driver",
 ]);
 
@@ -68,6 +77,15 @@ export const reviewStatus = pgEnum("review_status", [
   "rejected",
 ]);
 
+// Worker wellness check-ins while a booking is in progress.
+export const wellnessStatus = pgEnum("wellness_status", ["ok", "help"]);
+
+export const safetyAlertKind = pgEnum("safety_alert_kind", [
+  "sos",
+  "wellness_help",
+  "other",
+]);
+
 // ---------------------------------------------------------------------------
 // Auth (NextAuth v4 adapter tables) + users
 // ---------------------------------------------------------------------------
@@ -80,6 +98,8 @@ export const users = pgTable("users", {
   image: text("image"),
   phone: text("phone"),
   role: userRole("role").notNull().default("customer"),
+  // Set iff role = 'support'; null for every other role.
+  supportRole: supportRole("support_role"),
   suspended: boolean("suspended").notNull().default(false),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
@@ -136,6 +156,8 @@ export const workers = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     // Public identity. realName must NEVER be selected in public-facing queries.
     stageName: text("stage_name").notNull(),
+    // URL-safe handle derived from stageName, e.g. "Maxx" -> /workers/maxx.
+    slug: text("slug").notNull(),
     realName: text("real_name"),
     bio: text("bio"),
     age: smallint("age"),
@@ -162,6 +184,7 @@ export const workers = pgTable(
   (t) => [
     uniqueIndex("workers_user_id_idx").on(t.userId),
     uniqueIndex("workers_stage_name_idx").on(t.stageName),
+    uniqueIndex("workers_slug_idx").on(t.slug),
   ]
 );
 
@@ -174,6 +197,12 @@ export const workerMedia = pgTable(
       .references(() => workers.id, { onDelete: "cascade" }),
     type: mediaType("type").notNull(),
     url: text("url").notNull(),
+    // Optional tag: which service category this media showcases. Untagged
+    // media shows for every category on the public profile.
+    categoryId: uuid("category_id").references(
+      (): AnyPgColumn => serviceCategories.id,
+      { onDelete: "set null" }
+    ),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   },
@@ -212,6 +241,14 @@ export const workerServices = pgTable(
     serviceTypeId: uuid("service_type_id")
       .notNull()
       .references(() => serviceTypes.id, { onDelete: "cascade" }),
+    // Denormalized from serviceTypes so "one active service per category"
+    // can be enforced with a partial unique index.
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => serviceCategories.id, { onDelete: "cascade" }),
+    // enabled = this is the worker's ACTIVE service for its category. A worker
+    // may configure many services per category but only one can be enabled —
+    // that one is what customers see and book.
     enabled: boolean("enabled").notNull().default(true),
     priceCents: integer("price_cents").notNull().default(0),
     durationMinutes: integer("duration_minutes").notNull().default(60),
@@ -221,6 +258,9 @@ export const workerServices = pgTable(
   },
   (t) => [
     uniqueIndex("worker_services_pair_idx").on(t.workerId, t.serviceTypeId),
+    uniqueIndex("worker_services_active_per_category_idx")
+      .on(t.workerId, t.categoryId)
+      .where(sql`enabled`),
   ]
 );
 
@@ -481,6 +521,80 @@ export const notifications = pgTable(
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [index("notifications_user_idx").on(t.userId)]
+);
+
+// ---------------------------------------------------------------------------
+// Booking safety & live tracking
+// ---------------------------------------------------------------------------
+
+// Latest shared position of each participant (customer, worker, driver,
+// support) for a booking — one row per user, upserted as they travel.
+export const bookingLocations = pgTable(
+  "booking_locations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Viewer-facing label snapshot: customer | worker | driver | support
+    role: text("role").notNull(),
+    lat: text("lat").notNull(),
+    lng: text("lng").notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("booking_locations_booking_user_idx").on(t.bookingId, t.userId),
+  ]
+);
+
+// Worker wellness check-ins while a booking is in progress. "ok" is a routine
+// check; "help" immediately raises a safety alert for staff.
+export const wellnessChecks = pgTable(
+  "wellness_checks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: wellnessStatus("status").notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("wellness_checks_booking_idx").on(t.bookingId)]
+);
+
+// Emergency escalations. Unresolved alerts surface on the booking page and
+// the admin dashboard until staff resolves them.
+export const safetyAlerts = pgTable(
+  "safety_alerts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    raisedByUserId: uuid("raised_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    kind: safetyAlertKind("kind").notNull(),
+    message: text("message"),
+    acknowledgedByUserId: uuid("acknowledged_by_user_id").references(
+      () => users.id,
+      { onDelete: "set null" }
+    ),
+    acknowledgedAt: timestamp("acknowledged_at", { mode: "date" }),
+    resolvedByUserId: uuid("resolved_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    resolvedAt: timestamp("resolved_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("safety_alerts_booking_idx").on(t.bookingId)]
 );
 
 // ---------------------------------------------------------------------------

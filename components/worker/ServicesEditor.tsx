@@ -29,13 +29,30 @@ export default function ServicesEditor({
 }) {
   return (
     <div className="space-y-8">
-      {categories.map((cat) => (
-        <section key={cat.id}>
-          <h2 className="font-display text-lg text-gold">{cat.name}</h2>
-          <div className="mt-3 space-y-4">
-            {types
-              .filter((t) => t.categoryId === cat.id)
-              .map((type) => (
+      {categories.map((cat) => {
+        const categoryTypes = types.filter((t) => t.categoryId === cat.id);
+        const activeService = workerServices.find(
+          (ws) => ws.enabled && categoryTypes.some((t) => t.id === ws.serviceTypeId)
+        );
+        const activeName = categoryTypes.find(
+          (t) => t.id === activeService?.serviceTypeId
+        )?.name;
+        return (
+          <section key={cat.id}>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="font-display text-lg text-gold">{cat.name}</h2>
+              <p className="text-xs text-faint">
+                {activeName
+                  ? `Active: ${activeName}`
+                  : "No active service — customers can't book this category yet."}
+              </p>
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              Configure as many services as you like; exactly one is active per
+              category. Activating a service replaces the current one.
+            </p>
+            <div className="mt-3 space-y-4">
+              {categoryTypes.map((type) => (
                 <ServiceRow
                   key={type.id}
                   type={type}
@@ -45,9 +62,10 @@ export default function ServicesEditor({
                   addons={addons}
                 />
               ))}
-          </div>
-        </section>
-      ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -118,9 +136,9 @@ function ServiceRow({
         >
           <p className="text-sm font-medium text-ink">{type.name}</p>
           <p className="mt-0.5 text-xs text-faint">
-            {enabled && current
+            {current
               ? `${formatCents(current.priceCents)} · ${current.durationMinutes} min`
-              : "Not offered"}
+              : "Not configured"}
           </p>
         </button>
         <span
@@ -128,7 +146,7 @@ function ServiceRow({
             enabled ? "bg-gold/15 text-gold" : "bg-raised text-faint"
           }`}
         >
-          {enabled ? "On" : "Off"}
+          {enabled ? "Active" : "Inactive"}
         </span>
       </div>
 
@@ -179,7 +197,7 @@ function ServiceRow({
           </div>
           <div className="flex gap-3">
             <button type="submit" className="btn-gold" disabled={busy}>
-              {enabled ? "Save" : "Enable service"}
+              {enabled ? "Save" : "Save & set active"}
             </button>
             {enabled && (
               <button
@@ -191,7 +209,7 @@ function ServiceRow({
                   if (form) save(new FormData(form), false);
                 }}
               >
-                Disable
+                Deactivate
               </button>
             )}
           </div>

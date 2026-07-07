@@ -8,6 +8,7 @@ import Badge from "@/components/ui/Badge";
 import NotificationsList from "@/components/customer/NotificationsList";
 import ProfileForm from "@/components/customer/ProfileForm";
 import { getUserRow } from "@/lib/auth";
+import { isDriver } from "@/lib/guards";
 import { freeAccessActive, getMembership } from "@/lib/membership";
 import { statusTone } from "@/lib/status";
 
@@ -18,8 +19,8 @@ export default async function CustomerDashboard() {
   if (!user) redirect("/login");
   // Role-based home: this route is the shared post-login landing spot.
   if (user.role === "worker") redirect("/worker");
-  if (user.role === "admin" || user.role === "support") redirect("/admin");
-  if (user.role === "driver") redirect("/driver");
+  if (user.role === "support") redirect(isDriver(user) ? "/driver" : "/admin");
+  if (user.role === "admin") redirect("/admin");
 
   const [recentBookings, recentNotifications, membership] = await Promise.all([
     db

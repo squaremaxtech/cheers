@@ -15,18 +15,28 @@ import {
 } from "./schema";
 
 type Role = (typeof users.$inferSelect)["role"];
+type SupportRole = (typeof users.$inferSelect)["supportRole"];
 
-const accounts: { email: string; role: Role; name: string; phone?: string }[] = [
+// 4 user types; support staff carry a sub-role (customer_support/supervisor/driver).
+const accounts: {
+  email: string;
+  role: Role;
+  supportRole?: SupportRole;
+  name: string;
+  phone?: string;
+}[] = [
   { email: "squaremaxtech@gmail.com", role: "admin", name: "Max Admin" },
   { email: "uncommonfavour32@gmail.com", role: "customer", name: "Favour Campbell", phone: "+1 876 555 0142" },
   { email: "maxwellwedderburn32@gmail.com", role: "worker", name: "Maxwell Wedderburn", phone: "+1 876 555 0177" },
-  { email: "managestorymaker@gmail.com", role: "support", name: "Tanya Reid" },
-  { email: "maxwellwedderburn@outlook.com", role: "driver", name: "Devon Brown", phone: "+1 876 555 0193" },
+  { email: "managestorymaker@gmail.com", role: "support", supportRole: "customer_support", name: "Tanya Reid" },
+  { email: "squaremaxtech+supervisor@gmail.com", role: "support", supportRole: "supervisor", name: "Andre Palmer" },
+  { email: "maxwellwedderburn@outlook.com", role: "support", supportRole: "driver", name: "Devon Brown", phone: "+1 876 555 0193" },
 ];
 
 // Stage-worthy worker profile for the worker account.
 const workerProfile = {
   stageName: "Maxx",
+  slug: "maxx",
   realName: "Maxwell Wedderburn",
   bio: "Kingston-based wellness and events professional. Certified in relaxation and deep tissue massage with five years of experience, and a familiar face on the Kingston nightlife scene — private parties, VIP tables, and club appearances handled with style and discretion. Punctual, professional, and easy company.",
   age: 28,
@@ -40,30 +50,41 @@ const workerProfile = {
   active: true,
 };
 
-// slug -> worker's own pricing/duration/description
+// slug -> worker's own pricing/duration/description. One service per category
+// is ACTIVE (enabled) — the rest stay configured but inactive, matching the
+// one-active-service-per-category rule.
 const workerOfferings: Record<
   string,
-  { priceCents: number; durationMinutes: number; description: string }
+  {
+    priceCents: number;
+    durationMinutes: number;
+    description: string;
+    enabled: boolean;
+  }
 > = {
   "relaxation-massage": {
     priceCents: 12_000,
     durationMinutes: 60,
     description: "Full-body relaxation massage with warmed oils. Table and fresh linens provided.",
+    enabled: false,
   },
   "deep-tissue-massage": {
     priceCents: 15_000,
     durationMinutes: 90,
     description: "Firm, targeted work for tension and recovery. Tell me your problem areas in the booking notes.",
+    enabled: true,
   },
   "private-party-hosting": {
     priceCents: 25_000,
     durationMinutes: 180,
     description: "Charismatic hosting for private events — I keep the energy up and the night moving.",
+    enabled: true,
   },
   "vip-table-experience": {
     priceCents: 20_000,
     durationMinutes: 240,
     description: "Elevate your VIP table — great company, great photos, zero drama.",
+    enabled: false,
   },
 };
 
@@ -91,9 +112,11 @@ async function upsertUser(account: (typeof accounts)[number]): Promise<string> {
     .select()
     .from(users)
     .where(eq(users.email, account.email));
+  const supportRole = account.supportRole ?? null;
   if (existing) {
     if (
       existing.role !== account.role ||
+      existing.supportRole !== supportRole ||
       existing.name !== account.name ||
       (account.phone && existing.phone !== account.phone)
     ) {
@@ -101,12 +124,13 @@ async function upsertUser(account: (typeof accounts)[number]): Promise<string> {
         .update(users)
         .set({
           role: account.role,
+          supportRole,
           name: account.name,
           phone: account.phone ?? existing.phone,
           updatedAt: new Date(),
         })
         .where(eq(users.id, existing.id));
-      console.log(`updated ${account.email} -> ${account.role} (${account.name})`);
+      console.log(`updated ${account.email} -> ${account.role}${supportRole ? `/${supportRole}` : ""} (${account.name})`);
     } else {
       console.log(`unchanged ${account.email} (${account.role})`);
     }
@@ -117,11 +141,12 @@ async function upsertUser(account: (typeof accounts)[number]): Promise<string> {
     .values({
       email: account.email,
       role: account.role,
+      supportRole,
       name: account.name,
       phone: account.phone,
     })
     .returning({ id: users.id });
-  console.log(`created ${account.email} -> ${account.role} (${account.name})`);
+  console.log(`created ${account.email} -> ${account.role}${supportRole ? `/${supportRole}` : ""} (${account.name})`);
   return created.id;
 }
 
@@ -162,11 +187,13 @@ async function seedWorkerProfile(userId: string): Promise<void> {
         .values({
           workerId: worker.id,
           serviceTypeId: type.id,
-          enabled: true,
+          categoryId: type.categoryId,
           ...offering,
         })
         .returning();
-      console.log(`  enabled service ${slug}`);
+      console.log(
+        `  configured service ${slug}${offering.enabled ? " (active)" : ""}`
+      );
     }
     for (const addon of workerAddons[slug] ?? []) {
       const [existing] = await db

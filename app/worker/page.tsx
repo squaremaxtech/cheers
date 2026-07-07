@@ -98,7 +98,7 @@ export default async function WorkerDashboard() {
           <Link href="/worker/services" className="btn-outline">
             Edit services
           </Link>
-          <Link href={`/workers/${worker.id}`} className="btn-ghost">
+          <Link href={`/workers/${worker.slug}`} className="btn-ghost">
             View public profile →
           </Link>
         </div>
