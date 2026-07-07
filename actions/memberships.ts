@@ -10,9 +10,11 @@ import { appUrl, stripe } from "@/lib/stripe";
 import type { ActionResult } from "@/types";
 
 // Start (or restart) the monthly membership subscription via Stripe Checkout.
-export async function createMembershipCheckout(): Promise<
-  ActionResult<{ url: string }>
-> {
+// returnTo picks where Stripe sends the customer back — the membership page
+// (default) or the first-login /welcome wizard.
+export async function createMembershipCheckout(
+  returnTo?: "membership" | "welcome"
+): Promise<ActionResult<{ url: string }>> {
   try {
     const user = await requireUser();
     const priceId = process.env.STRIPE_MEMBERSHIP_PRICE_ID;
@@ -23,6 +25,7 @@ export async function createMembershipCheckout(): Promise<
       return err("You already have an active membership.");
     }
 
+    const returnPath = returnTo === "welcome" ? "/welcome" : "/membership";
     const session = await stripe().checkout.sessions.create({
       mode: "subscription",
       customer_email: existing?.stripeCustomerId ? undefined : user.email,
@@ -30,8 +33,8 @@ export async function createMembershipCheckout(): Promise<
       line_items: [{ price: priceId, quantity: 1 }],
       metadata: { kind: "membership", userId: user.id },
       subscription_data: { metadata: { userId: user.id } },
-      success_url: appUrl("/membership?success=1"),
-      cancel_url: appUrl("/membership?cancelled=1"),
+      success_url: appUrl(`${returnPath}?success=1`),
+      cancel_url: appUrl(`${returnPath}?cancelled=1`),
     });
 
     if (!session.url) return err(ERR.server);

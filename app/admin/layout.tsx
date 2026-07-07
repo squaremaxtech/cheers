@@ -7,8 +7,10 @@ import { isDriver } from "@/lib/guards";
 const nav = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/workers", label: "Workers" },
+  { href: "/admin/verifications", label: "Verifications" },
   { href: "/admin/bookings", label: "Bookings" },
   { href: "/admin/payments", label: "Payments" },
+  { href: "/admin/chats", label: "Chats" },
   { href: "/admin/reviews", label: "Reviews" },
   { href: "/admin/reports", label: "Reports" },
   { href: "/admin/settings", label: "Settings" },

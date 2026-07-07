@@ -5,6 +5,9 @@ import type {
   bookingEvents,
   bookingLocations,
   bookings,
+  chatMessages,
+  chatRooms,
+  customerVerifications,
   memberships,
   notifications,
   payments,
@@ -48,8 +51,46 @@ export type BookingEventRow = typeof bookingEvents.$inferSelect;
 export type PaymentRow = typeof payments.$inferSelect;
 export type PayoutRow = typeof payouts.$inferSelect;
 export type MembershipRow = typeof memberships.$inferSelect;
+
+// Result of generateWeeklyPayouts — carries enough context for the admin UI
+// to explain a zero-worker run instead of a bare "0".
+export type PayoutGeneration = {
+  created: number;
+  bookingsCovered: number;
+  unpaidSkipped: number;
+  awaiting: { count: number; from: string; to: string } | null;
+};
 export type ReviewRow = typeof reviews.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
+
+export type CustomerVerificationRow =
+  typeof customerVerifications.$inferSelect;
+export type VerificationStatus = CustomerVerificationRow["status"];
+export type IdDocumentType = CustomerVerificationRow["documentType"];
+
+export type ChatRoomRow = typeof chatRooms.$inferSelect;
+export type ChatMessageRow = typeof chatMessages.$inferSelect;
+export type ChatMessageKind = ChatMessageRow["kind"];
+
+// The viewer's relationship to a chat room. Staff (admin/desk support) can
+// read every room but never send.
+export type ChatViewerRole = "customer" | "worker" | "staff";
+
+// Wire shape of one chat message (ISO date) — used for the initial page load
+// and for SSE "message" events, so the client renders both identically.
+export type ChatMessage = {
+  id: string;
+  roomId: string;
+  senderUserId: string;
+  // What the OTHER side sees: worker's stage name / customer's first name.
+  senderLabel: string;
+  kind: ChatMessageKind;
+  body: string;
+  imageUrl: string | null;
+  createdAt: string;
+};
+
+export type ChatStreamEvent = { kind: "message"; message: ChatMessage };
 
 export type BookingLocationRow = typeof bookingLocations.$inferSelect;
 export type WellnessCheckRow = typeof wellnessChecks.$inferSelect;

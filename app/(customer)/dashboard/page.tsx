@@ -7,10 +7,12 @@ import { bookings, notifications } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import NotificationsList from "@/components/customer/NotificationsList";
 import ProfileForm from "@/components/customer/ProfileForm";
+import VerificationCard from "@/components/customer/VerificationCard";
 import { getUserRow } from "@/lib/auth";
 import { isDriver } from "@/lib/guards";
 import { freeAccessActive, getMembership } from "@/lib/membership";
 import { statusTone } from "@/lib/status";
+import { getCustomerVerification } from "@/lib/verification";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -22,21 +24,23 @@ export default async function CustomerDashboard() {
   if (user.role === "support") redirect(isDriver(user) ? "/driver" : "/admin");
   if (user.role === "admin") redirect("/admin");
 
-  const [recentBookings, recentNotifications, membership] = await Promise.all([
-    db
-      .select()
-      .from(bookings)
-      .where(eq(bookings.customerId, user.id))
-      .orderBy(desc(bookings.createdAt))
-      .limit(3),
-    db
-      .select()
-      .from(notifications)
-      .where(eq(notifications.userId, user.id))
-      .orderBy(desc(notifications.createdAt))
-      .limit(8),
-    getMembership(user.id),
-  ]);
+  const [recentBookings, recentNotifications, membership, verification] =
+    await Promise.all([
+      db
+        .select()
+        .from(bookings)
+        .where(eq(bookings.customerId, user.id))
+        .orderBy(desc(bookings.createdAt))
+        .limit(3),
+      db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.userId, user.id))
+        .orderBy(desc(notifications.createdAt))
+        .limit(8),
+      getMembership(user.id),
+      getCustomerVerification(user.id),
+    ]);
 
   const membershipLabel = freeAccessActive()
     ? "Free access"
@@ -59,6 +63,19 @@ export default async function CustomerDashboard() {
           </Badge>
         </Link>
       </div>
+
+      {/* Identity verification status (booking is gated on approval) */}
+      <section className="card p-6">
+        <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
+          Identity verification
+        </h2>
+        <div className="mt-4">
+          <VerificationCard
+            verification={verification}
+            userName={user.name ?? ""}
+          />
+        </div>
+      </section>
 
       {/* Recent bookings */}
       <section className="card p-6">

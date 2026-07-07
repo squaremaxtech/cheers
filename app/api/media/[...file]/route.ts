@@ -2,7 +2,12 @@ import { createReadStream } from "fs";
 import { stat } from "fs/promises";
 import path from "path";
 import { Readable } from "stream";
+import { getUserRow } from "@/lib/auth";
+import { loadChatAccess } from "@/lib/chat-access";
+import { isDriver } from "@/lib/guards";
 import {
+  CHAT_SUBDIR,
+  IDENTITY_SUBDIR,
   MEDIA_TYPES,
   RECEIPTS_SUBDIR,
   SAFE_MEDIA_FOLDER,
@@ -10,13 +15,23 @@ import {
   UPLOADS_DIR,
   USERS_SUBDIR,
 } from "@/lib/uploads";
+import type { UserRow } from "@/types";
 
-// Serves uploaded media from the local uploads/ directory. Exactly two URL
-// shapes exist (older layouts are migrated forward by db/migrate-updates.ts):
-//   /api/media/users/<userId>/<name> — worker profile media
-//   /api/media/receipts/<name>       — cash proofs / dispute evidence
+// Serves uploaded media from the local uploads/ directory. Exactly four URL
+// shapes exist (older layouts are migrated forward by db/migrate-uploads.ts):
+//   /api/media/users/<userId>/<name>    — worker profile media (public)
+//   /api/media/receipts/<name>          — cash proofs / evidence (unlisted)
+//   /api/media/identity/<userId>/<name> — ID documents (owner + staff only)
+//   /api/media/chat/<roomId>/<name>     — chat images (participants + staff)
 // All segments are server-generated UUIDs — the strict patterns below also
 // block traversal.
+
+function isModeratingStaff(user: UserRow): boolean {
+  return (
+    user.role === "admin" || (user.role === "support" && !isDriver(user))
+  );
+}
+
 export async function GET(
   _req: Request,
   ctx: RouteContext<"/api/media/[...file]">
@@ -24,6 +39,8 @@ export async function GET(
   const { file } = await ctx.params;
 
   let relative: string;
+  // Gated shapes get no-store-ish private caching; public media caches hard.
+  let cacheControl = "public, max-age=31536000, immutable";
   if (
     file.length === 3 &&
     file[0] === USERS_SUBDIR &&
@@ -37,6 +54,30 @@ export async function GET(
     SAFE_MEDIA_NAME.test(file[1])
   ) {
     relative = path.join(RECEIPTS_SUBDIR, file[1]);
+  } else if (
+    file.length === 3 &&
+    (file[0] === IDENTITY_SUBDIR || file[0] === CHAT_SUBDIR) &&
+    SAFE_MEDIA_FOLDER.test(file[1]) &&
+    SAFE_MEDIA_NAME.test(file[2])
+  ) {
+    const user = await getUserRow();
+    if (!user || user.suspended) {
+      return Response.json({ error: "not found" }, { status: 404 });
+    }
+    if (file[0] === IDENTITY_SUBDIR) {
+      // Identity documents: the owner and moderating staff only.
+      if (user.id !== file[1] && !isModeratingStaff(user)) {
+        return Response.json({ error: "not found" }, { status: 404 });
+      }
+    } else {
+      // Chat images: room participants and moderating staff only.
+      const access = await loadChatAccess(user, file[1]);
+      if (!access) {
+        return Response.json({ error: "not found" }, { status: 404 });
+      }
+    }
+    relative = path.join(file[0], file[1], file[2]);
+    cacheControl = "private, max-age=3600";
   } else {
     return Response.json({ error: "not found" }, { status: 404 });
   }
@@ -63,8 +104,8 @@ export async function GET(
     headers: {
       "content-type": MEDIA_TYPES[ext] ?? "application/octet-stream",
       "content-length": String(size),
-      // UUID filenames never change content — cache hard.
-      "cache-control": "public, max-age=31536000, immutable",
+      // UUID filenames never change content — cache hard (public shapes).
+      "cache-control": cacheControl,
     },
   });
 }

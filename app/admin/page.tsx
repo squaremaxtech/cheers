@@ -2,7 +2,13 @@ import Link from "next/link";
 import { count, desc, eq, sum } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { bookings, payments, users, workers } from "@/db/schema";
+import {
+  bookings,
+  customerVerifications,
+  payments,
+  users,
+  workers,
+} from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import { formatCents } from "@/lib/constants";
 import { statusTone } from "@/lib/status";
@@ -10,21 +16,31 @@ import { statusTone } from "@/lib/status";
 export const metadata: Metadata = { title: "Admin" };
 
 export default async function AdminDashboard() {
-  const [[revenue], [bookingCount], [customerCount], [workerCount], recent] =
-    await Promise.all([
-      db
-        .select({ total: sum(payments.amountCents), fees: sum(payments.platformFeeCents) })
-        .from(payments)
-        .where(eq(payments.status, "succeeded")),
-      db.select({ n: count() }).from(bookings),
-      db.select({ n: count() }).from(users).where(eq(users.role, "customer")),
-      db.select({ n: count() }).from(workers),
-      db
-        .select()
-        .from(bookings)
-        .orderBy(desc(bookings.createdAt))
-        .limit(8),
-    ]);
+  const [
+    [revenue],
+    [bookingCount],
+    [customerCount],
+    [workerCount],
+    [pendingVerifications],
+    recent,
+  ] = await Promise.all([
+    db
+      .select({ total: sum(payments.amountCents), fees: sum(payments.platformFeeCents) })
+      .from(payments)
+      .where(eq(payments.status, "succeeded")),
+    db.select({ n: count() }).from(bookings),
+    db.select({ n: count() }).from(users).where(eq(users.role, "customer")),
+    db.select({ n: count() }).from(workers),
+    db
+      .select({ n: count() })
+      .from(customerVerifications)
+      .where(eq(customerVerifications.status, "pending")),
+    db
+      .select()
+      .from(bookings)
+      .orderBy(desc(bookings.createdAt))
+      .limit(8),
+  ]);
 
   const cards = [
     {
@@ -42,9 +58,27 @@ export default async function AdminDashboard() {
     { label: "Workers", value: String(workerCount?.n ?? 0), href: "/admin/workers" },
   ];
 
+  const pendingCount = pendingVerifications?.n ?? 0;
+
   return (
     <div className="space-y-8">
       <h1 className="font-display text-2xl text-ink">Platform overview</h1>
+
+      {pendingCount > 0 && (
+        <Link
+          href="/admin/verifications"
+          className="card flex items-center justify-between gap-3 border-warn/40 p-4 hover:border-warn"
+        >
+          <p className="text-sm text-ink">
+            <Badge tone="warn">{pendingCount}</Badge>
+            <span className="ml-3">
+              customer verification{pendingCount === 1 ? "" : "s"} awaiting
+              review
+            </span>
+          </p>
+          <span className="text-sm text-gold">Review →</span>
+        </Link>
+      )}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {cards.map((c) => (

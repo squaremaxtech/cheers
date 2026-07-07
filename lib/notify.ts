@@ -98,6 +98,34 @@ export async function notifyAdmins(opts: {
   }
 }
 
+// Customer identity verifications are reviewed by admins and supervisors —
+// the same set that may approve them (actions/verification.ts). Plain
+// customer support and drivers are not notified.
+export async function notifyVerificationTeam(opts: {
+  type: string;
+  title: string;
+  body: string;
+  meta?: Record<string, string>;
+}): Promise<void> {
+  try {
+    const team = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(
+        or(
+          eq(users.role, "admin"),
+          and(eq(users.role, "support"), eq(users.supportRole, "supervisor"))
+        )
+      );
+    await notifyMany(team, opts);
+  } catch (error) {
+    console.error(
+      "notifyVerificationTeam failed:",
+      error instanceof Error ? error.message : error
+    );
+  }
+}
+
 // Safety escalations go wider than notifyAdmins: admins plus desk support
 // (customer_support/supervisor). Drivers are excluded — they transport
 // workers, they don't work the safety desk.

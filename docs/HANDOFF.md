@@ -137,6 +137,80 @@ error/loading/not-found boundaries.
   icta customer's test booking/payment/review were reassigned to Andre before
   deletion).
 
+**2026-07-07 update (3) — customer onboarding/ID verification, chat, payout UX:**
+- **First-login customer setup** (`/welcome`, top-level so the gate can't
+  loop): 3-step wizard — profile (name/phone via `updateProfile`) → ID
+  document (type: driver's licence/passport/national ID + photo upload) →
+  membership (free-access banner or Stripe checkout, `createMembershipCheckout`
+  now takes `returnTo: "membership"|"welcome"`). `users.onboardedAt` gates the
+  `(customer)` layout (`redirect("/welcome")` for customers with it null —
+  existing customers go through the wizard once). Finish requires a
+  verification row + membership access, then notifies the customer that
+  review is pending.
+- **Customer identity verification** (`customer_verifications`, one row per
+  user): pending → approved/rejected by admins + support **supervisors**
+  (`requireVerificationReviewer`; plain customer_support sees the page
+  read-only). Submissions notify the verification team
+  (`notifyVerificationTeam` = admins + supervisors). Documents upload to
+  `uploads/identity/<userId>/` (image-only, 10MB), served auth-gated
+  (owner + non-driver staff) and are **deleted from disk on review either
+  way** (temporary-holding policy) and on re-submission. Review UI:
+  `/admin/verifications` (admin nav) + pending-count alert card on `/admin`.
+  Booking is now verification-gated: `createBooking` rejects unverified
+  customers and `/book/[slug]` renders a status card instead of the form;
+  dashboard shows a `VerificationCard` (status + re-submission form).
+- **Chat rooms (customer ↔ worker)**: `chat_rooms` (unique customer+worker
+  pair, denormalized lastMessage* + per-side read cursors) and
+  `chat_messages` (text ≤1000 chars and/or image). Cap: 1000 messages per
+  room, pruned oldest-first in batches of 10 once 10 over (pruned image
+  files unlinked). SSE realtime (`/api/chat/[id]/stream`, `subscribeChat`/
+  `publishChat` on the same in-memory bus) — sender + receiver both get the
+  `message` event; client de-dupes by id. Pages: `/chats` (role-aware inbox,
+  in customer+worker navs as "Messages"), `/chats/[id]` (ChatRoom client:
+  composer, image attach via `kind="chat"`+roomId upload, Enter-to-send,
+  read cursors via `markChatRead`), `/admin/chats` (staff search by exact
+  chat ID or worker/customer name/email; desk support + admin read-only —
+  `sendChatMessage` rejects staff). Profile aside has a "Message <stage>"
+  button (`openChatRoom` creates-or-returns the pair room; signed-out →
+  login). First message in a room notifies the recipient (email + in-app);
+  ongoing traffic is badge-only by design. Chat images live in
+  `uploads/chat/<roomId>/`, served only to participants + staff.
+- **Uploads**: kinds are now `media|receipt|identity|chat` (`/api/uploads`
+  authorizes per kind: media/receipt = worker, identity = any signed-in
+  user, chat = room participant). `saveUpload(file, folderId, kind)`;
+  identity/chat are image-only with a 10MB cap; `removeStoredUpload(url)`
+  safely unlinks identity/chat files (strict regex, traversal-proof —
+  verified). `/api/media` gained the two gated shapes with
+  `private, max-age=3600` caching.
+- **Payouts ("generated for 0 workers" investigated)**: the action was
+  correct — the UI defaulted to *last* week while all completed bookings sat
+  in the *current* week, and nothing showed what was uncovered. Fixes:
+  `/admin/payments` gained an **Awaiting payout** panel (paid completed
+  bookings with `payoutId IS NULL`, grouped per worker with codes, date
+  span, net + tips; unpaid-completed bookings listed separately as
+  warnings); `PayoutControls` defaults to the awaiting span, has Last
+  week/This week presets (Jamaica calendar), and explains results —
+  `generateWeeklyPayouts` returns `PayoutGeneration` (created,
+  bookingsCovered, unpaidSkipped, and an `awaiting {count, from, to}` hint
+  when zero). Payout rows now show booking counts (codes on hover) and paid
+  date. Verification chain for "was the worker paid": succeeded payment →
+  completed booking → payout row via `bookings.payoutId` (never double-paid)
+  → admin pays off-platform → **Mark paid** (+ reference note, audited,
+  worker notified) → worker sees it under Earnings.
+- Schema delta (pushed to the VPS db 2026-07-07): enums
+  `verification_status`, `id_document_type`, `chat_message_kind`; tables
+  `customer_verifications`, `chat_rooms`, `chat_messages`;
+  `users.onboarded_at`. All additive — `drizzle-kit push` applied cleanly.
+- E2E verified with minted DB sessions (since deleted): onboarding redirect
+  loop, upload/media auth matrices per role, staff-cannot-send +
+  cross-room-image rejection, supervisor-approves/support-forbidden/CAS
+  double-review, doc deletion on approval, booking gate flip after
+  approval, SSE handshake, admin chat search, payout zero-hint + generate +
+  idempotent re-run (test payout then released so the owner can generate it
+  live). NOTE: test customer uncommonfavour32@gmail.com is now onboarded +
+  **approved** (test doc consumed), and its chat with Maxx contains two test
+  messages — use a fresh account to demo the wizard.
+
 **V1 code complete.** Remaining before launch (V1.1):
 1. `.env` — confirm all names in `.env.example` exist locally (esp. `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `EMAIL_*`, `STRIPE_*` incl. `STRIPE_MEMBERSHIP_PRICE_ID` + webhook secret, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `FREE_ACCESS_UNTIL`). Admin role already seeded for the owner email.
 2. Stripe dashboard: create the monthly membership Price; point a webhook at `/api/stripe/webhook` (events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`).
@@ -180,6 +254,9 @@ All tables use `uuid` PKs (`defaultRandom()`), `createdAt`/`updatedAt` timestamp
 - **reviews** — id, bookingId (unique), customerId, workerId, rating (1-5), body, anonymous, status (`pending|approved|rejected`) for admin moderation, timestamps.
 - **favorites** — customerId + workerId composite PK.
 - **notifications** — id, userId, type, title, body, readAt, meta jsonb, createdAt. (in-app mirror of every email)
+- **customer_verifications** — id, userId (unique), status (`pending|approved|rejected`), documentType (`drivers_license|passport|national_id`), fullName (as printed on the document), documentUrl (null after review — files are temporary), reviewedByUserId/At, note, timestamps. Booking is gated on `approved`.
+- **chat_rooms** — id, customerId + workerId (unique pair), lastMessageAt/Preview (inbox denorm), customerLastReadAt/workerLastReadAt (unread cursors), createdAt.
+- **chat_messages** — id, roomId, senderUserId, kind (`text|image`), body (≤1000 chars, doubles as image caption), imageUrl, createdAt. Capped at 1000/room, pruned in batches of 10.
 - **audit_logs** — id, actorUserId, action, entity, entityId, before/after jsonb, createdAt. (all admin overrides write here)
 
 Roles: kept as an enum on `users.role`, now **4 values** (`customer|worker|support|admin`) plus `users.supportRole` (`customer_support|supervisor|driver`, set iff role = support). Desk support (customer_support/supervisor) gets the admin read/moderation tools; drivers get the `/driver` transport view + booking rooms. Enforced in `lib/guards.ts` (`requireStaff`, `isDriver`, `isDeskSupport`).

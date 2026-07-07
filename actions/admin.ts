@@ -14,7 +14,7 @@ import {
   adminUpdateWorkerSchema,
   markPayoutPaidSchema,
 } from "@/schemas/admin";
-import type { ActionResult } from "@/types";
+import type { ActionResult, PayoutGeneration } from "@/types";
 
 // Admin override of any worker profile + platform flags (verify/suspend/hide).
 export async function adminUpdateWorker(input: unknown): Promise<ActionResult<undefined>> {
@@ -129,10 +129,15 @@ export async function adminSuspendUser(input: unknown): Promise<ActionResult<und
 // overlapping periods only pick up bookings not yet covered. Re-running a
 // period releases and rebuilds its *pending* payouts; paid payouts and their
 // bookings are never touched.
+//
+// Returns enough context for the UI to explain a zero (PayoutGeneration in
+// types.ts): how many bookings were covered, how many completed bookings
+// were skipped because no payment succeeded, and (when nothing matched)
+// where uncovered earnings actually sit so the admin can adjust the period.
 export async function generateWeeklyPayouts(input: {
   periodStart: string; // YYYY-MM-DD
   periodEnd: string;
-}): Promise<ActionResult<{ created: number }>> {
+}): Promise<ActionResult<PayoutGeneration>> {
   try {
     const admin = await requireAdmin();
     const { periodStart, periodEnd } = input;
@@ -141,7 +146,7 @@ export async function generateWeeklyPayouts(input: {
     }
     if (periodEnd < periodStart) return err(ERR.badRequest);
 
-    const created = await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       // Release bookings held by this period's still-pending payouts, then
       // drop those payouts (regeneration).
       const pendingPayouts = await tx
@@ -181,7 +186,9 @@ export async function generateWeeklyPayouts(input: {
             lte(bookings.date, periodEnd)
           )
         );
-      if (completed.length === 0) return 0;
+      if (completed.length === 0) {
+        return { created: 0, bookingsCovered: 0, unpaidSkipped: 0 };
+      }
 
       // Sum tips across ALL succeeded payments per booking (card + cash).
       const paidRows = await tx
@@ -206,8 +213,12 @@ export async function generateWeeklyPayouts(input: {
         string,
         { amountCents: number; tipsCents: number; bookingIds: string[] }
       >();
+      let unpaidSkipped = 0;
       for (const b of completed) {
-        if (!tipsByBooking.has(b.bookingId)) continue; // unpaid: not payable
+        if (!tipsByBooking.has(b.bookingId)) {
+          unpaidSkipped += 1; // completed but no succeeded payment: not payable
+          continue;
+        }
         const entry =
           byWorker.get(b.workerId) ??
           { amountCents: 0, tipsCents: 0, bookingIds: [] };
@@ -216,8 +227,8 @@ export async function generateWeeklyPayouts(input: {
         entry.bookingIds.push(b.bookingId);
         byWorker.set(b.workerId, entry);
       }
-      if (byWorker.size === 0) return 0;
 
+      let bookingsCovered = 0;
       for (const [workerId, sums] of byWorker) {
         const [payout] = await tx
           .insert(payouts)
@@ -233,20 +244,46 @@ export async function generateWeeklyPayouts(input: {
           .update(bookings)
           .set({ payoutId: payout.id })
           .where(inArray(bookings.id, sums.bookingIds));
+        bookingsCovered += sums.bookingIds.length;
       }
-      return byWorker.size;
+      return { created: byWorker.size, bookingsCovered, unpaidSkipped };
     });
+
+    // Nothing matched: point the admin at where uncovered paid earnings sit
+    // (usually the wrong week was selected).
+    let awaiting: PayoutGeneration["awaiting"] = null;
+    if (result.created === 0) {
+      const uncovered = await db
+        .selectDistinct({ bookingId: bookings.id, date: bookings.date })
+        .from(bookings)
+        .innerJoin(payments, eq(payments.bookingId, bookings.id))
+        .where(
+          and(
+            eq(bookings.status, "completed"),
+            isNull(bookings.payoutId),
+            eq(payments.status, "succeeded")
+          )
+        );
+      if (uncovered.length > 0) {
+        const dates = uncovered.map((b) => b.date).sort();
+        awaiting = {
+          count: uncovered.length,
+          from: dates[0],
+          to: dates[dates.length - 1],
+        };
+      }
+    }
 
     await writeAudit({
       actorUserId: admin.id,
       action: "payouts.generate",
       entity: "payouts",
       entityId: `${periodStart}..${periodEnd}`,
-      after: { workers: created },
+      after: { workers: result.created, bookings: result.bookingsCovered },
     });
 
     revalidatePath("/admin/payments");
-    return ok({ created });
+    return ok({ ...result, awaiting });
   } catch (error) {
     return err(guardErrorMessage(error));
   }

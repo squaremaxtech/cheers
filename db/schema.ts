@@ -77,6 +77,22 @@ export const reviewStatus = pgEnum("review_status", [
   "rejected",
 ]);
 
+// Customer identity verification lifecycle (worker safety requirement).
+export const verificationStatus = pgEnum("verification_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
+
+// Government-issued ID documents accepted for customer verification.
+export const idDocumentType = pgEnum("id_document_type", [
+  "drivers_license",
+  "passport",
+  "national_id",
+]);
+
+export const chatMessageKind = pgEnum("chat_message_kind", ["text", "image"]);
+
 // Worker wellness check-ins while a booking is in progress.
 export const wellnessStatus = pgEnum("wellness_status", ["ok", "help"]);
 
@@ -101,6 +117,10 @@ export const users = pgTable("users", {
   // Set iff role = 'support'; null for every other role.
   supportRole: supportRole("support_role"),
   suspended: boolean("suspended").notNull().default(false),
+  // When the first-login customer setup (profile + ID document + membership)
+  // was completed. Null = the /welcome wizard still gates the customer area.
+  // Only meaningful for role = 'customer'.
+  onboardedAt: timestamp("onboarded_at", { mode: "date" }),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });
@@ -460,6 +480,42 @@ export const memberships = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Customer identity verification
+// ---------------------------------------------------------------------------
+
+// One row per customer, created when they submit an ID document during the
+// first-login setup (or re-submit after a rejection). Customers can only
+// book once their row is 'approved'. The uploaded document is temporary:
+// its file is deleted and document_url cleared as soon as staff reviews it.
+export const customerVerifications = pgTable(
+  "customer_verifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: verificationStatus("status").notNull().default("pending"),
+    documentType: idDocumentType("document_type").notNull(),
+    // Name exactly as printed on the document (may differ from account name).
+    fullName: text("full_name").notNull(),
+    // /api/media/identity/<userId>/<name> while pending; null after review.
+    documentUrl: text("document_url"),
+    reviewedByUserId: uuid("reviewed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at", { mode: "date" }),
+    // Reviewer note — shown to the customer when rejected.
+    note: text("note"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("customer_verifications_user_idx").on(t.userId),
+    index("customer_verifications_status_idx").on(t.status),
+  ]
+);
+
+// ---------------------------------------------------------------------------
 // Reviews & favorites
 // ---------------------------------------------------------------------------
 
@@ -521,6 +577,62 @@ export const notifications = pgTable(
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [index("notifications_user_idx").on(t.userId)]
+);
+
+// ---------------------------------------------------------------------------
+// Chat (customer ↔ worker direct messages)
+// ---------------------------------------------------------------------------
+
+// One room per customer/worker pair. Staff (admin + desk support) can read
+// any room but never send. Denormalized last-message fields drive the inbox
+// list and unread badges without scanning chat_messages.
+export const chatRooms = pgTable(
+  "chat_rooms",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    lastMessageAt: timestamp("last_message_at", { mode: "date" })
+      .notNull()
+      .defaultNow(),
+    lastMessagePreview: text("last_message_preview"),
+    // Per-side read cursors: a side has unread mail when lastMessageAt is
+    // newer than its cursor.
+    customerLastReadAt: timestamp("customer_last_read_at", { mode: "date" }),
+    workerLastReadAt: timestamp("worker_last_read_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("chat_rooms_pair_idx").on(t.customerId, t.workerId),
+    index("chat_rooms_worker_idx").on(t.workerId),
+  ]
+);
+
+// Capped at CHAT_ROOM_MESSAGE_CAP per room (lib/constants.ts) — once a room
+// overflows by a batch, the oldest batch is pruned (and pruned image files
+// unlinked from disk), so new messages replace old ones.
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => chatRooms.id, { onDelete: "cascade" }),
+    senderUserId: uuid("sender_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: chatMessageKind("kind").notNull().default("text"),
+    // Text content; doubles as the optional caption on an image message.
+    body: text("body").notNull().default(""),
+    // /api/media/chat/<roomId>/<name> for image messages.
+    imageUrl: text("image_url"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("chat_messages_room_created_idx").on(t.roomId, t.createdAt)]
 );
 
 // ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
@@ -10,7 +11,9 @@ import {
   workerServices,
 } from "@/db/schema";
 import BookingForm from "@/components/bookings/BookingForm";
+import { getUserRow } from "@/lib/auth";
 import { isUuid } from "@/lib/slug";
+import { getCustomerVerification } from "@/lib/verification";
 
 export const metadata: Metadata = { title: "Book" };
 
@@ -20,6 +23,15 @@ export default async function BookPage(props: PageProps<"/book/[slug]">) {
   const requestedService = Array.isArray(search.service)
     ? search.service[0]
     : search.service;
+
+  // Booking is gated on identity verification (mirrors createBooking).
+  const viewer = await getUserRow();
+  const verification =
+    viewer?.role === "customer"
+      ? await getCustomerVerification(viewer.id)
+      : null;
+  const verificationBlocked =
+    viewer?.role === "customer" && verification?.status !== "approved";
 
   const bookable = and(
     eq(workers.active, true),
@@ -80,12 +92,37 @@ export default async function BookPage(props: PageProps<"/book/[slug]">) {
         after acceptance.
       </p>
       <div className="mt-8">
-        <BookingForm
-          workerId={worker.id}
-          services={services}
-          addons={addons}
-          initialServiceTypeId={requestedService}
-        />
+        {verificationBlocked ? (
+          <div className="card p-6">
+            <h2 className="font-display text-lg text-ink">
+              {verification?.status === "pending"
+                ? "Verification in review"
+                : "Verification required"}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              {verification?.status === "pending"
+                ? "Your ID is with our team — booking unlocks the moment you're verified. We'll email you."
+                : "To keep our workers safe, bookings open after a quick identity check. Submit your ID from your dashboard."}
+            </p>
+            <div className="mt-5 flex gap-3">
+              <Link href="/dashboard" className="btn-gold">
+                {verification?.status === "pending"
+                  ? "View status"
+                  : "Get verified"}
+              </Link>
+              <Link href={`/workers/${worker.slug}`} className="btn-outline">
+                Back to profile
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <BookingForm
+            workerId={worker.id}
+            services={services}
+            addons={addons}
+            initialServiceTypeId={requestedService}
+          />
+        )}
       </div>
     </div>
   );

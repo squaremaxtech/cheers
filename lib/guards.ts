@@ -53,6 +53,15 @@ export async function requireStaff(): Promise<UserRow> {
   return requireRole("admin", "support");
 }
 
+// Customer identity verifications: admins and support supervisors review
+// and decide. Plain customer support may look, drivers get nothing.
+export async function requireVerificationReviewer(): Promise<UserRow> {
+  const user = await requireUser();
+  if (user.role === "admin") return user;
+  if (user.role === "support" && user.supportRole === "supervisor") return user;
+  throw new GuardError("forbidden");
+}
+
 // Support sub-type checks. Drivers are support staff who transport workers;
 // they get the transport view but NOT the admin/moderation tools.
 export function isDriver(user: UserRow): boolean {

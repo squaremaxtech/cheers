@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import StarRating from "@/components/ui/StarRating";
+import ChatButton from "@/components/chat/ChatButton";
 import CategoryShowcase, {
   type CategoryOffering,
 } from "@/components/workers/CategoryShowcase";
@@ -262,6 +263,13 @@ export default async function WorkerProfilePage(
             <Link href={bookHref} className="btn-gold mt-8 w-full">
               {viewer ? "Book now" : "Sign in to book"}
             </Link>
+            {(!viewer || viewer.role === "customer") && (
+              <ChatButton
+                workerId={worker.id}
+                stageName={worker.stageName}
+                signedIn={viewer !== null}
+              />
+            )}
             <p className="mt-3 text-center text-[11px] text-faint">
               Secure payment · PIN-verified meetings · 5-hour free cancellation
             </p>

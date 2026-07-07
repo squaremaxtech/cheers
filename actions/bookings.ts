@@ -29,6 +29,7 @@ import { guardErrorMessage, requireUser } from "@/lib/guards";
 import type { ActionResult, BookingRow, TimeSlot, UserRow } from "@/types";
 import { hasMembershipAccess } from "@/lib/membership";
 import { notify, notifyAdmins } from "@/lib/notify";
+import { isCustomerVerified } from "@/lib/verification";
 import {
   bookingDatesSchema,
   bookingDecisionSchema,
@@ -158,6 +159,12 @@ export async function createBooking(
 
     if (!(await hasMembershipAccess(user.id))) {
       return err("An active membership is required to book. Visit Membership to join.");
+    }
+    // Worker safety: customers book only after staff verifies their ID.
+    if (user.role === "customer" && !(await isCustomerVerified(user.id))) {
+      return err(
+        "Your identity must be verified before you can book. Check your verification status on your dashboard."
+      );
     }
 
     const start = parseBookingStart(data.date, data.startTime);

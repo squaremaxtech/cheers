@@ -52,6 +52,25 @@ export const BOOKING_DURATIONS_MINUTES = [60, 90, 120, 180, 240, 360] as const;
 // booking room flags the check as overdue past it.
 export const WELLNESS_CHECK_INTERVAL_MINUTES = 30;
 
+// Chat rules: each text message is capped, and each room keeps at most
+// CHAT_ROOM_MESSAGE_CAP messages. Pruning runs in batches — once a room
+// overflows by CHAT_PRUNE_BATCH, the oldest overflow is deleted — so new
+// messages replace old ones ~10 at a time instead of on every send.
+export const CHAT_MESSAGE_MAX_CHARS = 1000;
+export const CHAT_ROOM_MESSAGE_CAP = 1000;
+export const CHAT_PRUNE_BATCH = 10;
+
+// ID documents accepted for customer identity verification.
+export const ID_DOCUMENT_TYPES = [
+  { value: "drivers_license", label: "Driver's licence" },
+  { value: "passport", label: "Passport" },
+  { value: "national_id", label: "National ID card" },
+] as const;
+
+export function idDocumentLabel(value: string): string {
+  return ID_DOCUMENT_TYPES.find((t) => t.value === value)?.label ?? value;
+}
+
 // Today's date in Jamaica (UTC-5, no DST). new Date().toISOString() is UTC,
 // which runs a day ahead of Jamaica every evening — never use it for "today".
 export function jamaicaTodayISO(): string {

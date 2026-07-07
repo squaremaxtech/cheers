@@ -7,6 +7,7 @@ import { getUserRow } from "@/lib/auth";
 const nav = [
   { href: "/dashboard", label: "Overview" },
   { href: "/bookings", label: "Bookings" },
+  { href: "/chats", label: "Messages" },
   { href: "/favorites", label: "Favorites" },
   { href: "/membership", label: "Membership" },
   { href: "/browse", label: "Browse workers" },
@@ -19,6 +20,9 @@ export default async function CustomerLayout({
 }) {
   const user = await getUserRow();
   if (!user || user.suspended) redirect("/login");
+  // First-time customers finish the /welcome setup (profile, ID document,
+  // membership) before using the account area.
+  if (user.role === "customer" && !user.onboardedAt) redirect("/welcome");
 
   return (
     <>
