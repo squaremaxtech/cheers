@@ -108,6 +108,35 @@ error/loading/not-found boundaries.
   in book/reschedule/availability/driver views (UTC runs a day ahead of
   Jamaica after 7pm and blocked same-evening dates).
 
+**2026-07-07 update (2) — UX + lifecycle batch:**
+- **Dashboard navs highlight the active page** (`DashboardNav`, longest-prefix
+  match, same styling as hover).
+- **Booking calendar**: `BookingCalendar` month grid replaces the native date
+  input in BookingForm + reschedule — only dates with ≥1 open slot are
+  clickable (`getAvailableDates` in lib/availability.ts, batched 3-query month
+  scan; `getBookingDates` action). All customer-facing times now 12-hour
+  (`formatTime12`).
+- **Service preselection**: profile "Book X" buttons pass `?service=<typeId>`
+  to `/book/[slug]`; BookingForm preselects it.
+- **Lifecycle hardening**: `confirmed → completed` removed from the worker
+  graph — session must be PIN-started (in_progress) first, and completing
+  requires a succeeded payment (cash must be recorded with proof). Cash can
+  now be recorded during in_progress too (button no longer vanishes after PIN
+  start).
+- **Payment method switch**: confirmed cash bookings can switch to card until
+  the session starts ("Pay by card instead" in the room); webhook honors card
+  payment on confirmed bookings and retires the pending cash row; conflicts
+  still auto-refund.
+- **Admin payments**: `adminResolvePendingPayment` — Mark collected / Void
+  buttons for stuck pending (cash) payments, audited; marking collected
+  confirms an accepted booking.
+- **Emails**: booking emails now include a "View booking" deep-link button
+  (notify() emailBody helper).
+- **Accounts**: supervisor is now Andre Palmer <maxwell.wedderburn@icta.gov.jm>
+  (old +supervisor alias account replaced in DB + seed-accounts; the nameless
+  icta customer's test booking/payment/review were reassigned to Andre before
+  deletion).
+
 **V1 code complete.** Remaining before launch (V1.1):
 1. `.env` — confirm all names in `.env.example` exist locally (esp. `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `EMAIL_*`, `STRIPE_*` incl. `STRIPE_MEMBERSHIP_PRICE_ID` + webhook secret, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `FREE_ACCESS_UNTIL`). Admin role already seeded for the owner email.
 2. Stripe dashboard: create the monthly membership Price; point a webhook at `/api/stripe/webhook` (events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`).

@@ -24,3 +24,11 @@ export const refundSchema = z.object({
   paymentId: z.string().uuid(),
   note: z.string().trim().max(500).optional(),
 });
+
+// Admin resolves a stuck pending payment: mark it collected (succeeded) or
+// void it (failed).
+export const adminPaymentStatusSchema = z.object({
+  paymentId: z.string().uuid(),
+  to: z.enum(["succeeded", "failed"]),
+  note: z.string().trim().max(500).optional(),
+});

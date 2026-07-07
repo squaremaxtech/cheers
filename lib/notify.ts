@@ -3,6 +3,17 @@ import { db } from "@/db";
 import { notifications, users } from "@/db/schema";
 import { emailLayout, sendEmail } from "@/lib/mailer";
 
+// Booking-related emails deep-link to the live booking room.
+function emailBody(opts: { body: string; meta?: Record<string, string> }): string {
+  const base = process.env.NEXTAUTH_URL ?? "";
+  if (!opts.meta?.bookingId || !base) return `<p>${opts.body}</p>`;
+  const url = `${base.replace(/\/$/, "")}/bookings/${opts.meta.bookingId}`;
+  return `<p>${opts.body}</p>
+    <p style="margin-top:24px;">
+      <a href="${url}" style="background:#d6b25e;color:#0c0a09;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;">View booking</a>
+    </p>`;
+}
+
 // Central notification dispatcher: writes an in-app notification row and
 // mirrors it as an email. Never throws — a failed notification must not
 // break the mutation that triggered it.
@@ -29,7 +40,7 @@ export async function notify(opts: {
       await sendEmail({
         to: user.email,
         subject: `Cheers — ${opts.title}`,
-        html: emailLayout(opts.title, `<p>${opts.body}</p>`),
+        html: emailLayout(opts.title, emailBody(opts)),
       });
     }
   } catch (error) {
@@ -59,7 +70,7 @@ async function notifyMany(
       sendEmail({
         to: a.email,
         subject: `Cheers — ${opts.title}`,
-        html: emailLayout(opts.title, `<p>${opts.body}</p>`),
+        html: emailLayout(opts.title, emailBody(opts)),
       })
     )
   );

@@ -13,6 +13,7 @@ import { notify, notifyAdmins } from "@/lib/notify";
 import { bookingEventNow, publishBooking } from "@/lib/realtime";
 import { appUrl, stripe } from "@/lib/stripe";
 import {
+  adminPaymentStatusSchema,
   cashCollectedSchema,
   checkoutSchema,
   chooseCashSchema,
@@ -54,7 +55,11 @@ export async function createBookingCheckout(
         )
       );
     if (!booking) return err(ERR.notFound);
-    if (booking.status !== "accepted") {
+    // Two ways in: paying an accepted booking, or switching a confirmed
+    // cash-at-meeting booking to card any time before the session starts.
+    // Once the session is in progress (or cash was collected) the method is
+    // locked — disputes go through admin refunds instead.
+    if (booking.status !== "accepted" && booking.status !== "confirmed") {
       return err("This booking is not awaiting payment.");
     }
     if (await hasSucceededPayment(booking.id)) {
@@ -236,8 +241,16 @@ export async function recordCashCollected(
         )
       );
     if (!booking) return err(ERR.notFound);
-    if (booking.status !== "accepted" && booking.status !== "confirmed") {
-      return err("Cash can only be recorded for accepted or confirmed bookings.");
+    // Recording is allowed right through the session — workers often collect
+    // at the door but only log it after starting with the PIN.
+    if (
+      booking.status !== "accepted" &&
+      booking.status !== "confirmed" &&
+      booking.status !== "in_progress"
+    ) {
+      return err(
+        "Cash can only be recorded while a booking is accepted, confirmed or in progress."
+      );
     }
     if (await hasSucceededPayment(booking.id)) {
       return err("A payment was already recorded for this booking.");
@@ -311,6 +324,81 @@ export async function recordCashCollected(
     });
 
     revalidatePath("/worker/bookings");
+    revalidatePath("/admin/payments");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// --- Admin: resolve a stuck pending payment --------------------------------------
+
+// Cash expectations that never got recorded (worker forgot proof, dispute
+// settled off-platform, …) sit pending forever without this. Admin can mark
+// them collected or void them; both are audited.
+export async function adminResolvePendingPayment(
+  input: unknown
+): Promise<ActionResult<undefined>> {
+  try {
+    const admin = await requireAdmin();
+    const parsed = adminPaymentStatusSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.id, parsed.data.paymentId));
+    if (!payment) return err(ERR.notFound);
+    if (payment.status !== "pending") {
+      return err("Only pending payments can be resolved this way.");
+    }
+
+    // CAS: a webhook or worker recording landing at the same moment wins.
+    const updated = await db
+      .update(payments)
+      .set({ status: parsed.data.to, updatedAt: new Date() })
+      .where(and(eq(payments.id, payment.id), eq(payments.status, "pending")))
+      .returning({ id: payments.id });
+    if (updated.length === 0) {
+      return err("This payment just changed state — reload and check again.");
+    }
+
+    const [booking] = await db
+      .select()
+      .from(bookings)
+      .where(eq(bookings.id, payment.bookingId));
+
+    // Marking a cash payment collected confirms the booking the same way a
+    // worker recording it would.
+    if (parsed.data.to === "succeeded" && booking?.status === "accepted") {
+      await transitionBooking({
+        booking,
+        to: "confirmed",
+        actorUserId: admin.id,
+        note: "payment marked collected by admin",
+      });
+    } else if (booking) {
+      publishBooking(booking.id, bookingEventNow("payment"));
+    }
+
+    await writeAudit({
+      actorUserId: admin.id,
+      action: `payment.${parsed.data.to === "succeeded" ? "mark_collected" : "void"}`,
+      entity: "payments",
+      entityId: payment.id,
+      before: { status: "pending" },
+      after: { status: parsed.data.to, note: parsed.data.note },
+    });
+    if (parsed.data.to === "succeeded") {
+      await notify({
+        userId: payment.customerId,
+        type: "payment_received",
+        title: `Payment recorded for ${booking?.code ?? "your booking"}`,
+        body: "Our team confirmed your payment. Thank you!",
+        meta: booking ? { bookingId: booking.id } : undefined,
+      });
+    }
+
     revalidatePath("/admin/payments");
     return ok(undefined);
   } catch (error) {

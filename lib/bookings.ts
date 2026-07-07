@@ -45,12 +45,15 @@ export function customerCanCancel(booking: BookingRow): boolean {
 }
 
 // Allowed lifecycle transitions (admin can force transitions between LIVE
-// states only — see canTransition).
+// states only — see canTransition). confirmed → completed deliberately does
+// NOT exist for workers: the session must be started with the customer's PIN
+// (confirmed → in_progress) before it can be completed, so a booking can
+// never be closed without a verified start. Admin override still applies.
 const transitions: Record<BookingStatus, BookingStatus[]> = {
   pending: ["accepted", "declined", "cancelled"],
   accepted: ["confirmed", "cancelled"],
   declined: [],
-  confirmed: ["in_progress", "completed", "cancelled", "refunded"],
+  confirmed: ["in_progress", "cancelled", "refunded"],
   in_progress: ["completed", "cancelled"],
   completed: ["refunded"],
   cancelled: [],

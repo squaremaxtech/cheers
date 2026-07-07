@@ -16,6 +16,10 @@ export const metadata: Metadata = { title: "Book" };
 
 export default async function BookPage(props: PageProps<"/book/[slug]">) {
   const { slug } = await props.params;
+  const search = await props.searchParams;
+  const requestedService = Array.isArray(search.service)
+    ? search.service[0]
+    : search.service;
 
   const bookable = and(
     eq(workers.active, true),
@@ -76,7 +80,12 @@ export default async function BookPage(props: PageProps<"/book/[slug]">) {
         after acceptance.
       </p>
       <div className="mt-8">
-        <BookingForm workerId={worker.id} services={services} addons={addons} />
+        <BookingForm
+          workerId={worker.id}
+          services={services}
+          addons={addons}
+          initialServiceTypeId={requestedService}
+        />
       </div>
     </div>
   );

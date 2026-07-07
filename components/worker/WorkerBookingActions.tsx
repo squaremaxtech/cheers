@@ -88,7 +88,9 @@ export default function WorkerBookingActions({
           </>
         )}
 
-        {(status === "accepted" || status === "confirmed") && (
+        {(status === "accepted" ||
+          status === "confirmed" ||
+          status === "in_progress") && (
           <button
             type="button"
             className="btn-outline"
@@ -99,7 +101,7 @@ export default function WorkerBookingActions({
           </button>
         )}
 
-        {(status === "confirmed" || status === "in_progress") && (
+        {status === "in_progress" && (
           <button
             type="button"
             className="btn-gold"
@@ -127,6 +129,15 @@ export default function WorkerBookingActions({
           </button>
         )}
       </div>
+
+      {status === "confirmed" && (
+        <p className="text-xs text-muted">
+          If the customer is paying cash, collect it and record it here (photo
+          proof required). Enter the customer&apos;s PIN in the booking room to
+          start the session — completing is only possible after a
+          PIN-verified start and a recorded payment.
+        </p>
+      )}
 
       {showCash && (
         <form onSubmit={handleCash} className="space-y-3">

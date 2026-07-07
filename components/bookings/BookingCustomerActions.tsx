@@ -9,8 +9,9 @@ import {
   rescheduleBooking,
 } from "@/actions/bookings";
 import { chooseCashPayment, createBookingCheckout } from "@/actions/payments";
+import BookingCalendar from "@/components/bookings/BookingCalendar";
 import TimeSlotPicker from "@/components/bookings/TimeSlotPicker";
-import { formatCents, jamaicaTodayISO } from "@/lib/constants";
+import { formatCents } from "@/lib/constants";
 import type { BookingStatus, TimeSlot } from "@/types";
 
 const TIP_PERCENTS = [0, 10, 15, 20] as const;
@@ -23,6 +24,8 @@ export default function BookingCustomerActions({
   canCancel,
   serviceTotalCents,
   stripeConfigured,
+  cashPending = false,
+  committedTipCents = 0,
 }: {
   bookingId: string;
   workerId: string;
@@ -31,6 +34,10 @@ export default function BookingCustomerActions({
   canCancel: boolean;
   serviceTotalCents: number;
   stripeConfigured: boolean;
+  // A confirmed cash-at-meeting booking whose cash hasn't been collected yet
+  // may still switch to card (until the session starts).
+  cashPending?: boolean;
+  committedTipCents?: number;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -82,9 +89,12 @@ export default function BookingCustomerActions({
   const reschedulable =
     status === "pending" || status === "accepted" || status === "confirmed";
 
-  async function handlePayCard() {
+  async function handlePayCard(chosenTipCents: number) {
     setBusy(true);
-    const res = await createBookingCheckout({ bookingId, tipCents });
+    const res = await createBookingCheckout({
+      bookingId,
+      tipCents: chosenTipCents,
+    });
     if (res.ok) {
       window.location.href = res.data.url;
     } else {
@@ -190,7 +200,7 @@ export default function BookingCustomerActions({
             {stripeConfigured && (
               <button
                 type="button"
-                onClick={handlePayCard}
+                onClick={() => handlePayCard(tipCents)}
                 disabled={busy}
                 className="btn-gold w-full"
               >
@@ -213,6 +223,25 @@ export default function BookingCustomerActions({
               Cash bookings confirm instantly — have the exact amount ready.
             </p>
           </div>
+        </div>
+      )}
+
+      {status === "confirmed" && cashPending && stripeConfigured && (
+        <div>
+          <p className="text-sm text-muted">
+            Paying cash at the meeting. Changed your mind? You can switch to
+            card any time before the session starts.
+          </p>
+          <button
+            type="button"
+            onClick={() => handlePayCard(committedTipCents)}
+            disabled={busy}
+            className="btn-outline mt-3"
+          >
+            {busy
+              ? "Working…"
+              : `Pay ${formatCents(serviceTotalCents + committedTipCents)} by card instead`}
+          </button>
         </div>
       )}
 
@@ -247,17 +276,13 @@ export default function BookingCustomerActions({
       {showReschedule && (
         <form onSubmit={handleReschedule} className="space-y-3">
           <div>
-            <label className="label" htmlFor="r-date">
-              New date
-            </label>
-            <input
-              id="r-date"
-              type="date"
-              required
-              min={jamaicaTodayISO()}
+            <p className="label">New date</p>
+            <BookingCalendar
+              workerId={workerId}
+              durationMinutes={durationMinutes}
+              excludeBookingId={bookingId}
               value={newDate}
-              onChange={(e) => setNewDate(e.target.value)}
-              className="input max-w-52"
+              onSelect={setNewDate}
             />
           </div>
           <div>

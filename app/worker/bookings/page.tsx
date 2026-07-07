@@ -6,7 +6,7 @@ import { bookings, users } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 import WorkerBookingActions from "@/components/worker/WorkerBookingActions";
-import { formatCents } from "@/lib/constants";
+import { formatCents, formatTime12 } from "@/lib/constants";
 import { statusTone } from "@/lib/status";
 import { getWorkerContext } from "@/lib/worker-context";
 
@@ -66,7 +66,7 @@ export default async function WorkerBookingsPage() {
                   </p>
                   <p className="mt-1 text-xs text-muted">
                     {customerName ?? "Customer"} · {booking.date} at{" "}
-                    {booking.startTime.slice(0, 5)} · {booking.durationMinutes} min
+                    {formatTime12(booking.startTime)} · {booking.durationMinutes} min
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

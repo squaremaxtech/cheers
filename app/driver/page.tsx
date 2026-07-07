@@ -7,7 +7,7 @@ import { bookings, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import SiteHeader from "@/components/layout/SiteHeader";
 import { getUserRow } from "@/lib/auth";
-import { jamaicaTodayISO } from "@/lib/constants";
+import { formatTime12, jamaicaTodayISO } from "@/lib/constants";
 import { isDriver } from "@/lib/guards";
 
 export const metadata: Metadata = { title: "Driver — Transport Schedule" };
@@ -64,7 +64,7 @@ export default async function DriverPage() {
               >
                 <div>
                   <p className="text-sm font-medium text-ink">
-                    {b.date} · {b.startTime.slice(0, 5)}
+                    {b.date} · {formatTime12(b.startTime)}
                     <span className="ml-2 text-xs text-faint">
                       ({b.durationMinutes} min)
                     </span>

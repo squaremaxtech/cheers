@@ -5,12 +5,9 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { createBooking, getBookingSlots } from "@/actions/bookings";
 import LocationPicker from "@/components/maps/LocationPicker";
+import BookingCalendar from "@/components/bookings/BookingCalendar";
 import TimeSlotPicker from "@/components/bookings/TimeSlotPicker";
-import {
-  BOOKING_DURATIONS_MINUTES,
-  formatCents,
-  jamaicaTodayISO,
-} from "@/lib/constants";
+import { BOOKING_DURATIONS_MINUTES, formatCents } from "@/lib/constants";
 import type { ServiceAddonRow, TimeSlot } from "@/types";
 
 type ServiceOption = {
@@ -27,20 +24,26 @@ export default function BookingForm({
   workerId,
   services,
   addons,
+  initialServiceTypeId,
 }: {
   workerId: string;
   services: ServiceOption[];
   addons: ServiceAddonRow[];
+  // Preselects the service the customer chose on the profile page (?service=).
+  initialServiceTypeId?: string;
 }) {
   const router = useRouter();
+  const initialService =
+    services.find((s) => s.serviceTypeId === initialServiceTypeId) ??
+    services[0];
   const [serviceTypeId, setServiceTypeId] = useState(
-    services[0]?.serviceTypeId ?? ""
+    initialService?.serviceTypeId ?? ""
   );
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [duration, setDuration] = useState(
-    services[0]?.durationMinutes ?? 60
+    initialService?.durationMinutes ?? 60
   );
   const [slots, setSlots] = useState<TimeSlot[] | null>(null);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -143,8 +146,6 @@ export default function BookingForm({
     }
   }
 
-  const today = jamaicaTodayISO();
-
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Service */}
@@ -230,41 +231,34 @@ export default function BookingForm({
       {/* When */}
       <fieldset className="card space-y-4 p-5">
         <legend className="label px-1">When</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="b-date">
-              Date
-            </label>
-            <input
-              id="b-date"
-              type="date"
-              min={today}
-              required
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="b-duration">
-              Duration
-            </label>
-            <select
-              id="b-duration"
-              className="input"
-              value={duration}
-              onChange={(e) => setDuration(Number(e.target.value))}
-            >
-              {/* Standard durations plus this service's own duration */}
-              {[...new Set([selectedService?.durationMinutes ?? 60, ...BOOKING_DURATIONS_MINUTES])]
-                .sort((a, b) => a - b)
-                .map((d) => (
-                  <option key={d} value={d}>
-                    {d < 120 ? `${d} min` : `${d / 60} hours`}
-                  </option>
-                ))}
-            </select>
-          </div>
+        <div>
+          <label className="label" htmlFor="b-duration">
+            Duration
+          </label>
+          <select
+            id="b-duration"
+            className="input sm:max-w-56"
+            value={duration}
+            onChange={(e) => setDuration(Number(e.target.value))}
+          >
+            {/* Standard durations plus this service's own duration */}
+            {[...new Set([selectedService?.durationMinutes ?? 60, ...BOOKING_DURATIONS_MINUTES])]
+              .sort((a, b) => a - b)
+              .map((d) => (
+                <option key={d} value={d}>
+                  {d < 120 ? `${d} min` : `${d / 60} hours`}
+                </option>
+              ))}
+          </select>
+        </div>
+        <div>
+          <p className="label">Date</p>
+          <BookingCalendar
+            workerId={workerId}
+            durationMinutes={duration}
+            value={date}
+            onSelect={setDate}
+          />
         </div>
         <div>
           <p className="label">Start time</p>

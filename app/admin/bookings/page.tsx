@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { bookings, users, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import AdminBookingActions from "@/components/admin/AdminBookingActions";
-import { formatCents } from "@/lib/constants";
+import { formatCents, formatTime12 } from "@/lib/constants";
 import { statusTone } from "@/lib/status";
 
 export const metadata: Metadata = { title: "Bookings — Admin" };
@@ -57,7 +57,7 @@ export default async function AdminBookingsPage() {
                 </p>
                 <p className="mt-1 text-xs text-muted">
                   {customerName ?? customerEmail} → {stageName} · {booking.date}{" "}
-                  at {booking.startTime.slice(0, 5)}
+                  at {formatTime12(booking.startTime)}
                 </p>
                 <p className="mt-0.5 text-xs text-faint">{booking.address}</p>
               </div>

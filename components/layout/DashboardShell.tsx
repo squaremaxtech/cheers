@@ -1,4 +1,4 @@
-import Link from "next/link";
+import DashboardNav from "@/components/layout/DashboardNav";
 
 export type NavItem = { href: string; label: string };
 
@@ -19,17 +19,7 @@ export default function DashboardShell({
         <p className="mb-3 hidden text-xs font-medium uppercase tracking-[0.2em] text-faint lg:block">
           {title}
         </p>
-        <nav className="flex gap-1 overflow-x-auto pb-2 lg:flex-col lg:pb-0">
-          {nav.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="btn-ghost shrink-0 justify-start whitespace-nowrap text-sm"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <DashboardNav nav={nav} />
       </aside>
       <div className="min-w-0 flex-1">{children}</div>
     </div>

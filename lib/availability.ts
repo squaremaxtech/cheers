@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { availability, availabilityExceptions, bookings } from "@/db/schema";
 import { parseBookingStart } from "@/lib/bookings";
@@ -165,6 +165,103 @@ export async function getTimeSlots(
     }
   }
   return slots;
+}
+
+// Which dates in [fromDate, toDate] (inclusive, ISO strings) have at least
+// one available slot for this duration. Batched: three queries for the whole
+// range, then pure computation — used by the booking calendar to grey out
+// full/closed days up front.
+export async function getAvailableDates(
+  workerId: string,
+  durationMinutes: number,
+  fromDate: string,
+  toDate: string,
+  excludeBookingId?: string
+): Promise<string[]> {
+  const [exceptions, rules, busyRows] = await Promise.all([
+    db
+      .select()
+      .from(availabilityExceptions)
+      .where(
+        and(
+          eq(availabilityExceptions.workerId, workerId),
+          gte(availabilityExceptions.date, fromDate),
+          lte(availabilityExceptions.date, toDate)
+        )
+      ),
+    db.select().from(availability).where(eq(availability.workerId, workerId)),
+    db
+      .select({
+        id: bookings.id,
+        date: bookings.date,
+        startTime: bookings.startTime,
+        durationMinutes: bookings.durationMinutes,
+      })
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.workerId, workerId),
+          inArray(bookings.status, BLOCKING_STATUSES),
+          gte(bookings.date, previousDate(fromDate)),
+          lte(bookings.date, toDate)
+        )
+      ),
+  ]);
+
+  const exceptionByDate = new Map(exceptions.map((e) => [e.date, e.available]));
+  const busy = busyRows
+    .filter((b) => b.id !== excludeBookingId)
+    .map((b) => {
+      const startMs = parseBookingStart(b.date, b.startTime).getTime();
+      return { startMs, endMs: startMs + b.durationMinutes * 60_000 };
+    });
+
+  const step = durationMinutes % 60 === 0 ? 60 : 30;
+  const now = Date.now();
+  const open: string[] = [];
+
+  const cursor = new Date(`${fromDate}T00:00:00Z`);
+  const end = new Date(`${toDate}T00:00:00Z`);
+  for (; cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const date = cursor.toISOString().slice(0, 10);
+    if (!withinBookingHorizon(date)) continue;
+
+    // Same rules as dayWindows(), computed from the prefetched rows.
+    const exception = exceptionByDate.get(date);
+    let windows: Window[];
+    if (exception === false) {
+      continue; // blocked day
+    } else if (exception === true || rules.length === 0) {
+      windows = [{ startMin: DEFAULT_OPEN_START_MIN, endMin: DEFAULT_OPEN_END_MIN }];
+    } else {
+      const dayOfWeek = cursor.getUTCDay();
+      windows = rules
+        .filter((r) => r.dayOfWeek === dayOfWeek)
+        .map((r) => ({
+          startMin: toMinutes(r.startTime),
+          endMin: toMinutes(r.endTime),
+        }))
+        .filter((w) => w.endMin > w.startMin);
+    }
+
+    const hasSlot = windows.some((window) => {
+      for (
+        let startMin = window.startMin;
+        startMin + durationMinutes <= window.endMin;
+        startMin += step
+      ) {
+        const startMs = parseBookingStart(date, toHHMM(startMin)).getTime();
+        if (startMs <= now) continue;
+        const endMs = startMs + durationMinutes * 60_000;
+        if (!busy.some((b) => b.startMs < endMs && b.endMs > startMs)) {
+          return true;
+        }
+      }
+      return false;
+    });
+    if (hasSlot) open.push(date);
+  }
+  return open;
 }
 
 // Server-side revalidation used INSIDE the booking transaction. Callers must

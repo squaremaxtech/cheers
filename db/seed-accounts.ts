@@ -29,7 +29,7 @@ const accounts: {
   { email: "uncommonfavour32@gmail.com", role: "customer", name: "Favour Campbell", phone: "+1 876 555 0142" },
   { email: "maxwellwedderburn32@gmail.com", role: "worker", name: "Maxwell Wedderburn", phone: "+1 876 555 0177" },
   { email: "managestorymaker@gmail.com", role: "support", supportRole: "customer_support", name: "Tanya Reid" },
-  { email: "squaremaxtech+supervisor@gmail.com", role: "support", supportRole: "supervisor", name: "Andre Palmer" },
+  { email: "maxwell.wedderburn@icta.gov.jm", role: "support", supportRole: "supervisor", name: "Andre Palmer" },
   { email: "maxwellwedderburn@outlook.com", role: "support", supportRole: "driver", name: "Devon Brown", phone: "+1 876 555 0193" },
 ];
 

@@ -72,3 +72,12 @@ export function formatCents(cents: number): string {
 export function formatStars(avgRatingX100: number): string {
   return (avgRatingX100 / 100).toFixed(1);
 }
+
+// "18:30" (or "18:30:00") → "6:30 PM". Customers think in 12-hour time.
+export function formatTime12(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return time;
+  const period = h < 12 ? "AM" : "PM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+}

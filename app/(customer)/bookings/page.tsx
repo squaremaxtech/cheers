@@ -7,7 +7,7 @@ import { bookings, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 import { getUserRow } from "@/lib/auth";
-import { formatCents } from "@/lib/constants";
+import { formatCents, formatTime12 } from "@/lib/constants";
 import { statusTone } from "@/lib/status";
 
 export const metadata: Metadata = { title: "Booking History" };
@@ -57,7 +57,7 @@ export default async function BookingsPage() {
                 </p>
                 <p className="mt-1 text-xs text-faint">
                   {booking.code} · {booking.date} at{" "}
-                  {booking.startTime.slice(0, 5)}
+                  {formatTime12(booking.startTime)}
                 </p>
               </div>
               <div className="flex items-center gap-3">

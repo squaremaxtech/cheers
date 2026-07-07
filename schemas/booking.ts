@@ -28,6 +28,14 @@ export const bookingSlotsSchema = z.object({
   excludeBookingId: z.string().uuid().optional(),
 });
 
+export const bookingDatesSchema = z.object({
+  workerId: z.string().uuid(),
+  // First day of the month being viewed in the booking calendar.
+  month: z.string().regex(/^\d{4}-\d{2}$/, "Invalid month"),
+  durationMinutes: z.coerce.number().int().min(15).max(720),
+  excludeBookingId: z.string().uuid().optional(),
+});
+
 export const bookingDecisionSchema = z.object({
   bookingId: z.string().uuid(),
   note: z.string().trim().max(500).optional(),

@@ -6,6 +6,7 @@ import { db } from "@/db";
 import {
   bookingEvents,
   bookings,
+  payments,
   serviceAddons,
   serviceTypes,
   workers,
@@ -29,6 +30,7 @@ import type { ActionResult, BookingRow, TimeSlot, UserRow } from "@/types";
 import { hasMembershipAccess } from "@/lib/membership";
 import { notify, notifyAdmins } from "@/lib/notify";
 import {
+  bookingDatesSchema,
   bookingDecisionSchema,
   bookingSlotsSchema,
   cancelBookingSchema,
@@ -37,6 +39,7 @@ import {
   rescheduleBookingSchema,
 } from "@/schemas/booking";
 import {
+  getAvailableDates,
   getTimeSlots,
   lockWorkerSchedule,
   slotConflictError,
@@ -107,6 +110,36 @@ export async function getBookingSlots(
       excludeBookingId
     );
     return ok({ slots });
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// The dates in one calendar month that still have at least one open slot for
+// the duration — the booking calendar greys out everything else.
+export async function getBookingDates(
+  input: unknown
+): Promise<ActionResult<{ dates: string[] }>> {
+  try {
+    await requireUser();
+    const parsed = bookingDatesSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+    const { workerId, month, durationMinutes, excludeBookingId } = parsed.data;
+
+    const first = new Date(`${month}-01T00:00:00Z`);
+    if (Number.isNaN(first.getTime())) return err(ERR.badRequest);
+    const last = new Date(first);
+    last.setUTCMonth(last.getUTCMonth() + 1);
+    last.setUTCDate(0); // last day of `month`
+
+    const dates = await getAvailableDates(
+      workerId,
+      durationMinutes,
+      first.toISOString().slice(0, 10),
+      last.toISOString().slice(0, 10),
+      excludeBookingId
+    );
+    return ok({ dates });
   } catch (error) {
     return err(guardErrorMessage(error));
   }
@@ -507,7 +540,29 @@ export async function completeBooking(input: unknown): Promise<ActionResult<unde
     if (!ctx) return err(ERR.notFound);
     if (!ctx.isWorker && !ctx.isAdmin) return err(ERR.forbidden);
     if (!canTransition(ctx.booking.status, "completed", ctx.isAdmin)) {
-      return err("Only confirmed bookings can be completed.");
+      return err(
+        ctx.booking.status === "confirmed"
+          ? "Start the session first — enter the customer's PIN in the booking room, then complete it."
+          : "Only a session that has been started can be completed."
+      );
+    }
+    // No closing a session before the money is in hand: cash must be recorded
+    // (with proof) and card payments must have settled. Admin can override.
+    if (!ctx.isAdmin) {
+      const [paid] = await db
+        .select({ id: payments.id })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.bookingId, ctx.booking.id),
+            eq(payments.status, "succeeded")
+          )
+        );
+      if (!paid) {
+        return err(
+          "No payment is recorded for this booking yet. Record the cash collection (with proof) before completing."
+        );
+      }
     }
 
     await transitionBooking({

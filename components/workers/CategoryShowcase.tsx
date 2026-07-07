@@ -12,6 +12,7 @@ export type CategoryOffering = {
   // The worker's single ACTIVE service in this category.
   service: {
     id: string;
+    serviceTypeId: string;
     typeName: string;
     priceCents: number;
     durationMinutes: number;
@@ -118,7 +119,16 @@ export default function CategoryShowcase({
               </ul>
             </div>
           )}
-          <Link href={bookHref} className="btn-gold mt-5 inline-flex">
+          <Link
+            // Carry the chosen service into the booking form (signed-out
+            // users go to /login, which takes no params).
+            href={
+              bookHref.startsWith("/book")
+                ? `${bookHref}?service=${selected.service.serviceTypeId}`
+                : bookHref
+            }
+            className="btn-gold mt-5 inline-flex"
+          >
             Book {selected.service.typeName}
           </Link>
         </div>

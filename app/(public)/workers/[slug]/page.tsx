@@ -20,7 +20,7 @@ import CategoryShowcase, {
 } from "@/components/workers/CategoryShowcase";
 import FavoriteButton from "@/components/workers/FavoriteButton";
 import { getUserRow } from "@/lib/auth";
-import { formatCents } from "@/lib/constants";
+import { formatCents, formatTime12 } from "@/lib/constants";
 import { isUuid } from "@/lib/slug";
 import { publicWorkerColumns } from "@/lib/workers";
 
@@ -72,6 +72,7 @@ export default async function WorkerProfilePage(
     db
       .select({
         id: workerServices.id,
+        serviceTypeId: workerServices.serviceTypeId,
         priceCents: workerServices.priceCents,
         durationMinutes: workerServices.durationMinutes,
         description: workerServices.description,
@@ -130,6 +131,7 @@ export default async function WorkerProfilePage(
     name: s.categoryName,
     service: {
       id: s.id,
+      serviceTypeId: s.serviceTypeId,
       typeName: s.typeName,
       priceCents: s.priceCents,
       durationMinutes: s.durationMinutes,
@@ -249,7 +251,7 @@ export default async function WorkerProfilePage(
                     <li key={s.id} className="flex justify-between">
                       <span>{s.dayOfWeek >= 0 && s.dayOfWeek <= 6 ? dayNames[s.dayOfWeek] : "?"}</span>
                       <span className="text-ink">
-                        {s.startTime.slice(0, 5)} – {s.endTime.slice(0, 5)}
+                        {formatTime12(s.startTime)} – {formatTime12(s.endTime)}
                       </span>
                     </li>
                   ))}

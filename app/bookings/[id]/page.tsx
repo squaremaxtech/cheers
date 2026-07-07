@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
 import {
   bookingEvents,
   bookingLocations,
+  payments,
   reviews,
   safetyAlerts,
   wellnessChecks,
@@ -24,6 +25,7 @@ import { loadBookingAccess } from "@/lib/booking-access";
 import { customerCanCancel } from "@/lib/bookings";
 import {
   formatCents,
+  formatTime12,
   WELLNESS_CHECK_INTERVAL_MINUTES,
 } from "@/lib/constants";
 import { statusTone } from "@/lib/status";
@@ -50,7 +52,7 @@ export default async function BookingRoomPage(
   if (!access) notFound();
   const { booking, worker, viewerRole } = access;
 
-  const [events, checks, alerts, locations, existingReview] =
+  const [events, checks, alerts, locations, existingReview, pendingCash] =
     await Promise.all([
       db
         .select()
@@ -75,10 +77,23 @@ export default async function BookingRoomPage(
         .where(eq(bookingLocations.bookingId, booking.id)),
       viewerRole === "customer"
         ? db
-            .select({ id: reviews.id })
-            .from(reviews)
-            .where(eq(reviews.bookingId, booking.id))
-            .then((rows) => rows[0] ?? null)
+          .select({ id: reviews.id })
+          .from(reviews)
+          .where(eq(reviews.bookingId, booking.id))
+          .then((rows) => rows[0] ?? null)
+        : Promise.resolve(null),
+      viewerRole === "customer"
+        ? db
+          .select({ id: payments.id, tipCents: payments.tipCents })
+          .from(payments)
+          .where(
+            and(
+              eq(payments.bookingId, booking.id),
+              eq(payments.method, "cash"),
+              eq(payments.status, "pending")
+            )
+          )
+          .then((rows) => rows[0] ?? null)
         : Promise.resolve(null),
     ]);
 
@@ -106,7 +121,7 @@ export default async function BookingRoomPage(
     booking.status === "in_progress" &&
     wellnessAnchor !== null &&
     Date.now() - wellnessAnchor.getTime() >
-      WELLNESS_CHECK_INTERVAL_MINUTES * 60_000;
+    WELLNESS_CHECK_INTERVAL_MINUTES * 60_000;
 
   return (
     <>
@@ -175,7 +190,7 @@ export default async function BookingRoomPage(
           <div className="flex justify-between">
             <span className="text-muted">Date</span>
             <span className="text-ink">
-              {booking.date} at {booking.startTime.slice(0, 5)} ·{" "}
+              {booking.date} at {formatTime12(booking.startTime)} ·{" "}
               {booking.durationMinutes} min
             </span>
           </div>
@@ -250,7 +265,7 @@ export default async function BookingRoomPage(
             {viewerRole === "customer" && booking.safetyPin && (
               <div>
                 <p className="text-sm text-muted">
-                  Share this PIN with {worker.stageName} when they arrive —
+                  Share this PIN with {worker.stageName + " "} when they arrive —
                   they can&apos;t start the session without it:
                 </p>
                 <p className="font-display mt-2 text-3xl tracking-[0.4em] text-ink">
@@ -270,11 +285,10 @@ export default async function BookingRoomPage(
             {/* Wellness status — everyone in the room sees the worker is OK */}
             {booking.status === "in_progress" && (
               <div
-                className={`rounded-xl border p-4 text-sm ${
-                  wellnessOverdue
+                className={`rounded-xl border p-4 text-sm ${wellnessOverdue
                     ? "border-warn/60 bg-warn/5 text-warn"
                     : "border-hairline text-muted"
-                }`}
+                  }`}
               >
                 {lastCheck ? (
                   <>
@@ -344,6 +358,8 @@ export default async function BookingRoomPage(
             canCancel={customerCanCancel(booking)}
             serviceTotalCents={total}
             stripeConfigured={Boolean(process.env.STRIPE_SECRET_KEY)}
+            cashPending={pendingCash !== null}
+            committedTipCents={pendingCash?.tipCents ?? 0}
           />
         )}
         {viewerRole === "worker" && (

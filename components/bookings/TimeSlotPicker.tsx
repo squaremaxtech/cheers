@@ -1,5 +1,6 @@
 "use client";
 
+import { formatTime12 } from "@/lib/constants";
 import type { TimeSlot } from "@/types";
 
 // Grid of a worker's start times for one day. Available slots are clickable;
@@ -52,7 +53,7 @@ export default function TimeSlotPicker({
                     : "border-hairline text-ink hover:border-gold/40"
                 }`}
               >
-                {slot.time}
+                {formatTime12(slot.time)}
               </button>
             );
           }
@@ -66,7 +67,7 @@ export default function TimeSlotPicker({
                   : "Another customer is booking this time"
               }
             >
-              {slot.time}
+              {formatTime12(slot.time)}
             </span>
           );
         })}

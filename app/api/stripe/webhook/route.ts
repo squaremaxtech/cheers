@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { bookings, memberships, payments, workers } from "@/db/schema";
 import { transitionBooking } from "@/lib/bookings";
 import { notify, notifyAdmins } from "@/lib/notify";
+import { bookingEventNow, publishBooking } from "@/lib/realtime";
 import { stripe } from "@/lib/stripe";
 import type { MembershipRow } from "@/types";
 
@@ -35,10 +36,25 @@ async function handleBookingPaid(session: Stripe.Checkout.Session): Promise<void
     .where(eq(bookings.id, bookingId));
   if (!booking) return;
 
+  // A confirmed booking can still be paying by card (cash → card switch),
+  // as long as nothing else already collected the money.
+  const cardAfterConfirm =
+    booking.status === "confirmed" &&
+    !(await db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(
+        and(
+          eq(payments.bookingId, booking.id),
+          eq(payments.status, "succeeded")
+        )
+      )
+      .then((rows) => rows.length > 0));
+
   // Conflict: the booking left "accepted" (cancelled/declined/completed or
   // paid via another route) while this checkout session was open. The money
   // was captured — refund it immediately instead of pretending it confirmed.
-  if (booking.status !== "accepted") {
+  if (booking.status !== "accepted" && !cardAfterConfirm) {
     await db
       .update(payments)
       .set({
@@ -86,17 +102,34 @@ async function handleBookingPaid(session: Stripe.Checkout.Session): Promise<void
     .set({ tipCents: payment.tipCents, updatedAt: new Date() })
     .where(eq(bookings.id, booking.id));
 
-  try {
-    await transitionBooking({
-      booking,
-      to: "confirmed",
-      actorUserId: null,
-      note: "card payment succeeded",
-    });
-  } catch {
-    // Lost a race with a concurrent transition; Stripe will redeliver and the
-    // pending-only guard makes the retry a no-op. Status stays consistent.
-    return;
+  if (cardAfterConfirm) {
+    // Already confirmed (cash → card switch): retire the now-obsolete cash
+    // expectation and surface the payment change in the live room.
+    await db
+      .update(payments)
+      .set({ status: "failed", updatedAt: new Date() })
+      .where(
+        and(
+          eq(payments.bookingId, booking.id),
+          eq(payments.method, "cash"),
+          eq(payments.status, "pending")
+        )
+      );
+    publishBooking(booking.id, bookingEventNow("payment"));
+  } else {
+    try {
+      await transitionBooking({
+        booking,
+        to: "confirmed",
+        actorUserId: null,
+        note: "card payment succeeded",
+      });
+    } catch {
+      // Lost a race with a concurrent transition; Stripe will redeliver and
+      // the pending-only guard makes the retry a no-op. Status stays
+      // consistent.
+      return;
+    }
   }
 
   await notify({
