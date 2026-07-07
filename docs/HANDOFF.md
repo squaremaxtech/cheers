@@ -259,8 +259,8 @@ export async function createX(formData: FormData) { /* zod parse, auth guard, db
 
 ## 9. Conventions for Whoever Continues
 
-- Commit after each completed build-order step with a descriptive message (owner pulls from GitHub on other machines).
-- Update §2 status table + §8 checkboxes in the SAME commit as the work.
+- **Do NOT commit or push — the owner reviews and commits manually.** Leave all changes in the working tree and suggest a commit message when the work is done.
+- Update §2 status table + §8 checkboxes alongside the work so they land in the owner's commit.
 - Never expose `workers.realName` or worker `userId`→email in public-facing queries/components. Use `PublicWorker` from `types.ts`.
 - **Owner preference: shared types live in root `types.ts`** (row types, DTOs, ActionResult) — import via `@/types`; do not export types from lib modules.
 - All admin mutations write an `audit_logs` row.
