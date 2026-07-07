@@ -44,7 +44,8 @@ export function customerCanCancel(booking: BookingRow): boolean {
   return hoursUntil >= CANCEL_MIN_HOURS;
 }
 
-// Allowed lifecycle transitions (admin can force any transition).
+// Allowed lifecycle transitions (admin can force transitions between LIVE
+// states only — see canTransition).
 const transitions: Record<BookingStatus, BookingStatus[]> = {
   pending: ["accepted", "declined", "cancelled"],
   accepted: ["confirmed", "cancelled"],
@@ -56,13 +57,25 @@ const transitions: Record<BookingStatus, BookingStatus[]> = {
   refunded: [],
 };
 
+// Statuses a booking can never leave (completed can still move to refunded,
+// which the base graph allows).
+const TERMINAL_STATUSES: BookingStatus[] = [
+  "completed",
+  "declined",
+  "cancelled",
+  "refunded",
+];
+
 export function canTransition(
   from: BookingStatus,
   to: BookingStatus,
   isAdmin: boolean
 ): boolean {
-  if (isAdmin) return true;
-  return transitions[from].includes(to);
+  if (transitions[from].includes(to)) return true;
+  // Admin override: any move between live states, but a finished booking must
+  // stay finished — a stale admin tab once re-opened a completed booking by
+  // firing "accept" against it.
+  return isAdmin && !TERMINAL_STATUSES.includes(from);
 }
 
 // Move a booking to a new status and record the event. Caller is responsible

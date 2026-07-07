@@ -1,23 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { cancelBooking, rescheduleBooking } from "@/actions/bookings";
+import {
+  cancelBooking,
+  getBookingSlots,
+  rescheduleBooking,
+} from "@/actions/bookings";
 import { chooseCashPayment, createBookingCheckout } from "@/actions/payments";
-import { formatCents } from "@/lib/constants";
-import type { BookingStatus } from "@/types";
+import TimeSlotPicker from "@/components/bookings/TimeSlotPicker";
+import { formatCents, jamaicaTodayISO } from "@/lib/constants";
+import type { BookingStatus, TimeSlot } from "@/types";
 
 const TIP_PERCENTS = [0, 10, 15, 20] as const;
 
 export default function BookingCustomerActions({
   bookingId,
+  workerId,
+  durationMinutes,
   status,
   canCancel,
   serviceTotalCents,
   stripeConfigured,
 }: {
   bookingId: string;
+  workerId: string;
+  durationMinutes: number;
   status: BookingStatus;
   canCancel: boolean;
   serviceTotalCents: number;
@@ -27,6 +36,44 @@ export default function BookingCustomerActions({
   const [busy, setBusy] = useState(false);
   const [tipPercent, setTipPercent] = useState<number>(0);
   const [showReschedule, setShowReschedule] = useState(false);
+  const [newDate, setNewDate] = useState("");
+  const [newTime, setNewTime] = useState("");
+  const [slots, setSlots] = useState<TimeSlot[] | null>(null);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  // Bumped to force a slot refetch after losing a booking race.
+  const [slotsVersion, setSlotsVersion] = useState(0);
+
+  useEffect(() => {
+    if (!showReschedule || !newDate) {
+      setSlots(null);
+      return;
+    }
+    let stale = false;
+    setSlotsLoading(true);
+    getBookingSlots({
+      workerId,
+      date: newDate,
+      durationMinutes,
+      excludeBookingId: bookingId,
+    }).then((res) => {
+      if (stale) return;
+      setSlotsLoading(false);
+      if (res.ok) {
+        setSlots(res.data.slots);
+        setNewTime((t) =>
+          res.data.slots.some((s) => s.time === t && s.state === "available")
+            ? t
+            : ""
+        );
+      } else {
+        setSlots([]);
+        toast.error(res.error);
+      }
+    });
+    return () => {
+      stale = true;
+    };
+  }, [showReschedule, newDate, workerId, durationMinutes, bookingId, slotsVersion]);
 
   const tipCents = Math.round((serviceTotalCents * tipPercent) / 100);
   const cancellable =
@@ -73,12 +120,15 @@ export default function BookingCustomerActions({
 
   async function handleReschedule(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
+    if (!newTime) {
+      toast.error("Pick an available time slot.");
+      return;
+    }
     setBusy(true);
     const res = await rescheduleBooking({
       bookingId,
-      date: form.get("date"),
-      startTime: form.get("startTime"),
+      date: newDate,
+      startTime: newTime,
     });
     setBusy(false);
     if (res.ok) {
@@ -87,6 +137,9 @@ export default function BookingCustomerActions({
       router.refresh();
     } else {
       toast.error(res.error);
+      // Lost a race for the slot — reload the board.
+      setNewTime("");
+      setSlotsVersion((v) => v + 1);
     }
   }
 
@@ -192,27 +245,32 @@ export default function BookingCustomerActions({
       </div>
 
       {showReschedule && (
-        <form onSubmit={handleReschedule} className="flex flex-wrap items-end gap-3">
+        <form onSubmit={handleReschedule} className="space-y-3">
           <div>
             <label className="label" htmlFor="r-date">
               New date
             </label>
             <input
               id="r-date"
-              name="date"
               type="date"
               required
-              min={new Date().toISOString().slice(0, 10)}
-              className="input"
+              min={jamaicaTodayISO()}
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              className="input max-w-52"
             />
           </div>
           <div>
-            <label className="label" htmlFor="r-time">
-              New time
-            </label>
-            <input id="r-time" name="startTime" type="time" required className="input" />
+            <p className="label">New time</p>
+            <TimeSlotPicker
+              slots={slots}
+              loading={slotsLoading}
+              dateSelected={Boolean(newDate)}
+              value={newTime}
+              onSelect={setNewTime}
+            />
           </div>
-          <button type="submit" className="btn-gold" disabled={busy}>
+          <button type="submit" className="btn-gold" disabled={busy || !newTime}>
             Confirm
           </button>
         </form>

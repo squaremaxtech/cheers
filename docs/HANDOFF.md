@@ -74,6 +74,35 @@ error/loading/not-found boundaries.
 - Bug fixes: custom service durations were rejected at booking (Zod
   allowlist vs action logic), stale `.next/dev` types.
 
+**2026-07-07 update — booking-reopen fix + real time-slot availability:**
+- **Bug (live incident, booking CH-MJQN3J):** a stale `/admin/bookings` tab
+  fired "Approve" against an already-completed booking; `canTransition`'s
+  blanket admin bypass allowed `completed → accepted` and nobody had a UI path
+  to close it again. Fixes: `canTransition` now blocks leaving terminal states
+  (`completed/declined/cancelled/refunded`) even for admins (only
+  `completed → refunded` remains, via the base graph); admin bookings UI gained
+  "Mark completed" for `accepted` so any live booking can be force-closed. The
+  affected row was repaired in the VPS db (event note "data repair: …").
+- **Availability slots (new):** `lib/availability.ts` generates bookable start
+  times from weekly `availability` rules + `availability_exceptions` + live
+  bookings. No weekly rules ⇒ fully open (per product rule); exception
+  `available=false` blocks the day. Slot states: `available` / `pending`
+  (another customer's pending/accepted request holds it — request IS the
+  temporary hold, freed on decline/cancel) / `booked` (confirmed/in_progress).
+  Booking horizon 6 months (`BOOKING_HORIZON_DAYS`). Step = 60min (30min for
+  non-hour durations).
+- **Race safety:** `createBooking` and `rescheduleBooking` claim slots inside
+  a transaction under `pg_advisory_xact_lock(hashtext(workerId))` and re-check
+  conflicts (`slotConflictError`) — the loser of a same-slot race gets "This
+  time was just booked. Please select another slot." (verified with a live
+  two-transaction race test).
+- **UI:** `getBookingSlots` action + `TimeSlotPicker` (shared) — book form and
+  the reschedule form now show per-date slot grids (pending/booked disabled),
+  auto-refetching on date/duration change and after losing a race.
+- **Timezone:** new `jamaicaTodayISO()`; replaced UTC `toISOString()` "today"
+  in book/reschedule/availability/driver views (UTC runs a day ahead of
+  Jamaica after 7pm and blocked same-evening dates).
+
 **V1 code complete.** Remaining before launch (V1.1):
 1. `.env` — confirm all names in `.env.example` exist locally (esp. `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `EMAIL_*`, `STRIPE_*` incl. `STRIPE_MEMBERSHIP_PRICE_ID` + webhook secret, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `FREE_ACCESS_UNTIL`). Admin role already seeded for the owner email.
 2. Stripe dashboard: create the monthly membership Price; point a webhook at `/api/stripe/webhook` (events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`).

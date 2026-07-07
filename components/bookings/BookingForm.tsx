@@ -1,12 +1,17 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { createBooking } from "@/actions/bookings";
+import { createBooking, getBookingSlots } from "@/actions/bookings";
 import LocationPicker from "@/components/maps/LocationPicker";
-import { BOOKING_DURATIONS_MINUTES, formatCents } from "@/lib/constants";
-import type { ServiceAddonRow } from "@/types";
+import TimeSlotPicker from "@/components/bookings/TimeSlotPicker";
+import {
+  BOOKING_DURATIONS_MINUTES,
+  formatCents,
+  jamaicaTodayISO,
+} from "@/lib/constants";
+import type { ServiceAddonRow, TimeSlot } from "@/types";
 
 type ServiceOption = {
   workerServiceId: string;
@@ -33,10 +38,12 @@ export default function BookingForm({
   );
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [date, setDate] = useState("");
-  const [startTime, setStartTime] = useState("18:00");
+  const [startTime, setStartTime] = useState("");
   const [duration, setDuration] = useState(
     services[0]?.durationMinutes ?? 60
   );
+  const [slots, setSlots] = useState<TimeSlot[] | null>(null);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [address, setAddress] = useState("");
   const [coords, setCoords] = useState<{ lat?: string; lng?: string }>({});
   const [instructions, setInstructions] = useState("");
@@ -67,6 +74,36 @@ export default function BookingForm({
     []
   );
 
+  const refreshSlots = useCallback(async () => {
+    if (!date) {
+      setSlots(null);
+      return;
+    }
+    setSlotsLoading(true);
+    const res = await getBookingSlots({
+      workerId,
+      date,
+      durationMinutes: duration,
+    });
+    setSlotsLoading(false);
+    if (res.ok) {
+      setSlots(res.data.slots);
+      // Drop a selection that is no longer offered/available.
+      setStartTime((t) =>
+        res.data.slots.some((s) => s.time === t && s.state === "available")
+          ? t
+          : ""
+      );
+    } else {
+      setSlots([]);
+      toast.error(res.error);
+    }
+  }, [workerId, date, duration]);
+
+  useEffect(() => {
+    void refreshSlots();
+  }, [refreshSlots]);
+
   if (services.length === 0) {
     return (
       <p className="card p-6 text-sm text-muted">
@@ -77,6 +114,10 @@ export default function BookingForm({
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!startTime) {
+      toast.error("Pick an available time slot.");
+      return;
+    }
     setSubmitting(true);
     const res = await createBooking({
       workerId,
@@ -96,10 +137,13 @@ export default function BookingForm({
       router.push(`/bookings/${res.data.bookingId}`);
     } else {
       toast.error(res.error);
+      // The server re-checks the slot on submit — if we lost the race, show
+      // the fresh board so the customer picks another time.
+      void refreshSlots();
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = jamaicaTodayISO();
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -184,54 +228,53 @@ export default function BookingForm({
       )}
 
       {/* When */}
-      <fieldset className="card grid gap-4 p-5 sm:grid-cols-3">
+      <fieldset className="card space-y-4 p-5">
         <legend className="label px-1">When</legend>
-        <div>
-          <label className="label" htmlFor="b-date">
-            Date
-          </label>
-          <input
-            id="b-date"
-            type="date"
-            min={today}
-            required
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="input"
-          />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="b-date">
+              Date
+            </label>
+            <input
+              id="b-date"
+              type="date"
+              min={today}
+              required
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="b-duration">
+              Duration
+            </label>
+            <select
+              id="b-duration"
+              className="input"
+              value={duration}
+              onChange={(e) => setDuration(Number(e.target.value))}
+            >
+              {/* Standard durations plus this service's own duration */}
+              {[...new Set([selectedService?.durationMinutes ?? 60, ...BOOKING_DURATIONS_MINUTES])]
+                .sort((a, b) => a - b)
+                .map((d) => (
+                  <option key={d} value={d}>
+                    {d < 120 ? `${d} min` : `${d / 60} hours`}
+                  </option>
+                ))}
+            </select>
+          </div>
         </div>
         <div>
-          <label className="label" htmlFor="b-time">
-            Start time
-          </label>
-          <input
-            id="b-time"
-            type="time"
-            required
+          <p className="label">Start time</p>
+          <TimeSlotPicker
+            slots={slots}
+            loading={slotsLoading}
+            dateSelected={Boolean(date)}
             value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-            className="input"
+            onSelect={setStartTime}
           />
-        </div>
-        <div>
-          <label className="label" htmlFor="b-duration">
-            Duration
-          </label>
-          <select
-            id="b-duration"
-            className="input"
-            value={duration}
-            onChange={(e) => setDuration(Number(e.target.value))}
-          >
-            {/* Standard durations plus this service's own duration */}
-            {[...new Set([selectedService?.durationMinutes ?? 60, ...BOOKING_DURATIONS_MINUTES])]
-              .sort((a, b) => a - b)
-              .map((d) => (
-                <option key={d} value={d}>
-                  {d < 120 ? `${d} min` : `${d / 60} hours`}
-                </option>
-              ))}
-          </select>
         </div>
       </fieldset>
 

@@ -338,6 +338,8 @@ export default async function BookingRoomPage(
         {viewerRole === "customer" && (
           <BookingCustomerActions
             bookingId={booking.id}
+            workerId={booking.workerId}
+            durationMinutes={booking.durationMinutes}
             status={booking.status}
             canCancel={customerCanCancel(booking)}
             serviceTotalCents={total}

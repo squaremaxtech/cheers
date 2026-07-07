@@ -75,6 +75,18 @@ export type BookingStreamEvent =
       lng: string;
     };
 
+// --- Availability / time slots -----------------------------------------------------
+
+// State of one bookable start time on a worker's day:
+// available — free to book; pending — another customer's request holds it
+// (frees up if declined/cancelled); booked — a confirmed booking owns it.
+export type SlotState = "available" | "pending" | "booked";
+
+export type TimeSlot = {
+  time: string; // "HH:MM" Jamaica wall-clock
+  state: SlotState;
+};
+
 // --- Browse / search ---------------------------------------------------------------
 
 export type BrowseFilters = {

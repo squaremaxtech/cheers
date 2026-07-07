@@ -67,7 +67,9 @@ export default function AdminBookingActions({
           </button>
         </>
       )}
-      {(status === "confirmed" || status === "in_progress") && (
+      {(status === "accepted" ||
+        status === "confirmed" ||
+        status === "in_progress") && (
         <button
           type="button"
           className="btn-gold px-3 py-1.5 text-xs"

@@ -52,6 +52,12 @@ export const BOOKING_DURATIONS_MINUTES = [60, 90, 120, 180, 240, 360] as const;
 // booking room flags the check as overdue past it.
 export const WELLNESS_CHECK_INTERVAL_MINUTES = 30;
 
+// Today's date in Jamaica (UTC-5, no DST). new Date().toISOString() is UTC,
+// which runs a day ahead of Jamaica every evening — never use it for "today".
+export function jamaicaTodayISO(): string {
+  return new Date(Date.now() - 5 * 3_600_000).toISOString().slice(0, 10);
+}
+
 export function platformFeeCents(priceCents: number): number {
   return Math.round((priceCents * PLATFORM_FEE_PERCENT) / 100);
 }

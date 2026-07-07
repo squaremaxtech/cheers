@@ -7,6 +7,7 @@ import { bookings, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import SiteHeader from "@/components/layout/SiteHeader";
 import { getUserRow } from "@/lib/auth";
+import { jamaicaTodayISO } from "@/lib/constants";
 import { isDriver } from "@/lib/guards";
 
 export const metadata: Metadata = { title: "Driver — Transport Schedule" };
@@ -19,7 +20,7 @@ export default async function DriverPage() {
   if (!user || user.suspended) redirect("/login");
   if (!isDriver(user) && user.role !== "admin") redirect("/dashboard");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = jamaicaTodayISO();
   const rows = await db
     .select({
       id: bookings.id,

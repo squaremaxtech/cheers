@@ -3,13 +3,14 @@ import type { Metadata } from "next";
 import { db } from "@/db";
 import { availability, availabilityExceptions } from "@/db/schema";
 import AvailabilityEditor from "@/components/worker/AvailabilityEditor";
+import { jamaicaTodayISO } from "@/lib/constants";
 import { getWorkerContext } from "@/lib/worker-context";
 
 export const metadata: Metadata = { title: "Availability" };
 
 export default async function WorkerAvailabilityPage() {
   const { worker } = await getWorkerContext();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = jamaicaTodayISO();
 
   const [slots, exceptions] = await Promise.all([
     db

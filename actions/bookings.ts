@@ -25,16 +25,22 @@ import { BOOKING_DURATIONS_MINUTES, platformFeeCents } from "@/lib/constants";
 import { refundBookingPayments } from "@/lib/refunds";
 import { bookingEventNow, publishBooking } from "@/lib/realtime";
 import { guardErrorMessage, requireUser } from "@/lib/guards";
-import type { ActionResult, BookingRow, UserRow } from "@/types";
+import type { ActionResult, BookingRow, TimeSlot, UserRow } from "@/types";
 import { hasMembershipAccess } from "@/lib/membership";
 import { notify, notifyAdmins } from "@/lib/notify";
 import {
   bookingDecisionSchema,
+  bookingSlotsSchema,
   cancelBookingSchema,
   createBookingSchema,
   reassignBookingSchema,
   rescheduleBookingSchema,
 } from "@/schemas/booking";
+import {
+  getTimeSlots,
+  lockWorkerSchedule,
+  slotConflictError,
+} from "@/lib/availability";
 
 // Resolve a booking plus the actor's relationship to it.
 async function loadBookingFor(user: UserRow, bookingId: string) {
@@ -79,6 +85,30 @@ async function notifyBookingParties(
   }
   if (opts.admins) {
     await notifyAdmins({ type: opts.type, meta, ...opts.admins });
+  }
+}
+
+// --- Slots (customer picks from these when booking) ----------------------------
+
+// The bookable start times for a worker on one date. States: available /
+// pending (another customer's live request holds it) / booked.
+export async function getBookingSlots(
+  input: unknown
+): Promise<ActionResult<{ slots: TimeSlot[] }>> {
+  try {
+    await requireUser();
+    const parsed = bookingSlotsSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+    const { workerId, date, durationMinutes, excludeBookingId } = parsed.data;
+    const slots = await getTimeSlots(
+      workerId,
+      date,
+      durationMinutes,
+      excludeBookingId
+    );
+    return ok({ slots });
+  } catch (error) {
+    return err(guardErrorMessage(error));
   }
 }
 
@@ -156,28 +186,48 @@ export async function createBooking(
     const priceCents = service.ws.priceCents;
     const addonsCents = addonRows.reduce((sum, a) => sum + a.priceCents, 0);
 
-    const [booking] = await db
-      .insert(bookings)
-      .values({
-        code: generateBookingCode(),
-        customerId: user.id,
-        workerId: worker.id,
-        serviceTypeId: data.serviceTypeId,
-        serviceName: service.typeName,
-        date: data.date,
-        startTime: data.startTime,
-        durationMinutes: data.durationMinutes,
-        address: data.address,
-        lat: data.lat,
-        lng: data.lng,
-        instructions: data.instructions,
-        priceCents,
-        addonsCents,
-        platformFeeCents: platformFeeCents(priceCents + addonsCents),
-        addons: addonRows,
-        safetyPin: generateSafetyPin(),
-      })
-      .returning();
+    // Race-safe slot claim: the per-worker advisory lock serializes concurrent
+    // submissions, so the availability/overlap re-check inside the lock is
+    // authoritative — the loser of a same-slot race is rejected here.
+    const result = await db.transaction(
+      async (tx): Promise<{ conflict?: string; booking?: BookingRow }> => {
+        await lockWorkerSchedule(tx, worker.id);
+        const conflict = await slotConflictError(
+          worker.id,
+          data.date,
+          data.startTime,
+          data.durationMinutes
+        );
+        if (conflict) return { conflict };
+        const [booking] = await tx
+          .insert(bookings)
+          .values({
+            code: generateBookingCode(),
+            customerId: user.id,
+            workerId: worker.id,
+            serviceTypeId: data.serviceTypeId,
+            serviceName: service.typeName,
+            date: data.date,
+            startTime: data.startTime,
+            durationMinutes: data.durationMinutes,
+            address: data.address,
+            lat: data.lat,
+            lng: data.lng,
+            instructions: data.instructions,
+            priceCents,
+            addonsCents,
+            platformFeeCents: platformFeeCents(priceCents + addonsCents),
+            addons: addonRows,
+            safetyPin: generateSafetyPin(),
+          })
+          .returning();
+        return { booking };
+      }
+    );
+    if (result.conflict || !result.booking) {
+      return err(result.conflict ?? ERR.server);
+    }
+    const booking = result.booking;
 
     await notifyBookingParties(booking, {
       type: "booking_submitted",
@@ -389,14 +439,31 @@ export async function rescheduleBooking(
       return err("Pick a date and time in the future.");
     }
 
-    await db
-      .update(bookings)
-      .set({
-        date: parsed.data.date,
-        startTime: parsed.data.startTime,
-        updatedAt: new Date(),
-      })
-      .where(eq(bookings.id, ctx.booking.id));
+    // Same race-safe slot claim as createBooking; the booking being moved is
+    // excluded from its own conflict check.
+    const conflictResult = await db.transaction(
+      async (tx): Promise<string | null> => {
+        await lockWorkerSchedule(tx, ctx.booking.workerId);
+        const conflict = await slotConflictError(
+          ctx.booking.workerId,
+          parsed.data.date,
+          parsed.data.startTime,
+          ctx.booking.durationMinutes,
+          ctx.booking.id
+        );
+        if (conflict) return conflict;
+        await tx
+          .update(bookings)
+          .set({
+            date: parsed.data.date,
+            startTime: parsed.data.startTime,
+            updatedAt: new Date(),
+          })
+          .where(eq(bookings.id, ctx.booking.id));
+        return null;
+      }
+    );
+    if (conflictResult) return err(conflictResult);
     // Reschedules keep their status but must appear in the event log.
     await db.insert(bookingEvents).values({
       bookingId: ctx.booking.id,

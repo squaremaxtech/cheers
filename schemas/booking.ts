@@ -20,6 +20,14 @@ export const createBookingSchema = z.object({
   addonIds: z.array(z.string().uuid()).max(20).default([]),
 });
 
+export const bookingSlotsSchema = z.object({
+  workerId: z.string().uuid(),
+  date: dateString,
+  durationMinutes: z.coerce.number().int().min(15).max(720),
+  // Reschedules ignore the booking being moved when computing conflicts.
+  excludeBookingId: z.string().uuid().optional(),
+});
+
 export const bookingDecisionSchema = z.object({
   bookingId: z.string().uuid(),
   note: z.string().trim().max(500).optional(),

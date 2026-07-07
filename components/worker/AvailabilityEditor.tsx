@@ -8,6 +8,7 @@ import {
   removeAvailabilityException,
   setWeeklyAvailability,
 } from "@/actions/worker";
+import { jamaicaTodayISO } from "@/lib/constants";
 import type { AvailabilityRow } from "@/types";
 
 type ExceptionRow = {
@@ -105,8 +106,8 @@ export default function AvailabilityEditor({
 
         {draft.length === 0 ? (
           <p className="mt-4 text-sm text-faint">
-            No hours set — customers can still send requests, but your calendar
-            shows as flexible.
+            No hours set — you currently show as fully available, any day or
+            time. Add weekly hours to control when customers can book you.
           </p>
         ) : (
           <ul className="mt-4 space-y-3">
@@ -174,7 +175,7 @@ export default function AvailabilityEditor({
               name="date"
               type="date"
               required
-              min={new Date().toISOString().slice(0, 10)}
+              min={jamaicaTodayISO()}
               className="input"
             />
           </div>
