@@ -52,6 +52,7 @@ export async function openChatRoom(
       .select({
         id: workers.id,
         userId: workers.userId,
+        verified: workers.verified,
         active: workers.active,
         suspended: workers.suspended,
       })
@@ -61,7 +62,8 @@ export async function openChatRoom(
     if (worker.userId === user.id) return err("You cannot message yourself.");
 
     // Existing conversations stay reachable even if the worker later hides
-    // their profile; only STARTING a new one requires a bookable worker.
+    // their profile; only STARTING a new one requires a publicly visible
+    // worker (admin-approved + active + not suspended).
     const [existing] = await db
       .select({ id: chatRooms.id })
       .from(chatRooms)
@@ -72,7 +74,7 @@ export async function openChatRoom(
         )
       );
     if (existing) return ok({ roomId: existing.id });
-    if (!worker.active || worker.suspended) {
+    if (!worker.verified || !worker.active || worker.suspended) {
       return err("This worker is not available right now.");
     }
     // Anti-spam: cap brand-new conversations, not returning to old ones.

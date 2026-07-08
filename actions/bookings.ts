@@ -30,6 +30,7 @@ import type { ActionResult, BookingRow, TimeSlot, UserRow } from "@/types";
 import { hasMembershipAccess } from "@/lib/membership";
 import { notify, notifyAdmins } from "@/lib/notify";
 import { isCustomerVerified } from "@/lib/verification";
+import { publicWorkerConditions } from "@/lib/workers";
 import {
   bookingDatesSchema,
   bookingDecisionSchema,
@@ -176,11 +177,7 @@ export async function createBooking(
       .select()
       .from(workers)
       .where(
-        and(
-          eq(workers.id, data.workerId),
-          eq(workers.active, true),
-          eq(workers.suspended, false)
-        )
+        and(eq(workers.id, data.workerId), ...publicWorkerConditions())
       );
     if (!worker) return err("This worker is not currently accepting bookings.");
     if (worker.userId === user.id) return err("You cannot book yourself.");

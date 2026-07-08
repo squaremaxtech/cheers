@@ -231,6 +231,31 @@ export const workerMedia = pgTable(
   (t) => [index("worker_media_worker_idx").on(t.workerId)]
 );
 
+// Worker signup is invite-only: an admin generates a code and shares the
+// onboarding link privately with a vetted candidate. Single-use, expiring.
+// (Second gate: the created profile stays off the site until an admin
+// approves it — workers.verified.)
+export const workerInvites = pgTable(
+  "worker_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Shareable human code, e.g. CHW-7K2M4A
+    code: text("code").notNull().unique(),
+    // Who this invite is meant for (free text, admin's own reference).
+    note: text("note"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    usedByUserId: uuid("used_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    usedAt: timestamp("used_at", { mode: "date" }),
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("worker_invites_code_idx").on(t.code)]
+);
+
 // ---------------------------------------------------------------------------
 // Service catalog (fixed, seeded) + worker customization
 // ---------------------------------------------------------------------------

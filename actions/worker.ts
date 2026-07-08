@@ -1,6 +1,7 @@
 "use server";
 
-import { and, eq, asc, ne } from "drizzle-orm";
+import { z } from "zod";
+import { and, eq, asc, isNull, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
@@ -9,16 +10,18 @@ import {
   serviceAddons,
   serviceTypes,
   users,
+  workerInvites,
   workerMedia,
   workers,
   workerServices,
 } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
+import { WORKER_CONTACT_EMAIL } from "@/lib/constants";
 import { guardErrorMessage, requireUser, requireWorker } from "@/lib/guards";
 import { uniqueWorkerSlug } from "@/lib/slug";
 import { deleteUpload } from "@/lib/uploads";
 import type { ActionResult } from "@/types";
-import { notifyAdmins } from "@/lib/notify";
+import { notifyVerificationTeam } from "@/lib/notify";
 import {
   availabilityExceptionSchema,
   mediaCategorySchema,
@@ -29,15 +32,23 @@ import {
   workerServiceSchema,
 } from "@/schemas/worker";
 
-// --- Onboarding: any signed-in customer can become a worker -----------------
+// --- Onboarding: invite-only ---------------------------------------------------
+// Two gates keep the roster trustworthy: (1) signup needs a single-use admin
+// invite code, and (2) the created profile stays OFF the site until an admin
+// approves it (workers.verified — see publicWorkerConditions).
+
+const createWorkerSchema = workerProfileSchema.extend({
+  inviteCode: z.string().trim().min(1, "An invite code is required.").optional(),
+});
 
 export async function createWorkerProfile(
   input: unknown
 ): Promise<ActionResult<{ workerId: string }>> {
   try {
     const user = await requireUser();
-    const parsed = workerProfileSchema.safeParse(input);
+    const parsed = createWorkerSchema.safeParse(input);
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
+    const { inviteCode, ...profile } = parsed.data;
 
     const [existing] = await db
       .select({ id: workers.id })
@@ -45,34 +56,73 @@ export async function createWorkerProfile(
       .where(eq(workers.userId, user.id));
     if (existing) return err("You already have a worker profile.");
 
+    // Admins can create a profile directly; everyone else needs a live invite.
+    const inviteError =
+      "Worker signup is invite-only. Ask our team for an invite link — email " +
+      `${WORKER_CONTACT_EMAIL}.`;
+    let inviteId: string | null = null;
+    if (user.role !== "admin") {
+      if (!inviteCode) return err(inviteError);
+      const [invite] = await db
+        .select()
+        .from(workerInvites)
+        .where(eq(workerInvites.code, inviteCode.toUpperCase()));
+      if (!invite || invite.usedByUserId || invite.expiresAt < new Date()) {
+        return err(inviteError);
+      }
+      inviteId = invite.id;
+    }
+
     const [taken] = await db
       .select({ id: workers.id })
       .from(workers)
-      .where(eq(workers.stageName, parsed.data.stageName));
+      .where(eq(workers.stageName, profile.stageName));
     if (taken) return err("That stage name is already taken.");
 
-    const slug = await uniqueWorkerSlug(parsed.data.stageName);
-    const [worker] = await db
-      .insert(workers)
-      .values({ userId: user.id, slug, ...parsed.data })
-      .returning({ id: workers.id });
-
-    // Admins keep their role; everyone else becomes a worker.
-    if (user.role === "customer") {
-      await db
-        .update(users)
-        .set({ role: "worker", updatedAt: new Date() })
-        .where(eq(users.id, user.id));
+    const slug = await uniqueWorkerSlug(profile.stageName);
+    const result = await db.transaction(
+      async (tx): Promise<{ workerId?: string; conflict?: string }> => {
+        // CAS-consume the invite: two people racing the same code — one wins.
+        if (inviteId) {
+          const consumed = await tx
+            .update(workerInvites)
+            .set({ usedByUserId: user.id, usedAt: new Date() })
+            .where(
+              and(
+                eq(workerInvites.id, inviteId),
+                isNull(workerInvites.usedByUserId)
+              )
+            )
+            .returning({ id: workerInvites.id });
+          if (consumed.length === 0) return { conflict: inviteError };
+        }
+        const [worker] = await tx
+          .insert(workers)
+          .values({ userId: user.id, slug, ...profile })
+          .returning({ id: workers.id });
+        // Admins keep their role; everyone else becomes a worker.
+        if (user.role === "customer") {
+          await tx
+            .update(users)
+            .set({ role: "worker", updatedAt: new Date() })
+            .where(eq(users.id, user.id));
+        }
+        return { workerId: worker.id };
+      }
+    );
+    if (result.conflict || !result.workerId) {
+      return err(result.conflict ?? ERR.server);
     }
 
-    await notifyAdmins({
-      type: "worker_created",
-      title: "New worker profile",
-      body: `${parsed.data.stageName} just created a worker profile.`,
+    // New profiles await admin approval — tell the people who approve.
+    await notifyVerificationTeam({
+      type: "worker_pending_approval",
+      title: "New worker awaiting approval",
+      body: `${profile.stageName} completed worker onboarding. Their profile stays hidden until approved in Admin → Workers.`,
     });
 
     revalidatePath("/worker");
-    return ok({ workerId: worker.id });
+    return ok({ workerId: result.workerId });
   } catch (error) {
     return err(guardErrorMessage(error));
   }

@@ -65,15 +65,29 @@ export default async function WorkerDashboard() {
           <h1 className="font-display text-2xl text-ink">{worker.stageName}</h1>
           <div className="mt-2 flex items-center gap-2">
             {worker.verified ? (
-              <Badge tone="gold">Verified</Badge>
+              <Badge tone="gold">Approved</Badge>
             ) : (
-              <Badge>Verification pending</Badge>
+              <Badge tone="warn">Awaiting approval</Badge>
             )}
             {worker.suspended && <Badge tone="danger">Suspended by admin</Badge>}
           </div>
         </div>
         <VisibilityToggle active={worker.active} />
       </div>
+
+      {!worker.verified && (
+        <div className="card border-warn/40 p-5">
+          <p className="text-sm leading-6 text-muted">
+            <span className="font-medium text-warn">
+              Your profile is awaiting approval.
+            </span>{" "}
+            Customers can&apos;t see, message or book you yet — our team
+            reviews every new profile first. Use the time to add photos,
+            services and availability; we&apos;ll email you the moment
+            you&apos;re live.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((s) => (

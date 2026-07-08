@@ -29,7 +29,6 @@ export default async function BrowsePage(props: PageProps<"/browse">) {
       ? Number(firstParam(params.minRating)) * 100
       : undefined,
     language: firstParam(params.language),
-    verified: firstParam(params.verified) === "1",
   };
   const view = firstParam(params.view) ?? "grid";
 

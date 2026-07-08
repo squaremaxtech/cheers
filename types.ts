@@ -19,6 +19,7 @@ import type {
   serviceTypes,
   users,
   wellnessChecks,
+  workerInvites,
   workerMedia,
   workers,
   workerServices,
@@ -38,6 +39,7 @@ export type SupportRole = NonNullable<UserRow["supportRole"]>;
 
 export type WorkerRow = typeof workers.$inferSelect;
 export type WorkerMediaRow = typeof workerMedia.$inferSelect;
+export type WorkerInviteRow = typeof workerInvites.$inferSelect;
 export type ServiceCategoryRow = typeof serviceCategories.$inferSelect;
 export type ServiceTypeRow = typeof serviceTypes.$inferSelect;
 export type WorkerServiceRow = typeof workerServices.$inferSelect;
@@ -143,6 +145,9 @@ export type TimeSlot = {
 
 // --- Browse / search ---------------------------------------------------------------
 
+// No "verified" filter: unapproved workers are never publicly visible at
+// all (admin approval gates the whole profile), so every browsable worker
+// is verified by construction.
 export type BrowseFilters = {
   q?: string;
   parish?: string;
@@ -152,7 +157,6 @@ export type BrowseFilters = {
   maxPriceCents?: number;
   minRatingX100?: number;
   language?: string;
-  verified?: boolean;
 };
 
 // --- Public-facing DTOs -----------------------------------------------------------
@@ -171,7 +175,6 @@ export type PublicWorker = Pick<
   | "parish"
   | "city"
   | "baseRateCents"
-  | "verified"
   | "avgRating"
   | "reviewCount"
 >;

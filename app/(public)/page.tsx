@@ -1,5 +1,6 @@
 import Link from "next/link";
 import WorkerCard from "@/components/workers/WorkerCard";
+import { WORKER_CONTACT_EMAIL } from "@/lib/constants";
 import { getPublicWorkers } from "@/lib/workers";
 
 export default async function HomePage() {
@@ -31,9 +32,14 @@ export default async function HomePage() {
             <Link href="/browse" className="btn-gold px-8 py-3">
               Browse talent
             </Link>
-            <Link href="/worker/onboarding" className="btn-outline px-8 py-3">
+            {/* Worker signup is invite-only — candidates apply by email and
+                receive a private onboarding link once vetted. */}
+            <a
+              href={`mailto:${WORKER_CONTACT_EMAIL}?subject=Working%20with%20Cheers`}
+              className="btn-outline px-8 py-3"
+            >
               Work with us
-            </Link>
+            </a>
           </div>
         </div>
       </section>

@@ -23,15 +23,14 @@ import FavoriteButton from "@/components/workers/FavoriteButton";
 import { getUserRow } from "@/lib/auth";
 import { formatCents, formatTime12 } from "@/lib/constants";
 import { isUuid } from "@/lib/slug";
-import { publicWorkerColumns } from "@/lib/workers";
+import { publicWorkerColumns, publicWorkerConditions } from "@/lib/workers";
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function workerBySlugOrId(slug: string) {
   return and(
     isUuid(slug) ? eq(workers.id, slug) : eq(workers.slug, slug),
-    eq(workers.active, true),
-    eq(workers.suspended, false)
+    ...publicWorkerConditions()
   );
 }
 
@@ -171,7 +170,6 @@ export default async function WorkerProfilePage(
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <h1 className="font-display text-3xl text-ink">{worker.stageName}</h1>
-            {worker.verified && <Badge tone="gold">Verified</Badge>}
             <StarRating
               avgRatingX100={worker.avgRating}
               reviewCount={worker.reviewCount}

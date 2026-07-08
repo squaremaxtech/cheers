@@ -26,18 +26,26 @@ export const publicWorkerColumns = {
   parish: workers.parish,
   city: workers.city,
   baseRateCents: workers.baseRateCents,
-  verified: workers.verified,
   avgRating: workers.avgRating,
   reviewCount: workers.reviewCount,
 };
 
-export async function getPublicWorkers(
-  filters: BrowseFilters
-): Promise<PublicWorkerWithPhoto[]> {
-  const conditions: SQL[] = [
+// A worker the public may see, book or message: admin-approved (verified),
+// switched on by the worker (active), and not suspended. New profiles start
+// unverified and stay OFF the site until staff green-lights them — every
+// public-facing worker query must include these conditions.
+export function publicWorkerConditions(): SQL[] {
+  return [
+    eq(workers.verified, true),
     eq(workers.active, true),
     eq(workers.suspended, false),
   ];
+}
+
+export async function getPublicWorkers(
+  filters: BrowseFilters
+): Promise<PublicWorkerWithPhoto[]> {
+  const conditions: SQL[] = publicWorkerConditions();
 
   if (filters.q) conditions.push(ilike(workers.stageName, `%${filters.q}%`));
   if (filters.parish) conditions.push(eq(workers.parish, filters.parish));
@@ -49,7 +57,6 @@ export async function getPublicWorkers(
   if (filters.minRatingX100) {
     conditions.push(gte(workers.avgRating, filters.minRatingX100));
   }
-  if (filters.verified) conditions.push(eq(workers.verified, true));
 
   // Service filter: a service CATEGORY slug — workers with any enabled
   // service in that category match.
@@ -77,7 +84,7 @@ export async function getPublicWorkers(
     .select(publicWorkerColumns)
     .from(workers)
     .where(and(...conditions))
-    .orderBy(desc(workers.verified), desc(workers.avgRating), asc(workers.stageName))
+    .orderBy(desc(workers.avgRating), asc(workers.stageName))
     .limit(60);
 
   // Language filter is an array column — filter in JS to keep the query simple.

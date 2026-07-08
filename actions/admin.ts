@@ -1,9 +1,18 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { and, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { bookings, payments, payouts, sessions, users, workers } from "@/db/schema";
+import {
+  bookings,
+  payments,
+  payouts,
+  sessions,
+  users,
+  workerInvites,
+  workers,
+} from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
 import { writeAudit } from "@/lib/audit";
 import { guardErrorMessage, requireAdmin } from "@/lib/guards";
@@ -13,8 +22,88 @@ import {
   adminSuspendUserSchema,
   adminUpdateWorkerSchema,
   markPayoutPaidSchema,
+  workerInviteSchema,
 } from "@/schemas/admin";
 import type { ActionResult, PayoutGeneration } from "@/types";
+
+// --- Worker invites (signup is invite-only) ----------------------------------
+
+const WORKER_INVITE_DAYS = 30;
+
+function generateInviteCode(): string {
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no lookalikes
+  const bytes = randomBytes(6);
+  let out = "";
+  for (const b of bytes) out += alphabet[b % alphabet.length];
+  return `CHW-${out}`;
+}
+
+// Admin mints a single-use invite and shares the onboarding link privately
+// with a vetted candidate. Consumed by createWorkerProfile.
+export async function createWorkerInvite(
+  input: unknown
+): Promise<ActionResult<{ code: string }>> {
+  try {
+    const admin = await requireAdmin();
+    const parsed = workerInviteSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const code = generateInviteCode();
+    const [invite] = await db
+      .insert(workerInvites)
+      .values({
+        code,
+        note: parsed.data.note || null,
+        createdByUserId: admin.id,
+        expiresAt: new Date(Date.now() + WORKER_INVITE_DAYS * 86_400_000),
+      })
+      .returning({ id: workerInvites.id });
+    await writeAudit({
+      actorUserId: admin.id,
+      action: "worker_invite.create",
+      entity: "worker_invites",
+      entityId: invite.id,
+      after: { code, note: parsed.data.note },
+    });
+
+    revalidatePath("/admin/workers");
+    return ok({ code });
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// Unused invites can be withdrawn (e.g. a candidate falls through).
+export async function deleteWorkerInvite(
+  inviteId: unknown
+): Promise<ActionResult<undefined>> {
+  try {
+    const admin = await requireAdmin();
+    if (typeof inviteId !== "string") return err(ERR.badRequest);
+
+    const deleted = await db
+      .delete(workerInvites)
+      .where(
+        and(eq(workerInvites.id, inviteId), isNull(workerInvites.usedByUserId))
+      )
+      .returning({ id: workerInvites.id, code: workerInvites.code });
+    if (deleted.length === 0) {
+      return err("Only unused invites can be deleted.");
+    }
+    await writeAudit({
+      actorUserId: admin.id,
+      action: "worker_invite.delete",
+      entity: "worker_invites",
+      entityId: deleted[0].id,
+      before: { code: deleted[0].code },
+    });
+
+    revalidatePath("/admin/workers");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
 
 // Admin override of any worker profile + platform flags (verify/suspend/hide).
 export async function adminUpdateWorker(input: unknown): Promise<ActionResult<undefined>> {
@@ -65,8 +154,8 @@ export async function adminUpdateWorker(input: unknown): Promise<ActionResult<un
       await notify({
         userId: worker.userId,
         type: "worker_verified",
-        title: "You are now verified",
-        body: "Your identity has been verified. Your profile now shows the verified badge.",
+        title: "Your profile is approved — you're live",
+        body: "Our team approved your profile. Customers can now find, message and book you on Cheers.",
       });
     }
     if (parsed.data.suspended === true && !worker.suspended) {

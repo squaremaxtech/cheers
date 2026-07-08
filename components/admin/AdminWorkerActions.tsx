@@ -43,7 +43,7 @@ export default function AdminWorkerActions({
         onClick={() => update({ verified: !verified })}
         className="btn border border-hairline px-2.5 py-1 text-xs text-muted hover:text-gold"
       >
-        {verified ? "Unverify" : "Verify"}
+        {verified ? "Revoke approval" : "Approve"}
       </button>
       <button
         type="button"

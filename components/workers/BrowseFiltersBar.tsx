@@ -123,15 +123,6 @@ export default function BrowseFiltersBar({
           ))}
         </select>
       </div>
-      <label className="flex h-10 items-center gap-2 text-sm text-muted">
-        <input
-          type="checkbox"
-          checked={get("verified") === "1"}
-          onChange={(e) => setParam("verified", e.target.checked ? "1" : "")}
-          className="h-4 w-4 accent-[var(--color-gold)]"
-        />
-        Verified only
-      </label>
       <div className="ml-auto flex gap-1">
         {(["grid", "list", "swipe"] as const).map((v) => (
           <button

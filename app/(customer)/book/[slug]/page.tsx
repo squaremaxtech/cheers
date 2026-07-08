@@ -14,6 +14,7 @@ import BookingForm from "@/components/bookings/BookingForm";
 import { getUserRow } from "@/lib/auth";
 import { isUuid } from "@/lib/slug";
 import { getCustomerVerification } from "@/lib/verification";
+import { publicWorkerConditions } from "@/lib/workers";
 
 export const metadata: Metadata = { title: "Book" };
 
@@ -33,10 +34,7 @@ export default async function BookPage(props: PageProps<"/book/[slug]">) {
   const verificationBlocked =
     viewer?.role === "customer" && verification?.status !== "approved";
 
-  const bookable = and(
-    eq(workers.active, true),
-    eq(workers.suspended, false)
-  );
+  const bookable = and(...publicWorkerConditions());
   const [worker] = await db
     .select({ id: workers.id, slug: workers.slug, stageName: workers.stageName })
     .from(workers)

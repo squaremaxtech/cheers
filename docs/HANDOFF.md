@@ -261,6 +261,36 @@ error/loading/not-found boundaries.
 - **Port change (owner, commit 7ef880e)**: dev/start/pm2 now bind default
   3000 (was 3010) — reconcile the nginx upstream before the next deploy.
 
+**2026-07-08 update (2) — invite-only worker signup + approval-gated visibility:**
+- **Worker signup is invite-only** (`worker_invites`, pushed to the VPS db):
+  admins mint single-use codes (CHW-XXXXXX, 30-day expiry, optional
+  note) from the "Worker invites" panel on `/admin/workers` and share
+  `/worker/onboarding?invite=<code>` privately with vetted candidates.
+  `createWorkerProfile` validates + CAS-consumes the code inside the create
+  transaction (admins bypass); without a live code the onboarding page shows
+  an apply-by-email notice instead of the form. The homepage "Work with us"
+  CTA is now `mailto:` `WORKER_CONTACT_EMAIL` (lib/constants.ts,
+  general@cheersja.com). Invite create/delete are audited.
+- **Approval gates visibility**: `workers.verified` is now the admin
+  APPROVAL flag, not a badge. `publicWorkerConditions()` in lib/workers.ts
+  (verified + active + !suspended) is the single predicate behind browse,
+  home featured, public profile, book page, favorites, `createBooking` and
+  `openChatRoom` — unapproved profiles 404 publicly and can't be booked or
+  messaged. Since every visible worker is admin-approved, the public
+  "Verified" badge and the browse verified filter were REMOVED
+  (`BrowseFilters`/`PublicWorker` no longer carry `verified`).
+- **Approval flow**: onboarding completion notifies admins + supervisors
+  ("New worker awaiting approval"); the worker dashboard shows an
+  awaiting-approval banner; `/admin/workers` sorts pending-approval first
+  ("Pending approval" badge, actions relabeled Approve / Revoke approval);
+  `/admin` overview shows a pending-workers alert; approval notifies the
+  worker "you're live".
+- E2E-verified with minted sessions (removed): unapproved worker ("mmm",
+  uncommonfavour32's converted profile — real state, awaiting the owner's
+  approval) hidden from browse + profile 404, onboarding email-gate /
+  valid-code form / bogus-code warning, worker banner, admin invites panel +
+  pending badge + overview alert.
+
 **V1 code complete.** Remaining before launch (V1.1):
 1. `.env` — confirm all names in `.env.example` exist locally (esp. `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `EMAIL_*`, `STRIPE_*` incl. `STRIPE_MEMBERSHIP_PRICE_ID` + webhook secret, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `FREE_ACCESS_UNTIL`). Admin role already seeded for the owner email.
 2. Stripe dashboard: create the monthly membership Price; point a webhook at `/api/stripe/webhook` (events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`).

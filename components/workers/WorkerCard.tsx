@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Badge from "@/components/ui/Badge";
 import StarRating from "@/components/ui/StarRating";
 import { formatCents } from "@/lib/constants";
 import type { PublicWorkerWithPhoto } from "@/types";
@@ -40,10 +39,7 @@ export default function WorkerCard({
         )}
       </div>
       <div className="flex flex-1 flex-col gap-2 p-4">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="font-display text-lg text-ink">{worker.stageName}</h3>
-          {worker.verified && <Badge tone="gold">Verified</Badge>}
-        </div>
+        <h3 className="font-display text-lg text-ink">{worker.stageName}</h3>
         <div className="flex items-center justify-between text-sm">
           <StarRating
             avgRatingX100={worker.avgRating}

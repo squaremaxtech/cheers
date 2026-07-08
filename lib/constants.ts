@@ -67,6 +67,9 @@ export const CHAT_SEND_PER_MINUTE = 25;
 export const CHAT_IMAGES_PER_HOUR = 20;
 export const CHAT_NEW_ROOMS_PER_DAY = 15;
 
+// Where would-be workers apply — worker signup itself is invite-only.
+export const WORKER_CONTACT_EMAIL = "general@cheersja.com";
+
 // ID documents accepted for customer identity verification.
 export const ID_DOCUMENT_TYPES = [
   { value: "drivers_license", label: "Driver's licence" },

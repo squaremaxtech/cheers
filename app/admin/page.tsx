@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { count, desc, eq, sum } from "drizzle-orm";
+import { and, count, desc, eq, sum } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
 import {
@@ -22,6 +22,7 @@ export default async function AdminDashboard() {
     [customerCount],
     [workerCount],
     [pendingVerifications],
+    [pendingWorkers],
     recent,
   ] = await Promise.all([
     db
@@ -35,6 +36,10 @@ export default async function AdminDashboard() {
       .select({ n: count() })
       .from(customerVerifications)
       .where(eq(customerVerifications.status, "pending")),
+    db
+      .select({ n: count() })
+      .from(workers)
+      .where(and(eq(workers.verified, false), eq(workers.suspended, false))),
     db
       .select()
       .from(bookings)
@@ -59,6 +64,7 @@ export default async function AdminDashboard() {
   ];
 
   const pendingCount = pendingVerifications?.n ?? 0;
+  const pendingWorkerCount = pendingWorkers?.n ?? 0;
 
   return (
     <div className="space-y-8">
@@ -74,6 +80,22 @@ export default async function AdminDashboard() {
             <span className="ml-3">
               customer verification{pendingCount === 1 ? "" : "s"} awaiting
               review
+            </span>
+          </p>
+          <span className="text-sm text-gold">Review →</span>
+        </Link>
+      )}
+
+      {pendingWorkerCount > 0 && (
+        <Link
+          href="/admin/workers"
+          className="card flex items-center justify-between gap-3 border-warn/40 p-4 hover:border-warn"
+        >
+          <p className="text-sm text-ink">
+            <Badge tone="warn">{pendingWorkerCount}</Badge>
+            <span className="ml-3">
+              worker profile{pendingWorkerCount === 1 ? "" : "s"} awaiting
+              approval (hidden from the site until approved)
             </span>
           </p>
           <span className="text-sm text-gold">Review →</span>

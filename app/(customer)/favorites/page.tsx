@@ -1,13 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
 import { favorites, workers } from "@/db/schema";
 import EmptyState from "@/components/ui/EmptyState";
 import WorkerCard from "@/components/workers/WorkerCard";
 import { getUserRow } from "@/lib/auth";
-import { attachPrimaryPhotos, publicWorkerColumns } from "@/lib/workers";
+import {
+  attachPrimaryPhotos,
+  publicWorkerColumns,
+  publicWorkerConditions,
+} from "@/lib/workers";
 
 export const metadata: Metadata = { title: "Favorites" };
 
@@ -21,12 +25,19 @@ export default async function FavoritesPage() {
     .where(eq(favorites.customerId, user.id))
     .orderBy(desc(favorites.createdAt));
 
+  // Favorited workers who since lost public visibility (pending approval,
+  // hidden, suspended) drop off the list rather than dead-ending.
   const rows =
     saved.length > 0
       ? await db
           .select(publicWorkerColumns)
           .from(workers)
-          .where(inArray(workers.id, saved.map((s) => s.workerId)))
+          .where(
+            and(
+              inArray(workers.id, saved.map((s) => s.workerId)),
+              ...publicWorkerConditions()
+            )
+          )
       : [];
   const withPhotos = await attachPrimaryPhotos(rows);
 

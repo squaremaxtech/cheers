@@ -4,7 +4,6 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { addFavorite } from "@/actions/favorites";
-import Badge from "@/components/ui/Badge";
 import StarRating from "@/components/ui/StarRating";
 import { formatCents } from "@/lib/constants";
 import type { PublicWorkerWithPhoto } from "@/types";
@@ -98,15 +97,12 @@ export default function SwipeDeck({
           )}
         </div>
         <div className="space-y-2 p-5">
-          <div className="flex items-center justify-between">
-            <h3 className="font-display text-xl text-ink">
-              {current.stageName}
-              {current.age !== null && (
-                <span className="ml-2 text-base text-muted">{current.age}</span>
-              )}
-            </h3>
-            {current.verified && <Badge tone="gold">Verified</Badge>}
-          </div>
+          <h3 className="font-display text-xl text-ink">
+            {current.stageName}
+            {current.age !== null && (
+              <span className="ml-2 text-base text-muted">{current.age}</span>
+            )}
+          </h3>
           <StarRating
             avgRatingX100={current.avgRating}
             reviewCount={current.reviewCount}
