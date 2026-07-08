@@ -6,6 +6,7 @@ import Badge from "@/components/ui/Badge";
 import PaymentAdminActions from "@/components/admin/PaymentAdminActions";
 import PayoutControls from "@/components/admin/PayoutControls";
 import { formatCents } from "@/lib/constants";
+import { payoutContribution } from "@/lib/payouts";
 
 export const metadata: Metadata = { title: "Payments — Admin" };
 
@@ -42,12 +43,17 @@ export default async function AdminPaymentsPage() {
       .orderBy(asc(bookings.date)),
   ]);
 
-  // Two independent follow-ups — issue them concurrently: tips/paid-ness of
-  // the uncovered bookings, and the booking codes behind each payout.
-  const [tipRows, payoutBookingRows] = await Promise.all([
+  // Two independent follow-ups — issue them concurrently: succeeded payments
+  // of the uncovered bookings (method decides credit vs fee-debit), and the
+  // booking codes behind each payout.
+  const [paymentRowsForUncovered, payoutBookingRows] = await Promise.all([
     uncovered.length > 0
       ? db
-          .select({ bookingId: payments.bookingId, tipCents: payments.tipCents })
+          .select({
+            bookingId: payments.bookingId,
+            method: payments.method,
+            tipCents: payments.tipCents,
+          })
           .from(payments)
           .where(
             and(
@@ -69,9 +75,14 @@ export default async function AdminPaymentsPage() {
       : Promise.resolve([]),
   ]);
 
-  const paidTips = new Map<string, number>();
-  for (const r of tipRows) {
-    paidTips.set(r.bookingId, (paidTips.get(r.bookingId) ?? 0) + r.tipCents);
+  const paymentsByBooking = new Map<
+    string,
+    { method: "card" | "cash"; tipCents: number }[]
+  >();
+  for (const r of paymentRowsForUncovered) {
+    const list = paymentsByBooking.get(r.bookingId) ?? [];
+    list.push({ method: r.method, tipCents: r.tipCents });
+    paymentsByBooking.set(r.bookingId, list);
   }
   const awaitingByWorker = new Map<
     string,
@@ -86,10 +97,14 @@ export default async function AdminPaymentsPage() {
   >();
   const unpaidCompleted: { code: string; date: string }[] = [];
   for (const b of uncovered) {
-    if (!paidTips.has(b.id)) {
+    const pays = paymentsByBooking.get(b.id);
+    if (!pays) {
       unpaidCompleted.push({ code: b.code, date: b.date });
       continue;
     }
+    // Same net-settlement math as generation (lib/payouts.ts): card credits
+    // the worker, cash debits them the platform fee.
+    const contribution = payoutContribution(b, pays);
     const entry = awaitingByWorker.get(b.workerId) ?? {
       stageName: b.stageName,
       codes: [],
@@ -99,8 +114,8 @@ export default async function AdminPaymentsPage() {
       maxDate: b.date,
     };
     entry.codes.push(b.code);
-    entry.netCents += b.priceCents + b.addonsCents - b.platformFeeCents;
-    entry.tipsCents += paidTips.get(b.id) ?? 0;
+    entry.netCents += contribution.amountCents;
+    entry.tipsCents += contribution.tipsCents;
     if (b.date < entry.minDate) entry.minDate = b.date;
     if (b.date > entry.maxDate) entry.maxDate = b.date;
     awaitingByWorker.set(b.workerId, entry);
@@ -194,8 +209,11 @@ export default async function AdminPaymentsPage() {
       <div>
         <h2 className="font-display text-xl text-ink">Awaiting payout</h2>
         <p className="mt-1 text-sm text-muted">
-          Paid, completed bookings not yet covered by a payout. Generate a
-          period below that spans their service dates.
+          Paid, completed bookings not yet covered by a payout. Card bookings
+          credit the worker; cash bookings (money already in their hand)
+          debit the platform fee — a negative net means the worker owes the
+          platform for that span. Generate a period below that covers the
+          service dates.
         </p>
         <div className="card mt-4 overflow-x-auto p-2">
           <table className="w-full min-w-[560px] text-sm">
@@ -204,8 +222,8 @@ export default async function AdminPaymentsPage() {
                 <th className="p-3">Worker</th>
                 <th className="p-3">Bookings</th>
                 <th className="p-3">Service dates</th>
-                <th className="p-3">Net earnings</th>
-                <th className="p-3">Tips</th>
+                <th className="p-3">Net</th>
+                <th className="p-3">Card tips</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-hairline">
@@ -220,7 +238,14 @@ export default async function AdminPaymentsPage() {
                       ? a.minDate
                       : `${a.minDate} → ${a.maxDate}`}
                   </td>
-                  <td className="p-3 text-ink">{formatCents(a.netCents)}</td>
+                  <td className={`p-3 ${a.netCents < 0 ? "text-warn" : "text-ink"}`}>
+                    {formatCents(a.netCents)}
+                    {a.netCents < 0 && (
+                      <span className="ml-1 text-xs text-faint">
+                        owes platform
+                      </span>
+                    )}
+                  </td>
                   <td className="p-3 text-muted">{formatCents(a.tipsCents)}</td>
                 </tr>
               ))}
@@ -264,6 +289,7 @@ export default async function AdminPaymentsPage() {
             <tbody className="divide-y divide-hairline">
               {payoutRows.map(({ payout, stageName }) => {
                 const codes = payoutBookings.get(payout.id) ?? [];
+                const owes = payout.amountCents + payout.tipsCents < 0;
                 return (
                   <tr key={payout.id}>
                     <td className="p-3 text-ink">{stageName}</td>
@@ -273,7 +299,14 @@ export default async function AdminPaymentsPage() {
                     <td className="p-3 text-muted" title={codes.join(", ")}>
                       {codes.length}
                     </td>
-                    <td className="p-3 text-ink">{formatCents(payout.amountCents)}</td>
+                    <td className={`p-3 ${owes ? "text-warn" : "text-ink"}`}>
+                      {formatCents(payout.amountCents)}
+                      {owes && (
+                        <span className="ml-1 text-xs text-faint">
+                          owes platform
+                        </span>
+                      )}
+                    </td>
                     <td className="p-3 text-muted">{formatCents(payout.tipsCents)}</td>
                     <td className="p-3">
                       <Badge tone={payout.status === "paid" ? "success" : "warn"}>
@@ -290,7 +323,10 @@ export default async function AdminPaymentsPage() {
                     </td>
                     <td className="p-3">
                       {payout.status === "pending" && (
-                        <PaymentAdminActions payoutId={payout.id} />
+                        <PaymentAdminActions
+                          payoutId={payout.id}
+                          payoutOwed={owes}
+                        />
                       )}
                     </td>
                   </tr>

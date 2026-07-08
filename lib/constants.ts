@@ -91,8 +91,9 @@ export function platformFeeCents(priceCents: number): number {
   return Math.round((priceCents * PLATFORM_FEE_PERCENT) / 100);
 }
 
+// Negative amounts render as "-$5.00" (worker owes platform — cash weeks).
 export function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString("en-US", {
+  return `${cents < 0 ? "-" : ""}$${(Math.abs(cents) / 100).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;

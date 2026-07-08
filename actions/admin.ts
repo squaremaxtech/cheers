@@ -15,8 +15,10 @@ import {
 } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
 import { writeAudit } from "@/lib/audit";
+import { formatCents } from "@/lib/constants";
 import { guardErrorMessage, requireAdmin } from "@/lib/guards";
 import { notify } from "@/lib/notify";
+import { payoutContribution } from "@/lib/payouts";
 import { uniqueWorkerSlug } from "@/lib/slug";
 import {
   adminSuspendUserSchema,
@@ -213,11 +215,14 @@ export async function adminSuspendUser(input: unknown): Promise<ActionResult<und
 }
 
 // Compute pending weekly payouts from succeeded payments on completed
-// bookings in the given period. Each booking is linked to its payout via
-// bookings.payoutId, so a booking can NEVER be paid out twice — re-runs and
-// overlapping periods only pick up bookings not yet covered. Re-running a
-// period releases and rebuilds its *pending* payouts; paid payouts and their
-// bookings are never touched.
+// bookings in the given period, on the NET-SETTLEMENT model (workers keep
+// cash collected at meetings — see lib/payouts.ts payoutContribution): card
+// bookings credit the worker, cash bookings debit them the platform fee, so
+// a payout can be NEGATIVE (worker owes the platform for a cash week).
+// Each booking is linked to its payout via bookings.payoutId, so a booking
+// can NEVER be settled twice — re-runs and overlapping periods only pick up
+// bookings not yet covered. Re-running a period releases and rebuilds its
+// *pending* payouts; paid payouts and their bookings are never touched.
 //
 // Returns enough context for the UI to explain a zero (PayoutGeneration in
 // types.ts): how many bookings were covered, how many completed bookings
@@ -279,9 +284,14 @@ export async function generateWeeklyPayouts(input: {
         return { created: 0, bookingsCovered: 0, unpaidSkipped: 0 };
       }
 
-      // Sum tips across ALL succeeded payments per booking (card + cash).
+      // Succeeded payments per booking — payment METHOD decides whether the
+      // booking credits the worker (card) or debits them the fee (cash).
       const paidRows = await tx
-        .select({ bookingId: payments.bookingId, tipCents: payments.tipCents })
+        .select({
+          bookingId: payments.bookingId,
+          method: payments.method,
+          tipCents: payments.tipCents,
+        })
         .from(payments)
         .where(
           and(
@@ -289,30 +299,33 @@ export async function generateWeeklyPayouts(input: {
             inArray(payments.bookingId, completed.map((b) => b.bookingId))
           )
         );
-      const tipsByBooking = new Map<string, number>();
+      const paymentsByBooking = new Map<
+        string,
+        { method: "card" | "cash"; tipCents: number }[]
+      >();
       for (const p of paidRows) {
-        tipsByBooking.set(
-          p.bookingId,
-          (tipsByBooking.get(p.bookingId) ?? 0) + p.tipCents
-        );
+        const list = paymentsByBooking.get(p.bookingId) ?? [];
+        list.push({ method: p.method, tipCents: p.tipCents });
+        paymentsByBooking.set(p.bookingId, list);
       }
 
-      // Worker earns service total minus platform fee; tips pass through 100%.
       const byWorker = new Map<
         string,
         { amountCents: number; tipsCents: number; bookingIds: string[] }
       >();
       let unpaidSkipped = 0;
       for (const b of completed) {
-        if (!tipsByBooking.has(b.bookingId)) {
-          unpaidSkipped += 1; // completed but no succeeded payment: not payable
+        const pays = paymentsByBooking.get(b.bookingId);
+        if (!pays) {
+          unpaidSkipped += 1; // completed but no succeeded payment: not settleable
           continue;
         }
+        const contribution = payoutContribution(b, pays);
         const entry =
           byWorker.get(b.workerId) ??
           { amountCents: 0, tipsCents: 0, bookingIds: [] };
-        entry.amountCents += b.priceCents + b.addonsCents - b.platformFeeCents;
-        entry.tipsCents += tipsByBooking.get(b.bookingId) ?? 0;
+        entry.amountCents += contribution.amountCents;
+        entry.tipsCents += contribution.tipsCents;
         entry.bookingIds.push(b.bookingId);
         byWorker.set(b.workerId, entry);
       }
@@ -412,11 +425,20 @@ export async function markPayoutPaid(input: unknown): Promise<ActionResult<undef
       .from(workers)
       .where(eq(workers.id, payout.workerId));
     if (worker) {
+      // Negative payout = cash-heavy week where the worker owed the platform
+      // its fees; "paid" then means that settlement was collected/deducted.
+      const total = payout.amountCents + payout.tipsCents;
       await notify({
         userId: worker.userId,
         type: "payout_paid",
-        title: "Your weekly payout was sent",
-        body: `Payout for ${payout.periodStart} to ${payout.periodEnd} has been paid out.`,
+        title:
+          total >= 0
+            ? "Your weekly payout was sent"
+            : "Your weekly settlement is recorded",
+        body:
+          total >= 0
+            ? `Payout for ${payout.periodStart} to ${payout.periodEnd} has been paid out.`
+            : `Settlement for ${payout.periodStart} to ${payout.periodEnd} is recorded — ${formatCents(-total)} in platform fees from your cash bookings was settled.`,
       });
     }
 

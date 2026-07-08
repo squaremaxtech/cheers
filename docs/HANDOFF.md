@@ -291,6 +291,22 @@ error/loading/not-found boundaries.
   valid-code form / bogus-code warning, worker banner, admin invites panel +
   pending badge + overview alert.
 
+**2026-07-08 update (3) — net-settlement payouts (workers keep cash) + role guide:**
+- Owner decision: workers KEEP cash collected at meetings. Payout math is now
+  net-settlement via `payoutContribution()` in `lib/payouts.ts` (the ONE
+  function behind both generation and the awaiting panel): card bookings
+  credit the worker (price + add-ons − fee, + card tips), cash bookings debit
+  them the platform fee (cash tips stay theirs, uncounted). Payouts can be
+  NEGATIVE (cash-heavy week = worker owes fees): admin UI shows amber
+  "owes platform", the button becomes "Mark settled", the worker's earnings
+  page shows "cash-week fees you owe" / status "settled", and the
+  markPayoutPaid notification copy adapts. `formatCents` now renders
+  negatives as "-$X.XX".
+- `docs/USER-GUIDE.md` (new): per-role walkthroughs — customer, worker,
+  admin (incl. the weekly payment routine + money model), the three support
+  sub-roles, and a notifications cheat-sheet. Keep it updated alongside
+  feature changes.
+
 **V1 code complete.** Remaining before launch (V1.1):
 1. `.env` — confirm all names in `.env.example` exist locally (esp. `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `EMAIL_*`, `STRIPE_*` incl. `STRIPE_MEMBERSHIP_PRICE_ID` + webhook secret, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `FREE_ACCESS_UNTIL`). Admin role already seeded for the owner email.
 2. Stripe dashboard: create the monthly membership Price; point a webhook at `/api/stripe/webhook` (events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`).

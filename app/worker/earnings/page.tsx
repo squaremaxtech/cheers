@@ -52,8 +52,10 @@ export default async function WorkerEarningsPage() {
       <div>
         <h1 className="font-display text-2xl text-ink">Earnings</h1>
         <p className="mt-1 text-sm text-muted">
-          Paid weekly. Platform fee is {PLATFORM_FEE_PERCENT}% of the service
-          price — tips are never touched.
+          Settled weekly. Card bookings are paid out to you minus the{" "}
+          {PLATFORM_FEE_PERCENT}% platform fee; cash you keep at the meeting,
+          with the {PLATFORM_FEE_PERCENT}% fee netted against your payout.
+          Tips are never touched.
         </p>
       </div>
 
@@ -76,26 +78,39 @@ export default async function WorkerEarningsPage() {
           </p>
         ) : (
           <ul className="mt-3 divide-y divide-hairline text-sm">
-            {payoutRows.map((p) => (
-              <li key={p.id} className="flex items-center justify-between py-3">
-                <span className="text-muted">
-                  {p.periodStart} → {p.periodEnd}
-                </span>
-                <span className="flex items-center gap-3">
-                  <span className="text-ink">
-                    {formatCents(p.amountCents + p.tipsCents)}
-                    {p.tipsCents > 0 && (
-                      <span className="ml-1 text-xs text-faint">
-                        (incl. {formatCents(p.tipsCents)} tips)
-                      </span>
-                    )}
+            {payoutRows.map((p) => {
+              const total = p.amountCents + p.tipsCents;
+              return (
+                <li key={p.id} className="flex items-center justify-between py-3">
+                  <span className="text-muted">
+                    {p.periodStart} → {p.periodEnd}
                   </span>
-                  <Badge tone={p.status === "paid" ? "success" : "warn"}>
-                    {p.status}
-                  </Badge>
-                </span>
-              </li>
-            ))}
+                  <span className="flex items-center gap-3">
+                    <span className={total < 0 ? "text-warn" : "text-ink"}>
+                      {formatCents(total)}
+                      {total < 0 ? (
+                        <span className="ml-1 text-xs text-faint">
+                          cash-week fees you owe
+                        </span>
+                      ) : (
+                        p.tipsCents > 0 && (
+                          <span className="ml-1 text-xs text-faint">
+                            (incl. {formatCents(p.tipsCents)} tips)
+                          </span>
+                        )
+                      )}
+                    </span>
+                    <Badge tone={p.status === "paid" ? "success" : "warn"}>
+                      {p.status === "paid"
+                        ? total < 0
+                          ? "settled"
+                          : "paid"
+                        : "pending"}
+                    </Badge>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

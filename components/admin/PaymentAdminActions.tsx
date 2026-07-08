@@ -8,14 +8,18 @@ import { adminResolvePendingPayment, refundPayment } from "@/actions/payments";
 import type { ActionResult, PaymentRow } from "@/types";
 
 // Renders refund (for a payment) or mark-paid (for a payout) controls.
+// payoutOwed = negative payout (cash week — the worker owes the platform),
+// where "paid" means the fee settlement was collected/deducted.
 export default function PaymentAdminActions({
   paymentId,
   status,
   payoutId,
+  payoutOwed = false,
 }: {
   paymentId?: string;
   status?: PaymentRow["status"];
   payoutId?: string;
+  payoutOwed?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -27,19 +31,22 @@ export default function PaymentAdminActions({
         disabled={busy}
         className="btn-gold px-3 py-1.5 text-xs"
         onClick={async () => {
-          if (!window.confirm("Mark this payout as paid?")) return;
+          const confirmText = payoutOwed
+            ? "Record this settlement as collected from the worker (cash-week fees)?"
+            : "Mark this payout as paid?";
+          if (!window.confirm(confirmText)) return;
           setBusy(true);
           const res = await markPayoutPaid({ payoutId });
           setBusy(false);
           if (res.ok) {
-            toast.success("Payout marked paid");
+            toast.success(payoutOwed ? "Settlement recorded" : "Payout marked paid");
             router.refresh();
           } else {
             toast.error(res.error);
           }
         }}
       >
-        {busy ? "…" : "Mark paid"}
+        {busy ? "…" : payoutOwed ? "Mark settled" : "Mark paid"}
       </button>
     );
   }
