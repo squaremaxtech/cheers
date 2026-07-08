@@ -5,7 +5,8 @@ module.exports = {
       // Run the Next binary directly (not via npm) so pm2 supervises the real
       // server process — memory stats, max_memory_restart, and signals work.
       script: "node_modules/next/dist/bin/next",
-      args: "start --port 3010",
+      args: "start",
+      // args: "start --port 3010",
       cwd: __dirname,
       exec_mode: "fork",        // cluster is fine for Next, but 1 fork suits a small VPS
       instances: 1,
