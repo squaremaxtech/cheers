@@ -22,6 +22,5 @@ npm ci
 npm run build
 
 pm2 startOrRestart ecosystem.config.js
-pm2 save
 
 echo "Deployment complete."

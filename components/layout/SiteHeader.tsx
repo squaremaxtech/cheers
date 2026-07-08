@@ -22,16 +22,20 @@ export default async function SiteHeader() {
         >
           CHEERS
         </Link>
-        <nav className="flex min-w-0 items-center gap-1 text-sm">
+
+        <nav className="flex min-w-0 items-center gap-1 text-sm" style={{ overflow: "auto" }}>
           <Link href="/browse" className="btn-ghost hidden sm:inline-flex">
             Browse
           </Link>
+
           <Link href="/about" className="btn-ghost hidden md:inline-flex">
             About
           </Link>
+
           <Link href="/faq" className="btn-ghost hidden md:inline-flex">
             FAQ
           </Link>
+
           {user ? (
             <Link
               href={dashboardPath(user)}
