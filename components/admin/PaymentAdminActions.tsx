@@ -115,7 +115,7 @@ export default function PaymentAdminActions({
       className="btn-danger px-3 py-1.5 text-xs"
       onClick={() =>
         act(
-          "Refund this payment? Card refunds go through Stripe.",
+          "Refund this payment? Card refunds go through PowerTranz.",
           () => refundPayment({ paymentId }),
           "Refund issued"
         )

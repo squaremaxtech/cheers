@@ -1,66 +1,49 @@
 "use server";
 
-import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { memberships } from "@/db/schema";
-import { err, ok, ERR } from "@/lib/action-result";
+import { membershipPayments } from "@/db/schema";
+import { err, ok } from "@/lib/action-result";
+import { membershipPriceCents } from "@/lib/constants";
 import { guardErrorMessage, requireUser } from "@/lib/guards";
-import { getMembership } from "@/lib/membership";
-import { appUrl, stripe } from "@/lib/stripe";
+import {
+  appUrl,
+  gatewayConfigured,
+  initiateHostedPayment,
+  storeRedirectPage,
+} from "@/lib/powertranz";
 import type { ActionResult } from "@/types";
 
-// Start (or restart) the monthly membership subscription via Stripe Checkout.
-// returnTo picks where Stripe sends the customer back — the membership page
-// (default) or the first-login /welcome wizard.
+// Start a membership payment (join or renew) through the PowerTranz hosted
+// page. Memberships are prepaid fixed-term passes tracked locally: each
+// successful payment extends currentPeriodEnd by MEMBERSHIP_PERIOD_DAYS on
+// top of whatever time is left (see /api/pay/callback), so paying early
+// never loses days. returnTo picks where the gateway sends the customer
+// back — the membership page (default) or the first-login /welcome wizard.
 export async function createMembershipCheckout(
   returnTo?: "membership" | "welcome"
 ): Promise<ActionResult<{ url: string }>> {
   try {
     const user = await requireUser();
-    const priceId = process.env.STRIPE_MEMBERSHIP_PRICE_ID;
-    if (!priceId) return err("Memberships are not configured yet.");
-
-    const existing = await getMembership(user.id);
-    if (existing?.status === "active") {
-      return err("You already have an active membership.");
+    if (!gatewayConfigured()) {
+      return err("Memberships are not configured yet.");
     }
 
-    const returnPath = returnTo === "welcome" ? "/welcome" : "/membership";
-    const session = await stripe().checkout.sessions.create({
-      mode: "subscription",
-      customer_email: existing?.stripeCustomerId ? undefined : user.email,
-      customer: existing?.stripeCustomerId ?? undefined,
-      line_items: [{ price: priceId, quantity: 1 }],
-      metadata: { kind: "membership", userId: user.id },
-      subscription_data: { metadata: { userId: user.id } },
-      success_url: appUrl(`${returnPath}?success=1`),
-      cancel_url: appUrl(`${returnPath}?cancelled=1`),
+    const amountCents = membershipPriceCents();
+    const [row] = await db
+      .insert(membershipPayments)
+      .values({ userId: user.id, amountCents })
+      .returning({ id: membershipPayments.id });
+
+    const returnPath = returnTo === "welcome" ? "welcome" : "membership";
+    const init = await initiateHostedPayment({
+      amountCents,
+      orderId: `MEM-${row.id.slice(0, 8).toUpperCase()}`,
+      responseUrl: appUrl(
+        `/api/pay/callback?kind=membership&mp=${row.id}&return=${returnPath}`
+      ),
     });
-
-    if (!session.url) return err(ERR.server);
-    return ok({ url: session.url });
-  } catch (error) {
-    return err(guardErrorMessage(error));
-  }
-}
-
-// Stripe Billing Portal for cancel / update card.
-export async function openBillingPortal(): Promise<ActionResult<{ url: string }>> {
-  try {
-    const user = await requireUser();
-    const [membership] = await db
-      .select()
-      .from(memberships)
-      .where(eq(memberships.userId, user.id));
-    if (!membership?.stripeCustomerId) {
-      return err("No billing profile found. Join first.");
-    }
-
-    const session = await stripe().billingPortal.sessions.create({
-      customer: membership.stripeCustomerId,
-      return_url: appUrl("/membership"),
-    });
-    return ok({ url: session.url });
+    const token = storeRedirectPage(init.redirectData);
+    return ok({ url: appUrl(`/api/pay/session/${token}`) });
   } catch (error) {
     return err(guardErrorMessage(error));
   }

@@ -21,14 +21,17 @@ export async function getMembership(
   return row ?? null;
 }
 
-// Full platform access = free-access flag active OR an active subscription.
+// Full platform access = free-access flag active OR a prepaid membership
+// whose period hasn't lapsed. Local tracking (no gateway subscription
+// engine): renewals extend currentPeriodEnd; a lapsed date simply means no
+// access until the next payment.
 export async function hasMembershipAccess(userId: string): Promise<boolean> {
   if (freeAccessActive()) return true;
   const membership = await getMembership(userId);
   if (!membership) return false;
   return (
     membership.status === "active" &&
-    (membership.currentPeriodEnd === null ||
-      membership.currentPeriodEnd.getTime() > Date.now())
+    membership.currentPeriodEnd !== null &&
+    membership.currentPeriodEnd.getTime() > Date.now()
   );
 }

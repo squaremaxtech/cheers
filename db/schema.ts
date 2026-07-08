@@ -452,7 +452,9 @@ export const payments = pgTable(
     platformFeeCents: integer("platform_fee_cents").notNull().default(0),
     method: paymentMethod("method").notNull(),
     status: paymentStatus("status").notNull().default("pending"),
-    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    // Gateway (PowerTranz) transaction id of the settled charge — refunds
+    // reference it.
+    gatewayTransactionId: text("gateway_transaction_id"),
     // Cash bookings: worker uploads proof of collection
     cashProofUrl: text("cash_proof_url"),
     receiptUrl: text("receipt_url"),
@@ -489,6 +491,10 @@ export const payouts = pgTable(
 // Memberships
 // ---------------------------------------------------------------------------
 
+// Prepaid fixed-term membership, tracked locally (no gateway subscription
+// engine): each successful membership payment extends currentPeriodEnd by
+// MEMBERSHIP_PERIOD_DAYS. Access = status active AND period end in the
+// future (or the FREE_ACCESS_UNTIL launch flag).
 export const memberships = pgTable(
   "memberships",
   {
@@ -497,13 +503,32 @@ export const memberships = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     status: membershipStatus("status").notNull().default("none"),
-    stripeCustomerId: text("stripe_customer_id"),
-    stripeSubscriptionId: text("stripe_subscription_id"),
     currentPeriodEnd: timestamp("current_period_end", { mode: "date" }),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("memberships_user_idx").on(t.userId)]
+);
+
+// One row per membership charge (join/renewal) — the customer's receipt
+// trail and the admin's revenue record for subscriptions.
+export const membershipPayments = pgTable(
+  "membership_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    amountCents: integer("amount_cents").notNull(),
+    status: paymentStatus("status").notNull().default("pending"),
+    gatewayTransactionId: text("gateway_transaction_id"),
+    // The stretch of membership this payment bought (set on success).
+    periodStart: timestamp("period_start", { mode: "date" }),
+    periodEnd: timestamp("period_end", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("membership_payments_user_idx").on(t.userId)]
 );
 
 // ---------------------------------------------------------------------------

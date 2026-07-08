@@ -2,11 +2,15 @@ import { redirect } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { payments } from "@/db/schema";
+import { membershipPayments } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import MembershipActions from "@/components/customer/MembershipActions";
 import { getUserRow } from "@/lib/auth";
-import { formatCents } from "@/lib/constants";
+import {
+  formatCents,
+  MEMBERSHIP_PERIOD_DAYS,
+  membershipPriceCents,
+} from "@/lib/constants";
 import { freeAccessActive, getMembership } from "@/lib/membership";
 
 export const metadata: Metadata = { title: "Membership" };
@@ -19,14 +23,17 @@ export default async function MembershipPage() {
     getMembership(user.id),
     db
       .select()
-      .from(payments)
-      .where(eq(payments.customerId, user.id))
-      .orderBy(desc(payments.createdAt))
+      .from(membershipPayments)
+      .where(eq(membershipPayments.userId, user.id))
+      .orderBy(desc(membershipPayments.createdAt))
       .limit(20),
   ]);
 
   const freeAccess = freeAccessActive();
-  const active = membership?.status === "active";
+  const active =
+    membership?.status === "active" &&
+    membership.currentPeriodEnd !== null &&
+    membership.currentPeriodEnd > new Date();
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -36,7 +43,7 @@ export default async function MembershipPage() {
         <div className="flex items-center justify-between">
           <h2 className="font-display text-xl text-ink">Cheers Membership</h2>
           <Badge tone={freeAccess || active ? "gold" : "neutral"}>
-            {freeAccess ? "Free access" : active ? "Active" : membership?.status ?? "None"}
+            {freeAccess ? "Free access" : active ? "Active" : "Inactive"}
           </Badge>
         </div>
         <ul className="mt-5 space-y-2 text-sm text-muted">
@@ -47,26 +54,36 @@ export default async function MembershipPage() {
         {freeAccess ? (
           <p className="mt-6 text-sm text-gold-soft">
             Launch special: full access is currently free for everyone — no
-            subscription needed.
+            payment needed.
           </p>
         ) : (
-          <div className="mt-6">
+          <div className="mt-6 space-y-3">
+            {active && membership?.currentPeriodEnd && (
+              <p className="text-sm text-gold-soft">
+                Valid until {membership.currentPeriodEnd.toDateString()} —
+                renewing adds {MEMBERSHIP_PERIOD_DAYS} days on top, so you
+                never lose time.
+              </p>
+            )}
+            {!active && membership?.currentPeriodEnd && (
+              <p className="text-sm text-muted">
+                Your membership lapsed on{" "}
+                {membership.currentPeriodEnd.toDateString()} — rejoin any time
+                to pick back up.
+              </p>
+            )}
             <MembershipActions
-              hasBilling={Boolean(membership?.stripeCustomerId)}
               active={active}
+              priceCents={membershipPriceCents()}
+              periodDays={MEMBERSHIP_PERIOD_DAYS}
             />
           </div>
-        )}
-        {membership?.currentPeriodEnd && active && (
-          <p className="mt-4 text-xs text-faint">
-            Renews {membership.currentPeriodEnd.toDateString()}
-          </p>
         )}
       </div>
 
       <section className="card p-6">
         <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
-          Payment history
+          Membership payments
         </h2>
         {paymentHistory.length === 0 ? (
           <p className="mt-3 text-sm text-faint">No payments yet.</p>
@@ -75,7 +92,12 @@ export default async function MembershipPage() {
             {paymentHistory.map((p) => (
               <li key={p.id} className="flex items-center justify-between py-3">
                 <span className="text-muted">
-                  {p.createdAt.toISOString().slice(0, 10)} · {p.method}
+                  {p.createdAt.toISOString().slice(0, 10)}
+                  {p.periodEnd && (
+                    <span className="ml-2 text-faint">
+                      → valid until {p.periodEnd.toISOString().slice(0, 10)}
+                    </span>
+                  )}
                 </span>
                 <span className="flex items-center gap-3">
                   <span className="text-ink">{formatCents(p.amountCents)}</span>

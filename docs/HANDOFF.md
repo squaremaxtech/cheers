@@ -307,6 +307,50 @@ error/loading/not-found boundaries.
   sub-roles, and a notifications cheat-sheet. Keep it updated alongside
   feature changes.
 
+**2026-07-08 update (4) — Stripe → PowerTranz (local gateway) + local memberships:**
+- **Stripe is fully removed** (package uninstalled; `lib/stripe.ts` and
+  `app/api/stripe/webhook` deleted). Card payments now run through
+  **PowerTranz** (First Atlantic Commerce / Fiserv Caribbean — works with
+  Jamaican acquiring banks) via `lib/powertranz.ts`, using the **hosted-page
+  SPI flow** so card data never touches this app:
+  action → `POST /api/spi/sale` (with `ExtendedData.HostedPage` +
+  `MerchantResponseUrl`) → we serve the returned RedirectData HTML at
+  `/api/pay/session/<token>` (in-memory hand-off, 15-min TTL) → customer
+  pays + 3DS on the gateway page → gateway posts to `/api/pay/callback`
+  → we finalize server-side with `POST /api/spi/payment` (SpiToken, ≤5 min)
+  — the gateway response, never the callback body, decides approval →
+  browser bounced back into the app (`?paid=1` / `?cancelled=1`).
+  Booking fulfillment logic (conflict auto-refund, cash→card switch
+  retirement, notifications, CAS idempotency) ported intact from the old
+  Stripe webhook into the callback route. Refunds (`/api/refund`) reference
+  `payments.gateway_transaction_id` (renamed from
+  `stripe_payment_intent_id` via SQL migration).
+- **Env**: `POWERTRANZ_ID`, `POWERTRANZ_PASSWORD`, `POWERTRANZ_HPP_PAGESET`
+  ("PTZ/..." from the merchant portal), optional `POWERTRANZ_HPP_PAGENAME`
+  (default "Default") and `POWERTRANZ_BASE_URL` (default staging
+  `https://staging.ptranz.com`; FAC supplies the production URL). Optional
+  `MEMBERSHIP_PRICE_CENTS` (default 2000). **Dev without credentials:**
+  `POWERTRANZ_SIMULATE=1` (refused in production) swaps the gateway for an
+  in-app approve/decline page — every flow is testable locally.
+- **Memberships are now prepaid fixed-term passes tracked locally** (no
+  gateway subscription engine): `createMembershipCheckout` charges
+  `membershipPriceCents()` once; on approval the callback extends
+  `memberships.currentPeriodEnd` by `MEMBERSHIP_PERIOD_DAYS` (30) **on top
+  of any time left** (early renewals stack). New `membership_payments`
+  table = receipt trail (shown on /membership; billing portal removed).
+  `hasMembershipAccess` now requires a FUTURE `currentPeriodEnd` (no more
+  null-open); dropped `memberships.stripe_customer_id`/`stripe_subscription_id`.
+  No renewal-reminder emails yet — candidate for the reminder cron in V1.1
+  item 3.
+- E2E-verified in simulate mode (test data cleaned): booking card pay
+  $110 → hosted page → approve → payment succeeded + gateway txn id +
+  booking confirmed + tip recorded; membership decline → failed row;
+  join → active +30d; renew → stacked (Aug 7 → Sep 6). `tsc` + build clean.
+- V1.1 item 2 (Stripe dashboard setup) is now obsolete → replaced by:
+  obtain PowerTranz production credentials + HPP page set from FAC/your
+  acquiring bank, set the env vars above, and point `POWERTRANZ_BASE_URL`
+  at the production host.
+
 **V1 code complete.** Remaining before launch (V1.1):
 1. `.env` — confirm all names in `.env.example` exist locally (esp. `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `EMAIL_*`, `STRIPE_*` incl. `STRIPE_MEMBERSHIP_PRICE_ID` + webhook secret, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `FREE_ACCESS_UNTIL`). Admin role already seeded for the owner email.
 2. Stripe dashboard: create the monthly membership Price; point a webhook at `/api/stripe/webhook` (events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`).

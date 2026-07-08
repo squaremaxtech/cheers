@@ -8,6 +8,7 @@ import type {
   chatMessages,
   chatRooms,
   customerVerifications,
+  membershipPayments,
   memberships,
   notifications,
   payments,
@@ -53,6 +54,7 @@ export type BookingEventRow = typeof bookingEvents.$inferSelect;
 export type PaymentRow = typeof payments.$inferSelect;
 export type PayoutRow = typeof payouts.$inferSelect;
 export type MembershipRow = typeof memberships.$inferSelect;
+export type MembershipPaymentRow = typeof membershipPayments.$inferSelect;
 
 // Result of generateWeeklyPayouts — carries enough context for the admin UI
 // to explain a zero-worker run instead of a bare "0".

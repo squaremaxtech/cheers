@@ -44,7 +44,9 @@ export default async function CustomerDashboard() {
 
   const membershipLabel = freeAccessActive()
     ? "Free access"
-    : membership?.status === "active"
+    : membership?.status === "active" &&
+        membership.currentPeriodEnd !== null &&
+        membership.currentPeriodEnd > new Date()
       ? "Active"
       : "Not a member";
 

@@ -2,23 +2,25 @@
 
 import { useState } from "react";
 import toast from "react-hot-toast";
-import {
-  createMembershipCheckout,
-  openBillingPortal,
-} from "@/actions/memberships";
+import { createMembershipCheckout } from "@/actions/memberships";
+import { formatCents } from "@/lib/constants";
 
+// Join / renew the prepaid membership through the hosted card page. Each
+// payment adds a period on top of whatever time is left.
 export default function MembershipActions({
-  hasBilling,
   active,
+  priceCents,
+  periodDays,
 }: {
-  hasBilling: boolean;
   active: boolean;
+  priceCents: number;
+  periodDays: number;
 }) {
   const [busy, setBusy] = useState(false);
 
-  async function go(fn: () => Promise<{ ok: true; data: { url: string } } | { ok: false; error: string }>) {
+  async function pay() {
     setBusy(true);
-    const res = await fn();
+    const res = await createMembershipCheckout("membership");
     if (res.ok) {
       window.location.href = res.data.url;
     } else {
@@ -28,27 +30,12 @@ export default function MembershipActions({
   }
 
   return (
-    <div className="flex flex-wrap gap-3">
-      {!active && (
-        <button
-          type="button"
-          className="btn-gold"
-          disabled={busy}
-          onClick={() => go(createMembershipCheckout)}
-        >
-          {busy ? "Redirecting…" : "Join monthly membership"}
-        </button>
-      )}
-      {hasBilling && (
-        <button
-          type="button"
-          className="btn-outline"
-          disabled={busy}
-          onClick={() => go(openBillingPortal)}
-        >
-          Manage billing
-        </button>
-      )}
-    </div>
+    <button type="button" className="btn-gold" disabled={busy} onClick={pay}>
+      {busy
+        ? "Redirecting…"
+        : active
+          ? `Renew — add ${periodDays} days (${formatCents(priceCents)})`
+          : `Join — ${formatCents(priceCents)} for ${periodDays} days`}
+    </button>
   );
 }

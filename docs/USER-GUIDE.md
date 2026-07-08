@@ -37,8 +37,9 @@ fine — they resume where they left off.
    visible only to the verification team and is permanently deleted the
    moment it's reviewed — approved or declined.*
 3. **Membership** — during the free-access launch window this is just an
-   informational banner; once the flag is off, this is where they subscribe
-   monthly via Stripe before they can finish.
+   informational banner; once the flag is off, this is where they buy their
+   30-day membership (card, on the secure PowerTranz page) before they can
+   finish.
 
 Finishing shows: *"You're all set! We'll notify you as soon as you're
 verified"* and drops them on the browse page.
@@ -85,7 +86,9 @@ because unapproved workers simply don't exist publicly.
 2. **Acceptance:** the worker (or admin) accepts or declines — email + in-app
    notification either way.
 3. **Payment:** after acceptance they choose:
-   - **Card** — Stripe checkout, optional tip (tips go 100% to the worker).
+   - **Card** — they're taken to the secure PowerTranz page (card details
+     never touch our site), complete 3DS bank verification, and land back on
+     their booking. Optional tip (tips go 100% to the worker).
    - **Cash at the meeting** — the booking confirms immediately; they bring
      the exact amount. They can still switch to card any time before the
      session starts.
@@ -107,8 +110,10 @@ the card).
 ### Their dashboard (`/dashboard`)
 
 Recent bookings, verification status card, profile editor, notifications
-feed, membership status. `/membership` shows their plan, renewal date,
-payment history, and the Stripe billing portal (update card / cancel).
+feed, membership status. `/membership` shows their valid-until date, a
+join/renew button, and their membership payment history. Renewing adds 30
+days **on top of whatever time is left**, so paying early never loses days;
+there's no auto-charge — when time runs out they simply renew again.
 
 ---
 
@@ -233,10 +238,12 @@ accidental re-opening — only completed → refunded remains possible.
 ### Payments page — how the money actually works
 
 **The model:** you are the merchant of record. *All* card money — booking
-payments, tips, and membership subscriptions — lands in your **one Stripe
-account**. Stripe takes its processing fee off the top and auto-deposits your
-balance to your business bank account on its own schedule; you don't manage
-that part. What you *do* manage is paying workers their share, weekly.
+payments, tips, and membership fees — is charged through your **PowerTranz
+merchant account** (First Atlantic Commerce, via your Jamaican acquiring
+bank), which settles to your business bank account on the bank's schedule;
+you don't manage that part. What you *do* manage is paying workers their
+share, weekly. Refunds go back through the gateway with one click on the
+payments page.
 
 **Your weekly routine (~10 minutes, e.g. every Monday):**
 
@@ -264,12 +271,16 @@ in amber as "owes platform") means a cash-heavy week: collect the fee from
 the worker or deduct it from their next payout, then click **Mark settled**
 with a note. Positive payouts you transfer as usual and **Mark paid**.
 
-**Subscriptions:** membership revenue is 100% platform income — it never
-enters payout math.
+**Memberships:** revenue is 100% platform income — it never enters payout
+math. Memberships are prepaid 30-day passes tracked in the app itself (no
+gateway subscription engine): a payment extends the customer's valid-until
+date, stacking on any time left; when it lapses, access simply stops until
+they renew. Every charge is recorded on their membership page and in
+`membership_payments`.
 
-**Refunds:** on any succeeded payment, one click refunds it (Stripe handles
-card refunds; cash refunds you arrange and record). The booking moves to
-*refunded* and the customer is notified.
+**Refunds:** on any succeeded payment, one click refunds it (card refunds go
+through PowerTranz; cash refunds you arrange and record). The booking moves
+to *refunded* and the customer is notified.
 
 ### Chats page
 

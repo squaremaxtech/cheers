@@ -7,11 +7,16 @@ import { bookings, payments, workers } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
 import { writeAudit } from "@/lib/audit";
 import { transitionBooking } from "@/lib/bookings";
-import { CURRENCY } from "@/lib/constants";
 import { guardErrorMessage, requireAdmin, requireUser, requireWorker } from "@/lib/guards";
 import { notify, notifyAdmins } from "@/lib/notify";
+import {
+  appUrl,
+  gatewayConfigured,
+  initiateHostedPayment,
+  refundGatewayPayment,
+  storeRedirectPage,
+} from "@/lib/powertranz";
 import { bookingEventNow, publishBooking } from "@/lib/realtime";
-import { appUrl, stripe } from "@/lib/stripe";
 import {
   adminPaymentStatusSchema,
   cashCollectedSchema,
@@ -35,7 +40,7 @@ function serviceTotalCents(booking: BookingRow): number {
   return booking.priceCents + booking.addonsCents;
 }
 
-// --- Card payment via Stripe Checkout (customer, after acceptance) ------------
+// --- Card payment via the PowerTranz hosted page (customer, after acceptance) --
 
 export async function createBookingCheckout(
   input: unknown
@@ -44,6 +49,11 @@ export async function createBookingCheckout(
     const user = await requireUser();
     const parsed = checkoutSchema.safeParse(input);
     if (!parsed.success) return err(ERR.badRequest);
+    if (!gatewayConfigured()) {
+      return err(
+        "Card payments are not set up yet — choose cash at the meeting instead."
+      );
+    }
 
     const [booking] = await db
       .select()
@@ -91,45 +101,18 @@ export async function createBookingCheckout(
       })
       .returning({ id: payments.id });
 
-    const lineItems = [
-      {
-        price_data: {
-          currency: CURRENCY,
-          product_data: { name: `${booking.serviceName} — booking ${booking.code}` },
-          unit_amount: serviceTotal,
-        },
-        quantity: 1,
-      },
-    ];
-    if (tipCents > 0) {
-      lineItems.push({
-        price_data: {
-          currency: CURRENCY,
-          product_data: { name: "Tip (100% to your worker)" },
-          unit_amount: tipCents,
-        },
-        quantity: 1,
-      });
-    }
-
-    const session = await stripe().checkout.sessions.create({
-      mode: "payment",
-      customer_email: user.email,
-      line_items: lineItems,
-      // Sessions die after 30 minutes so stale tabs can't charge later.
-      expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
-      metadata: {
-        kind: "booking",
-        bookingId: booking.id,
-        paymentId: payment.id,
-        tipCents: String(tipCents),
-      },
-      success_url: appUrl(`/bookings/${booking.id}?paid=1`),
-      cancel_url: appUrl(`/bookings/${booking.id}?cancelled=1`),
+    // PowerTranz hosted page: the customer enters their card on the
+    // gateway's page (card data never touches this app), completes 3DS, and
+    // the gateway posts the outcome to /api/pay/callback which finalizes.
+    const init = await initiateHostedPayment({
+      amountCents: serviceTotal + tipCents,
+      orderId: booking.code,
+      responseUrl: appUrl(
+        `/api/pay/callback?kind=booking&payment=${payment.id}&booking=${booking.id}`
+      ),
     });
-
-    if (!session.url) return err(ERR.server);
-    return ok({ url: session.url });
+    const token = storeRedirectPage(init.redirectData);
+    return ok({ url: appUrl(`/api/pay/session/${token}`) });
   } catch (error) {
     return err(guardErrorMessage(error));
   }
@@ -421,10 +404,16 @@ export async function refundPayment(input: unknown): Promise<ActionResult<undefi
     if (!payment) return err(ERR.notFound);
     if (payment.status !== "succeeded") return err("Only succeeded payments can be refunded.");
 
-    if (payment.method === "card" && payment.stripePaymentIntentId) {
-      await stripe().refunds.create({
-        payment_intent: payment.stripePaymentIntentId,
-      });
+    if (payment.method === "card" && payment.gatewayTransactionId) {
+      const refunded = await refundGatewayPayment(
+        payment.gatewayTransactionId,
+        payment.amountCents
+      );
+      if (!refunded) {
+        return err(
+          "The gateway declined the refund — process it from the PowerTranz portal, then mark it here."
+        );
+      }
     }
 
     // CAS so a concurrent webhook redelivery can't fight this write.

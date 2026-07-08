@@ -6,7 +6,17 @@ export const PLATFORM_FEE_PERCENT = Number(
   process.env.PLATFORM_FEE_PERCENT ?? 5
 );
 
-export const CURRENCY = "usd"; // Stripe currency; amounts stored as integer cents
+// Charge currency (PowerTranz merchant account); amounts stored as integer
+// cents. Switch to "jmd" once the merchant account settles in JMD.
+export const CURRENCY = "usd";
+
+// Membership: a successful payment buys this many days of access, stacking
+// onto whatever time is left ("further payments pushed back").
+export const MEMBERSHIP_PERIOD_DAYS = 30;
+
+export function membershipPriceCents(): number {
+  return Number(process.env.MEMBERSHIP_PRICE_CENTS ?? 2000);
+}
 
 // All booking dates/times are Jamaica wall-clock time (UTC-5, no DST).
 // Parsing must pin this offset — server timezone must never matter.

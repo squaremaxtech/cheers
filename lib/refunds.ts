@@ -2,14 +2,14 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { payments } from "@/db/schema";
 import { notify, notifyAdmins } from "@/lib/notify";
-import { stripe } from "@/lib/stripe";
+import { refundGatewayPayment } from "@/lib/powertranz";
 import type { BookingRow } from "@/types";
 
 // Refund every payment on a booking (used when a paid booking is cancelled).
-// Card payments are refunded through Stripe automatically; cash payments (and
-// card refund failures) escalate to admins for manual handling. Pending
-// payments are voided. Never throws — the cancellation itself must not fail
-// because a refund needs human follow-up.
+// Card payments are refunded through the PowerTranz gateway automatically;
+// cash payments (and card refund failures) escalate to admins for manual
+// handling. Pending payments are voided. Never throws — the cancellation
+// itself must not fail because a refund needs human follow-up.
 export async function refundBookingPayments(booking: BookingRow): Promise<void> {
   try {
     const rows = await db
@@ -30,11 +30,12 @@ export async function refundBookingPayments(booking: BookingRow): Promise<void> 
       }
       if (payment.status !== "succeeded") continue;
 
-      if (payment.method === "card" && payment.stripePaymentIntentId) {
-        try {
-          await stripe().refunds.create({
-            payment_intent: payment.stripePaymentIntentId,
-          });
+      if (payment.method === "card" && payment.gatewayTransactionId) {
+        const refunded = await refundGatewayPayment(
+          payment.gatewayTransactionId,
+          payment.amountCents
+        );
+        if (refunded) {
           await db
             .update(payments)
             .set({ status: "refunded", updatedAt: new Date() })
@@ -46,11 +47,6 @@ export async function refundBookingPayments(booking: BookingRow): Promise<void> 
             body: "Your card refund is on its way — it typically lands within 5-10 business days.",
           });
           continue;
-        } catch (error) {
-          console.error(
-            "auto-refund failed:",
-            error instanceof Error ? error.message : error
-          );
         }
       }
 
