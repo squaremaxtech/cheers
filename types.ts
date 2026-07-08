@@ -76,12 +76,16 @@ export type ChatMessageKind = ChatMessageRow["kind"];
 // read every room but never send.
 export type ChatViewerRole = "customer" | "worker" | "staff";
 
+// Which side of a chat room sent something. Deliberately a role, not a user
+// id — worker account ids must never reach the customer client (HANDOFF §9).
+export type ChatParticipantRole = "customer" | "worker";
+
 // Wire shape of one chat message (ISO date) — used for the initial page load
 // and for SSE "message" events, so the client renders both identically.
 export type ChatMessage = {
   id: string;
   roomId: string;
-  senderUserId: string;
+  senderRole: ChatParticipantRole;
   // What the OTHER side sees: worker's stage name / customer's first name.
   senderLabel: string;
   kind: ChatMessageKind;
@@ -90,7 +94,16 @@ export type ChatMessage = {
   createdAt: string;
 };
 
-export type ChatStreamEvent = { kind: "message"; message: ChatMessage };
+// Room stream: new messages, plus participants entering/leaving the stream
+// (presence dots). Worker presence events are suppressed server-side when the
+// worker has hidden their online status.
+export type ChatStreamEvent =
+  | { kind: "message"; message: ChatMessage }
+  | { kind: "presence"; role: ChatParticipantRole; online: boolean };
+
+// Per-user inbox stream: "something changed in one of your chats" — the
+// /chats page refreshes its unread badges on this signal.
+export type InboxStreamEvent = { kind: "inbox"; at: string };
 
 export type BookingLocationRow = typeof bookingLocations.$inferSelect;
 export type WellnessCheckRow = typeof wellnessChecks.$inferSelect;

@@ -211,6 +211,56 @@ error/loading/not-found boundaries.
   **approved** (test doc consumed), and its chat with Maxx contains two test
   messages — use a fresh account to demo the wizard.
 
+**2026-07-08 update — chat v2 (rate limits, presence, live inbox) + review fixes:**
+- **Rate limits** (`lib/rate-limit.ts`, in-memory sliding window with a
+  10-min stale-key sweep; constants in lib/constants.ts): 25 sends/min per
+  user per room, 20 chat images/hour per user, 15 new rooms/day per customer
+  (existing rooms always reachable). Counters reset on deploy by design.
+- **Presence** (`lib/presence.ts`, in-memory): online = any open chat/inbox
+  SSE stream OR any authenticated request in the last 3 min (`getUserRow`
+  touches it). Room header + inbox rows show an Online dot; workers can hide
+  theirs (`workers.show_online_status`, toggle on /chats, pushed to DB).
+  Hiding also greys dots live in open rooms. Presence SSE events carry the
+  participant ROLE, never a user id. A delayed re-check after stream
+  disconnect greys the dot once the activity window lapses.
+- **Chat notifications**: on each unread-burst START (recipient was caught
+  up), an in-app notification row is always written; the EMAIL goes out only
+  if the recipient is offline (owner rule: both online ⇒ no email). Behind
+  recipients aren't re-notified until they read. `notify()` gained
+  `email?: boolean`.
+- **Live inbox**: `/api/chats/inbox/stream` (per-user SSE channel,
+  `publishInbox`) + `InboxLive` on /chats — unread dots/previews update in
+  realtime without refresh.
+- **Scroll-jump fix**: `sendChatMessage` no longer calls
+  `revalidatePath("/chats")` (it remounted the route through the root
+  loading boundary and snapped to top); ChatRoom pins to newest via the list
+  container's scrollTop (scrollIntoView scrolled the window). Composer shows
+  a live "N characters left" counter under 150 remaining.
+- **Mobile**: `overflow-x: clip` on html/body (wide tables already scroll in
+  their own cards; clip keeps position:sticky alive) + SiteHeader hardening
+  (shrink-0 logo, responsive tracking/padding). If sideways scroll ever
+  reappears, some element is wider than the viewport — find it rather than
+  removing the clip.
+- **Multi-agent review (8 angles → verified) fixes**: onboarding gate now
+  also enforced in `openChatRoom` + `/chats/[id]` (was bypassable via the
+  profile Message button); `/api/uploads` authenticates BEFORE parsing the
+  multipart body (anonymous flooders no longer buffered 50MB bodies);
+  chat wire payloads use `senderRole: "customer"|"worker"` instead of user
+  ids (HANDOFF §9 — worker account ids never reach the customer client);
+  `isModeratingStaff()` added to lib/guards.ts and used by the media route +
+  chat access (one moderator predicate); admin payments follow-up queries
+  parallelized; OnboardingWizard takes `membershipOk` directly.
+- Known accepted trade-offs / follow-ups: SSE ReadableStream scaffolding is
+  triplicated across the three stream routes (extract a lib helper when next
+  touched); media-URL regexes exist in schemas/verification, schemas/chat
+  and removeStoredUpload; per-send COUNT(*) for the room cap is an
+  index-only scan ≤ ~1010 rows (swap for a chat_rooms.message_count counter
+  if rooms multiply); a worker's already-open room stream keeps its
+  connect-time presence-visibility until reconnect; presence/rate-limit
+  state is per-process (Redis if ever multi-instance).
+- **Port change (owner, commit 7ef880e)**: dev/start/pm2 now bind default
+  3000 (was 3010) — reconcile the nginx upstream before the next deploy.
+
 **V1 code complete.** Remaining before launch (V1.1):
 1. `.env` — confirm all names in `.env.example` exist locally (esp. `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `EMAIL_*`, `STRIPE_*` incl. `STRIPE_MEMBERSHIP_PRICE_ID` + webhook secret, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `FREE_ACCESS_UNTIL`). Admin role already seeded for the owner email.
 2. Stripe dashboard: create the monthly membership Price; point a webhook at `/api/stripe/webhook` (events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`).

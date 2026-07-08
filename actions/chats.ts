@@ -5,18 +5,27 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { chatMessages, chatRooms, workers } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
-import { chatSenderLabel, loadChatAccess } from "@/lib/chat-access";
 import {
+  chatSenderLabel,
+  chatSenderRole,
+  loadChatAccess,
+} from "@/lib/chat-access";
+import {
+  CHAT_NEW_ROOMS_PER_DAY,
   CHAT_PRUNE_BATCH,
   CHAT_ROOM_MESSAGE_CAP,
+  CHAT_SEND_PER_MINUTE,
 } from "@/lib/constants";
-import { guardErrorMessage, requireUser } from "@/lib/guards";
+import { guardErrorMessage, requireUser, requireWorker } from "@/lib/guards";
 import { notify } from "@/lib/notify";
-import { publishChat } from "@/lib/realtime";
+import { isOnline } from "@/lib/presence";
+import { rateLimit } from "@/lib/rate-limit";
+import { publishChat, publishInbox } from "@/lib/realtime";
 import { removeStoredUpload } from "@/lib/uploads";
 import {
   markChatReadSchema,
   openChatRoomSchema,
+  presenceVisibilitySchema,
   sendChatMessageSchema,
 } from "@/schemas/chat";
 import type { ActionResult, ChatMessage } from "@/types";
@@ -30,6 +39,11 @@ export async function openChatRoom(
     const user = await requireUser();
     if (user.role !== "customer") {
       return err("Only customer accounts can start a chat with a worker.");
+    }
+    // Same gate as the (customer) layout and /chats: finish the /welcome
+    // setup before using the account area — chat included.
+    if (!user.onboardedAt) {
+      return err("Finish setting up your account first — it only takes a minute.");
     }
     const parsed = openChatRoomSchema.safeParse(input);
     if (!parsed.success) return err(ERR.badRequest);
@@ -60,6 +74,14 @@ export async function openChatRoom(
     if (existing) return ok({ roomId: existing.id });
     if (!worker.active || worker.suspended) {
       return err("This worker is not available right now.");
+    }
+    // Anti-spam: cap brand-new conversations, not returning to old ones.
+    if (
+      !rateLimit(`chat-room:${user.id}`, CHAT_NEW_ROOMS_PER_DAY, 86_400_000)
+    ) {
+      return err(
+        "You've started a lot of new chats today — please try again tomorrow."
+      );
     }
 
     // Double-click / two-tab race: the unique (customer, worker) index makes
@@ -98,6 +120,16 @@ export async function sendChatMessage(
     if (!access) return err(ERR.notFound);
     if (access.viewerRole === "staff") {
       return err("Support can read chats but not send messages.");
+    }
+    // Flood control: generous for humans, a wall for scripts.
+    if (
+      !rateLimit(
+        `chat-send:${user.id}:${access.room.id}`,
+        CHAT_SEND_PER_MINUTE,
+        60_000
+      )
+    ) {
+      return err("You're sending messages very quickly — give it a moment.");
     }
     // The image must live in THIS room's folder — not another chat's.
     if (
@@ -158,26 +190,35 @@ export async function sendChatMessage(
       }
     }
 
-    // First message of a brand-new conversation: tell the other side someone
-    // is waiting. Ongoing traffic relies on the live stream + unread badges
-    // (per-message emails would be spam).
-    if (total === 1) {
-      const recipientUserId =
-        access.viewerRole === "customer"
-          ? access.worker.userId
-          : access.customer.id;
+    // Notify the other side at the START of an unread burst (they were
+    // caught up before this message): always record the in-app row, but only
+    // send the email when they're offline — online users see it live, and
+    // already-behind users were notified when their backlog started.
+    const recipientUserId =
+      access.viewerRole === "customer"
+        ? access.worker.userId
+        : access.customer.id;
+    const recipientCursor =
+      access.viewerRole === "customer"
+        ? access.room.workerLastReadAt
+        : access.room.customerLastReadAt;
+    const wasCaughtUp =
+      access.room.lastMessagePreview === null ||
+      (recipientCursor !== null && recipientCursor >= access.room.lastMessageAt);
+    if (wasCaughtUp) {
       await notify({
         userId: recipientUserId,
-        type: "chat_started",
+        type: "chat_message",
         title: `New message from ${chatSenderLabel(access, user.id)}`,
         body: `"${preview}" — reply from your Messages page.`,
+        email: !isOnline(recipientUserId),
       });
     }
 
     const message: ChatMessage = {
       id: row.id,
       roomId: row.roomId,
-      senderUserId: row.senderUserId,
+      senderRole: chatSenderRole(access, row.senderUserId),
       senderLabel: chatSenderLabel(access, row.senderUserId),
       kind: row.kind,
       body: row.body,
@@ -185,9 +226,53 @@ export async function sendChatMessage(
       createdAt: row.createdAt.toISOString(),
     };
     publishChat(access.room.id, { kind: "message", message });
+    // Live unread badges on both sides' /chats pages. Deliberately NOT
+    // revalidatePath: that re-renders the current route and snaps the chat
+    // scroll position to the top; inbox pages listen on their own stream.
+    publishInbox(recipientUserId);
+    publishInbox(user.id);
+
+    return ok({ message });
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// Worker preference: show/hide their "Online" dot to customers. Hiding it
+// only affects display — offline-email logic still uses real presence.
+export async function setChatPresenceVisibility(
+  input: unknown
+): Promise<ActionResult<undefined>> {
+  try {
+    const { worker } = await requireWorker();
+    const parsed = presenceVisibilitySchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    await db
+      .update(workers)
+      .set({ showOnlineStatus: parsed.data.show, updatedAt: new Date() })
+      .where(eq(workers.id, worker.id));
+
+    // Hiding takes effect immediately for anyone currently watching a room:
+    // grey the dot now rather than waiting for their next page load. (An
+    // already-open worker stream keeps its connect-time setting until it
+    // reconnects — page navigation — which is at most one room-visit stale.)
+    if (!parsed.data.show) {
+      const rooms = await db
+        .select({ id: chatRooms.id })
+        .from(chatRooms)
+        .where(eq(chatRooms.workerId, worker.id));
+      for (const room of rooms) {
+        publishChat(room.id, {
+          kind: "presence",
+          role: "worker",
+          online: false,
+        });
+      }
+    }
 
     revalidatePath("/chats");
-    return ok({ message });
+    return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));
   }

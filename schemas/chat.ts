@@ -36,3 +36,7 @@ export const sendChatMessageSchema = z
 export const markChatReadSchema = z.object({
   roomId: z.string().uuid(),
 });
+
+export const presenceVisibilitySchema = z.object({
+  show: z.boolean(),
+});

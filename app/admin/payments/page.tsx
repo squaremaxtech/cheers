@@ -42,21 +42,36 @@ export default async function AdminPaymentsPage() {
       .orderBy(asc(bookings.date)),
   ]);
 
-  // Tips (and paid-ness) of the uncovered bookings, then group per worker.
+  // Two independent follow-ups — issue them concurrently: tips/paid-ness of
+  // the uncovered bookings, and the booking codes behind each payout.
+  const [tipRows, payoutBookingRows] = await Promise.all([
+    uncovered.length > 0
+      ? db
+          .select({ bookingId: payments.bookingId, tipCents: payments.tipCents })
+          .from(payments)
+          .where(
+            and(
+              eq(payments.status, "succeeded"),
+              inArray(payments.bookingId, uncovered.map((b) => b.id))
+            )
+          )
+      : Promise.resolve([]),
+    payoutRows.length > 0
+      ? db
+          .select({ payoutId: bookings.payoutId, code: bookings.code })
+          .from(bookings)
+          .where(
+            and(
+              isNotNull(bookings.payoutId),
+              inArray(bookings.payoutId, payoutRows.map((p) => p.payout.id))
+            )
+          )
+      : Promise.resolve([]),
+  ]);
+
   const paidTips = new Map<string, number>();
-  if (uncovered.length > 0) {
-    const rows = await db
-      .select({ bookingId: payments.bookingId, tipCents: payments.tipCents })
-      .from(payments)
-      .where(
-        and(
-          eq(payments.status, "succeeded"),
-          inArray(payments.bookingId, uncovered.map((b) => b.id))
-        )
-      );
-    for (const r of rows) {
-      paidTips.set(r.bookingId, (paidTips.get(r.bookingId) ?? 0) + r.tipCents);
-    }
+  for (const r of tipRows) {
+    paidTips.set(r.bookingId, (paidTips.get(r.bookingId) ?? 0) + r.tipCents);
   }
   const awaitingByWorker = new Map<
     string,
@@ -99,22 +114,11 @@ export default async function AdminPaymentsPage() {
 
   // Booking codes behind each payout — the admin's verification trail.
   const payoutBookings = new Map<string, string[]>();
-  if (payoutRows.length > 0) {
-    const rows = await db
-      .select({ payoutId: bookings.payoutId, code: bookings.code })
-      .from(bookings)
-      .where(
-        and(
-          isNotNull(bookings.payoutId),
-          inArray(bookings.payoutId, payoutRows.map((p) => p.payout.id))
-        )
-      );
-    for (const r of rows) {
-      if (!r.payoutId) continue;
-      const list = payoutBookings.get(r.payoutId) ?? [];
-      list.push(r.code);
-      payoutBookings.set(r.payoutId, list);
-    }
+  for (const r of payoutBookingRows) {
+    if (!r.payoutId) continue;
+    const list = payoutBookings.get(r.payoutId) ?? [];
+    list.push(r.code);
+    payoutBookings.set(r.payoutId, list);
   }
 
   return (

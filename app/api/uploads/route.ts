@@ -1,5 +1,7 @@
 import { loadChatAccess } from "@/lib/chat-access";
+import { CHAT_IMAGES_PER_HOUR } from "@/lib/constants";
 import { GuardError, requireUser, requireWorker } from "@/lib/guards";
+import { rateLimit } from "@/lib/rate-limit";
 import {
   isUploadKind,
   maxBytesFor,
@@ -15,6 +17,20 @@ import type { UploadKind } from "@/lib/uploads";
 //   chat            → uploads/chat/<roomId>/     (chat images; needs roomId +
 //                                                 room participation)
 export async function POST(req: Request): Promise<Response> {
+  // Session check BEFORE touching the body: parsing multipart buffers the
+  // whole upload into memory, and anonymous clients must be rejected without
+  // paying that cost. Kind-specific authorization runs after the parse (the
+  // kind lives in the form).
+  let user;
+  try {
+    user = await requireUser();
+  } catch (error) {
+    if (error instanceof GuardError) {
+      return Response.json({ error: error.code }, { status: 403 });
+    }
+    throw error;
+  }
+
   let file: unknown;
   let kind: UploadKind = "media";
   let roomId: unknown = null;
@@ -37,7 +53,6 @@ export async function POST(req: Request): Promise<Response> {
   let folderId: string;
   try {
     if (kind === "chat") {
-      const user = await requireUser();
       if (typeof roomId !== "string" || roomId.length === 0) {
         return Response.json({ error: "missing roomId" }, { status: 400 });
       }
@@ -46,12 +61,20 @@ export async function POST(req: Request): Promise<Response> {
       if (!access || access.viewerRole === "staff") {
         return Response.json({ error: "forbidden" }, { status: 403 });
       }
+      // Disk is the real exposure for chat images — cap uploads per user.
+      if (!rateLimit(`chat-upload:${user.id}`, CHAT_IMAGES_PER_HOUR, 3_600_000)) {
+        return Response.json(
+          { error: "You've shared a lot of images recently — try again later." },
+          { status: 429 }
+        );
+      }
       folderId = access.room.id;
     } else if (kind === "identity") {
-      const user = await requireUser();
       folderId = user.id;
     } else {
-      const { user } = await requireWorker();
+      // media/receipt stay worker-only (requireWorker re-reads the cached
+      // session row, so this is cheap).
+      await requireWorker();
       folderId = user.id;
     }
   } catch (error) {

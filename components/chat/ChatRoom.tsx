@@ -23,23 +23,28 @@ function formatMessageTime(iso: string): string {
 
 // Live chat view: initial messages come from the server render; new ones
 // arrive over the room's SSE stream (sender included — sends are de-duped by
-// id). Staff get a read-only transcript.
+// id). Staff get a read-only transcript. Presence of the counterpart shows
+// when known (initialOnline null = hidden/not applicable). Messages and
+// presence are keyed by participant ROLE — no account ids on the wire.
 export default function ChatRoom({
   roomId,
   viewerRole,
-  viewerUserId,
   initialMessages,
+  counterpartLabel,
+  initialOnline,
 }: {
   roomId: string;
   viewerRole: ChatViewerRole;
-  viewerUserId: string;
   initialMessages: ChatMessage[];
+  counterpartLabel: string;
+  initialOnline: boolean | null;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [text, setText] = useState("");
   const [attachedUrl, setAttachedUrl] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [online, setOnline] = useState(initialOnline);
+  const listRef = useRef<HTMLDivElement>(null);
   const participant = viewerRole !== "staff";
 
   const append = useCallback((message: ChatMessage) => {
@@ -48,19 +53,23 @@ export default function ChatRoom({
     );
   }, []);
 
-  // Live stream: every new message in this room, pushed by the server.
+  // Live stream: new messages + counterpart presence, pushed by the server.
   useEffect(() => {
     const source = new EventSource(`/api/chat/${roomId}/stream`);
     source.onmessage = (e) => {
       try {
         const event: ChatStreamEvent = JSON.parse(e.data);
         if (event.kind === "message") append(event.message);
+        else if (event.kind === "presence" && event.role !== viewerRole) {
+          // initialOnline null = presence hidden for this viewer; stay hidden.
+          setOnline((prev) => (prev === null ? null : event.online));
+        }
       } catch {
         // malformed frame — ignore
       }
     };
     return () => source.close();
-  }, [roomId, append]);
+  }, [roomId, append, viewerRole]);
 
   // Keep the unread badge honest while the room is on screen.
   useEffect(() => {
@@ -71,8 +80,11 @@ export default function ChatRoom({
     return () => clearTimeout(timer);
   }, [roomId, participant, messages.length]);
 
+  // Pin to the newest message — scroll the list only, never the page
+  // (scrollIntoView walks ancestor scrollers and yanked the window to top).
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const list = listRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
   }, [messages.length]);
 
   async function handleSend() {
@@ -94,9 +106,21 @@ export default function ChatRoom({
     }
   }
 
+  const remaining = CHAT_MESSAGE_MAX_CHARS - text.length;
+
   return (
     <div className="card flex h-[65vh] min-h-[420px] flex-col">
-      <div className="flex-1 space-y-3 overflow-y-auto p-5">
+      {online !== null && (
+        <p className="flex items-center gap-2 border-b border-hairline px-5 py-2.5 text-xs text-muted">
+          <span
+            className={`inline-block h-2 w-2 rounded-full ${
+              online ? "bg-success" : "bg-faint"
+            }`}
+          />
+          {counterpartLabel} is {online ? "online" : "offline"}
+        </p>
+      )}
+      <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto p-5">
         <p className="text-center text-[11px] text-faint">
           Only the most recent {CHAT_ROOM_MESSAGE_CAP.toLocaleString("en-US")}{" "}
           messages are kept.
@@ -107,9 +131,9 @@ export default function ChatRoom({
           </p>
         )}
         {messages.map((m, i) => {
-          const own = m.senderUserId === viewerUserId;
+          const own = m.senderRole === viewerRole;
           const showLabel =
-            !own && (i === 0 || messages[i - 1].senderUserId !== m.senderUserId);
+            !own && (i === 0 || messages[i - 1].senderRole !== m.senderRole);
           return (
             <div
               key={m.id}
@@ -157,7 +181,6 @@ export default function ChatRoom({
             </div>
           );
         })}
-        <div ref={bottomRef} />
       </div>
 
       {participant ? (
@@ -211,6 +234,15 @@ export default function ChatRoom({
               {sending ? "…" : "Send"}
             </button>
           </div>
+          {remaining <= 150 && (
+            <p
+              className={`mt-1.5 text-right text-[11px] ${
+                remaining <= 50 ? "text-warn" : "text-faint"
+              }`}
+            >
+              {remaining} character{remaining === 1 ? "" : "s"} left
+            </p>
+          )}
         </div>
       ) : (
         <p className="border-t border-hairline p-4 text-center text-xs text-faint">

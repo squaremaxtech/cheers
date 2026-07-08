@@ -60,6 +60,13 @@ export const CHAT_MESSAGE_MAX_CHARS = 1000;
 export const CHAT_ROOM_MESSAGE_CAP = 1000;
 export const CHAT_PRUNE_BATCH = 10;
 
+// Anti-abuse rate limits (lib/rate-limit.ts). Generous for real users, tight
+// enough to stop floods: sends per minute per room, image uploads per hour,
+// and brand-new conversations per day.
+export const CHAT_SEND_PER_MINUTE = 25;
+export const CHAT_IMAGES_PER_HOUR = 20;
+export const CHAT_NEW_ROOMS_PER_DAY = 15;
+
 // ID documents accepted for customer identity verification.
 export const ID_DOCUMENT_TYPES = [
   { value: "drivers_license", label: "Driver's licence" },

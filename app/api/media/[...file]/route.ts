@@ -4,7 +4,7 @@ import path from "path";
 import { Readable } from "stream";
 import { getUserRow } from "@/lib/auth";
 import { loadChatAccess } from "@/lib/chat-access";
-import { isDriver } from "@/lib/guards";
+import { isModeratingStaff } from "@/lib/guards";
 import {
   CHAT_SUBDIR,
   IDENTITY_SUBDIR,
@@ -15,7 +15,6 @@ import {
   UPLOADS_DIR,
   USERS_SUBDIR,
 } from "@/lib/uploads";
-import type { UserRow } from "@/types";
 
 // Serves uploaded media from the local uploads/ directory. Exactly four URL
 // shapes exist (older layouts are migrated forward by db/migrate-uploads.ts):
@@ -25,12 +24,6 @@ import type { UserRow } from "@/types";
 //   /api/media/chat/<roomId>/<name>     — chat images (participants + staff)
 // All segments are server-generated UUIDs — the strict patterns below also
 // block traversal.
-
-function isModeratingStaff(user: UserRow): boolean {
-  return (
-    user.role === "admin" || (user.role === "support" && !isDriver(user))
-  );
-}
 
 export async function GET(
   _req: Request,

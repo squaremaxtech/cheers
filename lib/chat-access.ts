@@ -1,12 +1,23 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { chatRooms, users, workers } from "@/db/schema";
-import { isDriver } from "@/lib/guards";
-import type { ChatRoomRow, ChatViewerRole, UserRow } from "@/types";
+import { isModeratingStaff } from "@/lib/guards";
+import type {
+  ChatParticipantRole,
+  ChatRoomRow,
+  ChatViewerRole,
+  UserRow,
+} from "@/types";
 
 export type ChatAccess = {
   room: ChatRoomRow;
-  worker: { id: string; userId: string; stageName: string; slug: string };
+  worker: {
+    id: string;
+    userId: string;
+    stageName: string;
+    slug: string;
+    showOnlineStatus: boolean;
+  };
   customer: { id: string; name: string | null; email: string };
   viewerRole: ChatViewerRole;
 };
@@ -26,6 +37,7 @@ export async function loadChatAccess(
         userId: workers.userId,
         stageName: workers.stageName,
         slug: workers.slug,
+        showOnlineStatus: workers.showOnlineStatus,
       },
       customer: { id: users.id, name: users.name, email: users.email },
     })
@@ -42,10 +54,19 @@ export async function loadChatAccess(
   if (worker.userId === user.id) {
     return { room, worker, customer, viewerRole: "worker" };
   }
-  if (user.role === "admin" || (user.role === "support" && !isDriver(user))) {
+  if (isModeratingStaff(user)) {
     return { room, worker, customer, viewerRole: "staff" };
   }
   return null;
+}
+
+// Which side of the room a stored message came from. Role, not user id —
+// this is what ships to the client.
+export function chatSenderRole(
+  access: Pick<ChatAccess, "worker">,
+  senderUserId: string
+): ChatParticipantRole {
+  return senderUserId === access.worker.userId ? "worker" : "customer";
 }
 
 // Display name attached to each message: the worker's stage name (real name

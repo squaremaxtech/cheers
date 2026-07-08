@@ -72,6 +72,13 @@ export function isDeskSupport(user: UserRow): boolean {
   return user.role === "support" && user.supportRole !== "driver";
 }
 
+// Read-only moderation set: admins + desk support. Gates chat transcripts,
+// chat images and identity documents — keep every consumer on this ONE
+// predicate so the moderator set can never diverge between surfaces.
+export function isModeratingStaff(user: UserRow): boolean {
+  return user.role === "admin" || isDeskSupport(user);
+}
+
 // The signed-in worker's profile row (plus user row) or throw.
 // Admin-suspended workers keep read access to their pages but every
 // worker action goes through here and is blocked.

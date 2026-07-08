@@ -19,14 +19,16 @@ export default function OnboardingWizard({
   verificationStatus,
   verificationNote,
   freeAccess,
-  membershipActive,
+  membershipOk,
 }: {
   initialName: string;
   initialPhone: string;
   verificationStatus: VerificationStatus | null;
   verificationNote: string | null;
   freeAccess: boolean;
-  membershipActive: boolean;
+  // hasMembershipAccess: true under the free-access flag OR a live paid
+  // subscription — the finish gate.
+  membershipOk: boolean;
 }) {
   const router = useRouter();
   const needsIdStep =
@@ -39,8 +41,6 @@ export default function OnboardingWizard({
     verificationStatus === "pending" || verificationStatus === "approved"
   );
   const [busy, setBusy] = useState(false);
-
-  const membershipOk = freeAccess || membershipActive;
 
   async function saveProfile(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -204,7 +204,7 @@ export default function OnboardingWizard({
                 Launch special: full membership access is currently free for
                 everyone — no card needed.
               </p>
-            ) : membershipActive ? (
+            ) : membershipOk ? (
               <p className="mt-3 text-sm text-gold-soft">
                 ✓ Your membership is active.
               </p>

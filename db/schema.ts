@@ -192,6 +192,8 @@ export const workers = pgTable(
     // Displayed "from" price in cents; per-service prices live in worker_services
     baseRateCents: integer("base_rate_cents").notNull().default(0),
     verified: boolean("verified").notNull().default(false),
+    // Worker's choice: let customers see when they're online in chat.
+    showOnlineStatus: boolean("show_online_status").notNull().default(true),
     // active = worker's own visibility toggle; suspended = admin override
     active: boolean("active").notNull().default(true),
     suspended: boolean("suspended").notNull().default(false),

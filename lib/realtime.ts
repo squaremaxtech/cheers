@@ -1,4 +1,8 @@
-import type { BookingStreamEvent, ChatStreamEvent } from "@/types";
+import type {
+  BookingStreamEvent,
+  ChatStreamEvent,
+  InboxStreamEvent,
+} from "@/types";
 
 // In-memory pub/sub for the live booking room and chat rooms. The app runs
 // as a single process (pm2 fork mode, instances: 1) so an in-process bus is
@@ -6,6 +10,7 @@ import type { BookingStreamEvent, ChatStreamEvent } from "@/types";
 
 type Listener = (event: BookingStreamEvent) => void;
 type ChatListener = (event: ChatStreamEvent) => void;
+type InboxListener = (event: InboxStreamEvent) => void;
 
 // Stored on globalThis so dev-server hot reloads reuse one registry instead
 // of stranding subscribers in an old module copy. The cast is unavoidable —
@@ -14,6 +19,7 @@ type ChatListener = (event: ChatStreamEvent) => void;
 const globalStore = globalThis as unknown as {
   __bookingChannels?: Map<string, Set<Listener>>;
   __chatChannels?: Map<string, Set<ChatListener>>;
+  __inboxChannels?: Map<string, Set<InboxListener>>;
 };
 const channels = (globalStore.__bookingChannels ??= new Map<
   string,
@@ -22,6 +28,10 @@ const channels = (globalStore.__bookingChannels ??= new Map<
 const chatChannels = (globalStore.__chatChannels ??= new Map<
   string,
   Set<ChatListener>
+>());
+const inboxChannels = (globalStore.__inboxChannels ??= new Map<
+  string,
+  Set<InboxListener>
 >());
 
 export function subscribeBooking(
@@ -84,6 +94,37 @@ export function subscribeChat(
 export function publishChat(roomId: string, event: ChatStreamEvent): void {
   const set = chatChannels.get(roomId);
   if (!set) return;
+  for (const listener of [...set]) {
+    try {
+      listener(event);
+    } catch {
+      set.delete(listener);
+    }
+  }
+}
+
+// --- Per-user chat inbox (live unread badges on /chats) ----------------------
+
+export function subscribeInbox(
+  userId: string,
+  listener: InboxListener
+): () => void {
+  let set = inboxChannels.get(userId);
+  if (!set) {
+    set = new Set();
+    inboxChannels.set(userId, set);
+  }
+  set.add(listener);
+  return () => {
+    set.delete(listener);
+    if (set.size === 0) inboxChannels.delete(userId);
+  };
+}
+
+export function publishInbox(userId: string): void {
+  const set = inboxChannels.get(userId);
+  if (!set) return;
+  const event: InboxStreamEvent = { kind: "inbox", at: new Date().toISOString() };
   for (const listener of [...set]) {
     try {
       listener(event);

@@ -15,14 +15,14 @@ export default async function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-hairline bg-base/90 backdrop-blur">
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5">
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:px-5">
         <Link
           href="/"
-          className="font-display text-xl tracking-[0.25em] text-gold"
+          className="font-display shrink-0 text-lg tracking-[0.2em] text-gold sm:text-xl sm:tracking-[0.25em]"
         >
           CHEERS
         </Link>
-        <nav className="flex items-center gap-1 text-sm">
+        <nav className="flex min-w-0 items-center gap-1 text-sm">
           <Link href="/browse" className="btn-ghost hidden sm:inline-flex">
             Browse
           </Link>
@@ -33,11 +33,14 @@ export default async function SiteHeader() {
             FAQ
           </Link>
           {user ? (
-            <Link href={dashboardPath(user)} className="btn-outline ml-2">
+            <Link
+              href={dashboardPath(user)}
+              className="btn-outline ml-1 shrink-0 sm:ml-2"
+            >
               Dashboard
             </Link>
           ) : (
-            <Link href="/login" className="btn-gold ml-2">
+            <Link href="/login" className="btn-gold ml-1 shrink-0 sm:ml-2">
               Sign in
             </Link>
           )}

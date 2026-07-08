@@ -16,13 +16,15 @@ function emailBody(opts: { body: string; meta?: Record<string, string> }): strin
 
 // Central notification dispatcher: writes an in-app notification row and
 // mirrors it as an email. Never throws — a failed notification must not
-// break the mutation that triggered it.
+// break the mutation that triggered it. Pass email: false to record the
+// in-app row only (e.g. chat messages to a recipient who is online).
 export async function notify(opts: {
   userId: string;
   type: string;
   title: string;
   body: string;
   meta?: Record<string, string>;
+  email?: boolean;
 }): Promise<void> {
   try {
     await db.insert(notifications).values({
@@ -32,6 +34,7 @@ export async function notify(opts: {
       body: opts.body,
       meta: opts.meta,
     });
+    if (opts.email === false) return;
     const [user] = await db
       .select({ email: users.email })
       .from(users)

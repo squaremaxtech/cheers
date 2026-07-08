@@ -21,6 +21,16 @@
   --font-display: var(--font-display), Georgia, serif;
 }
 
+/* Mobile: stray wide content must never create page-level sideways scroll
+   (it makes the sticky header look narrower than the page). Wide tables
+   already scroll inside their own overflow-x-auto cards. clip — not hidden —
+   so position: sticky keeps working. */
+html,
+body {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 body {
   background:
     radial-gradient(

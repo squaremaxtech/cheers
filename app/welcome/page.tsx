@@ -41,7 +41,7 @@ export default async function WelcomePage() {
               verificationStatus={verification?.status ?? null}
               verificationNote={verification?.note ?? null}
               freeAccess={freeAccess}
-              membershipActive={!freeAccess && membershipOk}
+              membershipOk={membershipOk}
             />
           </div>
         </div>

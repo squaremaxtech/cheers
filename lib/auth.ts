@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, sessions, users, verificationTokens } from "@/db/schema";
 import { mailFrom, smtpConfig } from "@/lib/mailer";
+import { touchPresence } from "@/lib/presence";
 import type { UserRow } from "@/types";
 
 export const authOptions: NextAuthOptions = {
@@ -57,5 +58,7 @@ export const getUserRow = cache(async (): Promise<UserRow | null> => {
   const id = session?.user?.id;
   if (!id) return null;
   const [user] = await db.select().from(users).where(eq(users.id, id));
+  // Every authenticated request counts as platform activity (chat presence).
+  if (user) touchPresence(user.id);
   return user ?? null;
 });
