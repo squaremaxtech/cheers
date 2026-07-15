@@ -11,6 +11,13 @@ import { mailFrom, smtpConfig } from "@/lib/mailer";
 import { touchPresence } from "@/lib/presence";
 import type { UserRow } from "@/types";
 
+// NEXTAUTH_URL must point at the auth API endpoint in full, e.g.
+// "http://localhost:3010/client-websites/cheers/api/auth". Everything below
+// derives from it so the subpath is configured in one place (.env +
+// next.config.ts basePath, which must be inlined at build time).
+export const authApiPath = new URL(process.env.NEXTAUTH_URL!).pathname.replace(/\/$/, "");
+const basePath = authApiPath.replace(/\/api\/auth$/, "");
+
 export const authOptions: NextAuthOptions = {
   adapter: DrizzleAdapter(db, {
     usersTable: users,
@@ -19,8 +26,11 @@ export const authOptions: NextAuthOptions = {
     verificationTokensTable: verificationTokens,
   }),
   pages: {
-    signIn: "/login",
-    verifyRequest: "/verify",
+    // next-auth emits these as Location headers resolved against the origin,
+    // so they need the basePath prefix (next/link-style auto-prefixing does
+    // not apply here).
+    signIn: `${basePath}/login`,
+    verifyRequest: `${basePath}/verify`,
   },
   providers: [
     EmailProvider({
@@ -35,6 +45,21 @@ export const authOptions: NextAuthOptions = {
   ],
   session: { strategy: "database" },
   callbacks: {
+    // next-auth v4 resolves relative callbackUrls against the bare origin
+    // (its baseUrl is url.origin, path dropped), which sends users to
+    // e.g. /dashboard instead of /client-websites/cheers/dashboard. Re-apply
+    // the basePath so signIn({ callbackUrl }) keeps taking app-relative paths.
+    redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) {
+        const path =
+          url === basePath || url.startsWith(`${basePath}/`)
+            ? url
+            : `${basePath}${url}`;
+        return `${baseUrl}${path}`;
+      }
+      if (new URL(url).origin === baseUrl) return url;
+      return `${baseUrl}${basePath}`;
+    },
     session({ session, user }) {
       session.user.id = user.id;
       // Fallbacks mirror the DB column defaults; see types/next-auth.d.ts for
