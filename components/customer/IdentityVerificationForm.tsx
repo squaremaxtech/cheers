@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { submitIdentityVerification } from "@/actions/verification";
 import FileUploadButton from "@/components/ui/FileUploadButton";
-import { withBasePath } from "@/lib/base-path";
 import { ID_DOCUMENT_TYPES } from "@/lib/constants";
 import type { IdDocumentType } from "@/types";
 
@@ -92,7 +91,7 @@ export default function IdentityVerificationForm({
           // next/image optimization would re-fetch it unauthenticated.
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={withBasePath(documentUrl)}
+            src={documentUrl}
             alt="Your uploaded ID document"
             className="max-h-44 rounded-xl border border-hairline"
           />

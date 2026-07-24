@@ -4,7 +4,6 @@ import { db } from "@/db";
 import { customerVerifications, users } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import VerificationReviewActions from "@/components/admin/VerificationReviewActions";
-import { withBasePath } from "@/lib/base-path";
 import { getUserRow } from "@/lib/auth";
 import { idDocumentLabel } from "@/lib/constants";
 import type { VerificationStatus } from "@/types";
@@ -95,7 +94,7 @@ export default async function AdminVerificationsPage() {
                     </dl>
                     {verification.documentUrl && (
                       <a
-                        href={withBasePath(verification.documentUrl)}
+                        href={verification.documentUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-3 inline-block text-sm text-gold hover:text-gold-soft"

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { markChatRead, sendChatMessage } from "@/actions/chats";
 import FileUploadButton from "@/components/ui/FileUploadButton";
-import { withBasePath } from "@/lib/base-path";
 import { CHAT_MESSAGE_MAX_CHARS, CHAT_ROOM_MESSAGE_CAP } from "@/lib/constants";
 import type { ChatMessage, ChatStreamEvent, ChatViewerRole } from "@/types";
 
@@ -56,7 +55,7 @@ export default function ChatRoom({
 
   // Live stream: new messages + counterpart presence, pushed by the server.
   useEffect(() => {
-    const source = new EventSource(withBasePath(`/api/chat/${roomId}/stream`));
+    const source = new EventSource(`/api/chat/${roomId}/stream`);
     source.onmessage = (e) => {
       try {
         const event: ChatStreamEvent = JSON.parse(e.data);
@@ -153,14 +152,14 @@ export default function ChatRoom({
                 >
                   {m.imageUrl && (
                     <a
-                      href={withBasePath(m.imageUrl)}
+                      href={m.imageUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
                       {/* Plain <img>: served by the auth-gated media route. */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={withBasePath(m.imageUrl)}
+                        src={m.imageUrl}
                         alt="Shared in chat"
                         className="mb-1 max-h-64 rounded-lg"
                       />
@@ -190,7 +189,7 @@ export default function ChatRoom({
             <div className="mb-3 flex items-start gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={withBasePath(attachedUrl)}
+                src={attachedUrl}
                 alt="Attached"
                 className="max-h-24 rounded-lg border border-hairline"
               />

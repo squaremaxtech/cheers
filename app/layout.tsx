@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
-import { authApiPath } from "@/lib/auth";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,7 +38,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${playfair.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
-        <Providers authBasePath={authApiPath}>{children}</Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

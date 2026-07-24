@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { withBasePath } from "@/lib/base-path";
 import type { WorkerMediaRow } from "@/types";
 
 export default function MediaGallery({
@@ -30,7 +29,7 @@ export default function MediaGallery({
         {current.type === "video" ? (
           <video
             key={current.id}
-            src={withBasePath(current.url)}
+            src={current.url}
             controls
             className="h-full w-full object-contain"
           />
@@ -38,7 +37,7 @@ export default function MediaGallery({
           // eslint-disable-next-line @next/next/no-img-element -- user-provided media URL
           <img
             key={current.id}
-            src={withBasePath(current.url)}
+            src={current.url}
             alt={stageName}
             className="h-full w-full object-cover"
           />
@@ -61,7 +60,7 @@ export default function MediaGallery({
                 </span>
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element -- user-provided media URL
-                <img src={withBasePath(m.url)} alt="" className="h-full w-full object-cover" />
+                <img src={m.url} alt="" className="h-full w-full object-cover" />
               )}
             </button>
           ))}
