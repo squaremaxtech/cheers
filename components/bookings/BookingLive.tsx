@@ -6,6 +6,7 @@ import BookingRouteMap, {
   type MapParticipant,
 } from "@/components/maps/BookingRouteMap";
 import { parseLatLng, type LatLng } from "@/components/maps/mapConfig";
+import { withBasePath } from "@/lib/base-path";
 import type { BookingStreamEvent, BookingViewerRole } from "@/types";
 
 const LOCATION_SEND_MS = 5000;
@@ -61,7 +62,7 @@ export default function BookingLive({
   useEffect(() => {
     // Finished bookings can't emit events — don't hold a stream open.
     if (terminal) return;
-    const source = new EventSource(`/api/bookings/${bookingId}/stream`);
+    const source = new EventSource(withBasePath(`/api/bookings/${bookingId}/stream`));
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false);
     source.onmessage = (msg) => {
@@ -115,7 +116,7 @@ export default function BookingLive({
         const now = Date.now();
         if (now - lastSentRef.current < LOCATION_SEND_MS) return;
         lastSentRef.current = now;
-        fetch(`/api/bookings/${bookingId}/location`, {
+        fetch(withBasePath(`/api/bookings/${bookingId}/location`), {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(point),

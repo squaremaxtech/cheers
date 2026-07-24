@@ -1,5 +1,6 @@
 import Link from "next/link";
 import StarRating from "@/components/ui/StarRating";
+import { withBasePath } from "@/lib/base-path";
 import { formatCents } from "@/lib/constants";
 import type { PublicWorkerWithPhoto } from "@/types";
 
@@ -16,19 +17,17 @@ export default function WorkerCard({
   return (
     <Link
       href={`/workers/${worker.slug}`}
-      className={`card group overflow-hidden transition-colors hover:border-gold/40 ${
-        isList ? "flex items-stretch" : "block"
-      }`}
+      className={`card group overflow-hidden transition-colors hover:border-gold/40 ${isList ? "flex items-stretch" : "block"
+        }`}
     >
       <div
-        className={`relative overflow-hidden bg-raised ${
-          isList ? "w-32 shrink-0 sm:w-44" : "aspect-[4/5]"
-        }`}
+        className={`relative overflow-hidden bg-raised ${isList ? "w-32 shrink-0 sm:w-44" : "aspect-[4/5]"
+          }`}
       >
         {worker.photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- media URLs are external/user-provided
           <img
-            src={worker.photoUrl}
+            src={withBasePath(worker.photoUrl)}
             alt={worker.stageName}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           />

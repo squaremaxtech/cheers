@@ -5,6 +5,7 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import { addFavorite } from "@/actions/favorites";
 import StarRating from "@/components/ui/StarRating";
+import { withBasePath } from "@/lib/base-path";
 import { formatCents } from "@/lib/constants";
 import type { PublicWorkerWithPhoto } from "@/types";
 
@@ -75,7 +76,7 @@ export default function SwipeDeck({
           {current.photoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- user-provided media URL
             <img
-              src={current.photoUrl}
+              src={withBasePath(current.photoUrl)}
               alt={current.stageName}
               className="h-full w-full object-cover"
               draggable={false}

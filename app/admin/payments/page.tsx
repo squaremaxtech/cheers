@@ -5,6 +5,7 @@ import { bookings, payments, payouts, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import PaymentAdminActions from "@/components/admin/PaymentAdminActions";
 import PayoutControls from "@/components/admin/PayoutControls";
+import { withBasePath } from "@/lib/base-path";
 import { formatCents } from "@/lib/constants";
 import { payoutContribution } from "@/lib/payouts";
 
@@ -166,7 +167,7 @@ export default async function AdminPaymentsPage() {
                     {payment.method}
                     {payment.cashProofUrl && (
                       <a
-                        href={payment.cashProofUrl}
+                        href={withBasePath(payment.cashProofUrl)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="ml-1 text-gold"

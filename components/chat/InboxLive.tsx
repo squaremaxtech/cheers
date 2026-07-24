@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { withBasePath } from "@/lib/base-path";
 
 // Invisible companion to the /chats inbox: refreshes the server-rendered
 // list (previews, ordering, unread dots) whenever any of the viewer's rooms
@@ -11,7 +12,7 @@ export default function InboxLive() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const source = new EventSource("/api/chats/inbox/stream");
+    const source = new EventSource(withBasePath("/api/chats/inbox/stream"));
     source.onmessage = () => {
       // Coalesce bursts into one refresh.
       if (timer.current) clearTimeout(timer.current);

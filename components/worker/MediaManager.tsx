@@ -8,6 +8,7 @@ import {
   setWorkerMediaCategory,
 } from "@/actions/worker";
 import FileUploadButton from "@/components/ui/FileUploadButton";
+import { withBasePath } from "@/lib/base-path";
 import type { ServiceCategoryRow, WorkerMediaRow } from "@/types";
 
 export default function MediaManager({
@@ -80,10 +81,10 @@ export default function MediaManager({
             <div key={m.id} className="card group relative overflow-hidden">
               <div className="aspect-square bg-raised">
                 {m.type === "video" ? (
-                  <video src={m.url} className="h-full w-full object-cover" muted />
+                  <video src={withBasePath(m.url)} className="h-full w-full object-cover" muted />
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element -- user-provided media URL
-                  <img src={m.url} alt="" className="h-full w-full object-cover" />
+                  <img src={withBasePath(m.url)} alt="" className="h-full w-full object-cover" />
                 )}
               </div>
               <button

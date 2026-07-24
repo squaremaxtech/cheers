@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { withBasePath } from "@/lib/base-path";
 
 // Uploads a file to this server (/api/uploads) and hands back its URL.
 // kind picks the storage folder: "media" (worker profile files), "receipt"
@@ -36,7 +37,7 @@ export default function FileUploadButton({
       body.append("file", file);
       body.append("kind", kind);
       if (roomId) body.append("roomId", roomId);
-      const res = await fetch("/api/uploads", { method: "POST", body });
+      const res = await fetch(withBasePath("/api/uploads"), { method: "POST", body });
       const data: { url?: string; error?: string } = await res.json();
       if (!res.ok || !data.url) {
         toast.error(data.error ?? "Upload failed");
