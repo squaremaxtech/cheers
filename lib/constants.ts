@@ -65,34 +65,50 @@ export const BOOKING_DURATIONS_MINUTES = [60, 90, 120, 180, 240, 360] as const;
 // (lib/safety/scheduler.ts). None of them depend on anyone having a page open:
 // the whole point is that silence escalates on its own.
 
+// Timings are env-overridable so they can be tuned without a redeploy — and
+// so the whole time-based system can actually be DEMONSTRATED and TESTED. A
+// 30-minute check-in cycle is right in production and useless in a demo; set
+// SAFETY_CHECKIN_MINUTES=2 to watch the full escalation ladder run in a few
+// minutes. See docs/DEMO-WALKTHROUGH.md.
+function envMinutes(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+
 // While a booking is in progress the worker checks in on this cadence.
-export const WELLNESS_CHECK_INTERVAL_MINUTES = 30;
+export const WELLNESS_CHECK_INTERVAL_MINUTES = envMinutes(
+  "SAFETY_CHECKIN_MINUTES",
+  30
+);
 
 // The safety screen pings this often while it is open. Missing heartbeats are
-// the passive alarm that catches a phone switched off, taken, or gone flat —
-// the cases a "press SOS" model is completely blind to.
-export const HEARTBEAT_SECONDS = 45;
+// the passive signal that shows the desk a phone has gone quiet.
+export const HEARTBEAT_SECONDS = Number(process.env.SAFETY_HEARTBEAT_SECONDS) > 0
+  ? Number(process.env.SAFETY_HEARTBEAT_SECONDS)
+  : 45;
 
-// Silence longer than this while a visit is live = 'unresponsive' + escalate.
-export const HEARTBEAT_GRACE_MINUTES = 3;
+// Silence longer than this while a visit is live marks the session
+// 'unresponsive' on the desk board (it does not page on its own — see
+// lib/safety/scheduler.ts for why).
+export const HEARTBEAT_GRACE_MINUTES = envMinutes("SAFETY_HEARTBEAT_GRACE_MINUTES", 3);
 
 // A worker has this long to answer a due check-in before it counts as missed
 // and the staff ladder starts. Reminders fire inside the window.
-export const CHECKIN_GRACE_MINUTES = 5;
+export const CHECKIN_GRACE_MINUTES = envMinutes("SAFETY_CHECKIN_GRACE_MINUTES", 5);
 
 // Reminder nudges to the worker inside the grace window (minutes past due).
 export const CHECKIN_REMINDER_MINUTES = [0, 2] as const;
 
 // Slack past the booking's scheduled end before an un-closed session is an
 // 'overrun'. Sessions legitimately run a little long.
-export const OVERRUN_GRACE_MINUTES = 20;
+export const OVERRUN_GRACE_MINUTES = envMinutes("SAFETY_OVERRUN_GRACE_MINUTES", 20);
 
 // Travelling home is a real risk window. After a worker says they're out, they
 // have this long to confirm they got home.
-export const GET_HOME_SAFE_MINUTES = 45;
+export const GET_HOME_SAFE_MINUTES = envMinutes("SAFETY_GET_HOME_MINUTES", 45);
 
 // Grace past a declared ETA before 'no_arrival' is raised.
-export const ARRIVAL_GRACE_MINUTES = 20;
+export const ARRIVAL_GRACE_MINUTES = envMinutes("SAFETY_ARRIVAL_GRACE_MINUTES", 20);
 
 // How long the trusted-contact tracking link stays live after a session ends.
 export const TRACK_LINK_GRACE_MINUTES = 120;
@@ -133,28 +149,36 @@ export const MAX_TRUSTED_CONTACTS = 3;
 // Ordering principle: reach the people who can act fastest first, widen only
 // when nobody answers, and involve the worker's own contacts before the
 // situation is escalated outward.
+// SAFETY_LADDER_SCALE compresses every rung by the same factor for demos and
+// tests (0.1 turns 3/7/11 minutes into ~18/42/66 seconds). Production leaves
+// it at 1.
+const LADDER_SCALE =
+  Number(process.env.SAFETY_LADDER_SCALE) > 0
+    ? Number(process.env.SAFETY_LADDER_SCALE)
+    : 1;
+
 export const ESCALATION_LADDER = [
   {
     afterMinutes: 0,
-    audience: "on_duty",
+    audience: "on_duty" as const,
     label: "On-duty safety monitors paged",
   },
   {
-    afterMinutes: 3,
-    audience: "all_desk",
+    afterMinutes: 3 * LADDER_SCALE,
+    audience: "all_desk" as const,
     label: "All desk support + supervisors paged",
   },
   {
-    afterMinutes: 7,
-    audience: "trusted_contacts",
+    afterMinutes: 7 * LADDER_SCALE,
+    audience: "trusted_contacts" as const,
     label: "Worker's trusted contacts notified",
   },
   {
-    afterMinutes: 11,
-    audience: "admins",
+    afterMinutes: 11 * LADDER_SCALE,
+    audience: "admins" as const,
     label: "Admins paged; driver dispatch and breadcrumbs surfaced",
   },
-] as const;
+];
 
 export type EscalationAudience = (typeof ESCALATION_LADDER)[number]["audience"];
 
