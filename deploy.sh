@@ -11,6 +11,15 @@ npm ci
 # every deploy. For OTHER schema changes run `npm run db:push` MANUALLY and
 # review its plan; drizzle-kit can propose destructive statements.
 # npm run db:migrate
+# 2026-07 safety batch (sessions, check-ins, escalations, breadcrumbs, push,
+# trusted contacts, driver assignments). Idempotent — run ONCE per machine
+# before the first deploy that includes the safety scheduler:
+# npm run db:migrate-safety
+#
+# NOTE: the safety scheduler starts with the server (instrumentation.ts) and
+# assumes ONE instance. ecosystem.config.js pins instances: 1 — it also takes a
+# Postgres advisory lock per tick, so a second process is a no-op rather than a
+# source of duplicate pages. Set SAFETY_SCHEDULER=off to disable it explicitly.
 # One-off after the 2026-07 uploads-layout split (idempotent; run once on
 # every machine that has an uploads/ dir — moves files into uploads/users/
 # and uploads/receipts/ and rewrites their URLs in the DB):

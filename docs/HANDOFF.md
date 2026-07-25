@@ -8,7 +8,7 @@
 
 - Full original spec: see `docs/SPEC.md` (verbatim requirements from the owner).
 - Stack: Next.js 16.2.10 (App Router) · TypeScript · Tailwind v4 · PostgreSQL (VPS db name: `cheers`) · Drizzle ORM · Zod · Server Actions · NextAuth (magic link + Google) · Stripe (5% platform fee, tips 100% to worker) · Nodemailer · Google Maps API.
-- Roles: **4 user types** — `customer`, `worker`, `support`, `admin`. Support staff carry a sub-role in `users.supportRole`: `customer_support`, `supervisor`, or `driver`.
+- Roles: **4 user types** — `customer`, `worker`, `support`, `admin`. Support staff carry a sub-role in `users.supportRole`: `customer_support`, `supervisor`, `driver`, or `safety_monitor`.
 - `.env` already exists on the owner's machines (git-ignored, cannot be read by Claude due to permission settings). `.env.example` documents every variable the code expects — **owner must reconcile names with their real `.env`**.
 
 ## 2. Current Status
@@ -41,6 +41,86 @@ linkage (`bookings.payoutId`, pushed to VPS), Jamaica-pinned time parsing,
 CAS booking transitions, auto-refund on cancel/conflict, suspension hardening
 (session revoke + layout gates + suspended-worker action block), and app-level
 error/loading/not-found boundaries.
+
+**2026-07-25 update — ACTIVE safety monitoring (the safety spine):**
+
+Before this, every safety protection required a human to press a button or be
+looking at a page: "overdue" was a boolean computed while rendering the booking
+room, so a worker who was unconscious, restrained, out of battery or whose
+phone had been taken produced **no alert at all**. This batch inverts that.
+**Silence is now the alarm.**
+
+- **The safety clock** — `instrumentation.ts` boots `lib/safety/scheduler.ts`,
+  a 30s ticker. State lives in Postgres (never memory), every transition is a
+  compare-and-swap, and each tick takes a `pg_try_advisory_lock` so a second
+  process is a no-op instead of a duplicate pager. `SAFETY_SCHEDULER=off`
+  disables it. It enforces: due check-ins → reminders → missed → staff ladder;
+  lost heartbeats; late arrivals; overruns; get-home-safe.
+- **Heartbeat** — `POST /api/safety/heartbeat` every 45s from the open safety
+  screen, carrying battery/connectivity/position. Silence > 3 min while a visit
+  is live = `unresponsive` + escalation. This is what catches the cases an SOS
+  button never could.
+- **Sessions** — `safety_sessions` (one per booking) with states
+  `travelling → on_site → (overrun|unresponsive) → heading_home → ended`.
+  Created by "I'm on my way" or by PIN verification.
+- **Escalation ladder** — `lib/safety/escalate.ts`. Every escalation (SOS,
+  duress, missed check-in, unresponsive, overrun, no-arrival, get-home-overdue)
+  becomes a `safety_alerts` row, and ONE ladder drives them all: on-duty
+  monitors → whole desk → trusted contacts → admins. Acknowledging **claims**
+  the alert and parks the ladder; resolving closes it. Every attempt is written
+  to `escalations`.
+- **Safety monitors** — new `support_role` value `safety_monitor`, rostered in
+  `monitor_shifts`. Their whole job is the live board; they are deliberately
+  excluded from `isDeskSupport` so they inherit **no** chat/identity/payment
+  access. They live at `/safety` (like drivers at `/driver`) and are redirected
+  out of `/admin`, so least privilege is enforced by routing, not by
+  remembering to guard each page.
+- **Safety desk** — `/safety` live board (worst-first, colour-coded, live
+  countdowns over SSE `/api/safety/stream`), claim/resolve/ping/reveal-PIN, and
+  `/safety/rota`. `/admin` now carries an open-alert card (it previously
+  surfaced none, despite the user guide claiming otherwise).
+- **Duress PIN** — `bookings.duressPin`, shown only to the assigned worker.
+  Entering it starts the session **identically** on screen while raising a
+  covert alert. Covert alerts and quiet check-ins are filtered out of every
+  worker/customer-facing surface (including the `wellness_checks` log).
+- **PWA + Web Push** — `app/manifest.ts`, `public/sw.js`, `push_subscriptions`.
+  One-tap "I'm OK" / "I need help" from the notification itself via
+  `POST /api/safety/checkin`. iOS needs install-to-home-screen, which
+  `components/safety/PushSetup.tsx` explains inline.
+- **Worker UI** — `components/bookings/SafetyBar.tsx`: fixed bottom bar (thumb
+  zone, 48px+ targets, 64px+ for check-in/SOS), one dominant action per state,
+  full-screen takeover when overdue, wake lock, offline queue. SOS is
+  press-and-hold → 10s countdown → cancel needs the worker's personal code
+  (`workers.cancelPinHash`, scrypt) or a 3s hold. No `window.confirm` anywhere
+  in the safety path.
+- **Breadcrumbs** — `location_pings` is append-only (the old
+  `booking_locations` upsert kept only the latest point, so an investigation
+  had no trail). `booking_locations` remains as the map's "latest" cache.
+- **Driver scoping** — `booking_drivers` assignment table. `/driver` and
+  `lib/booking-access.ts` now filter to assigned jobs; previously ANY driver
+  account could see every confirmed booking and every worker's live position.
+- **Trusted contacts** — `trusted_contacts`, email-confirmed before they are
+  ever contacted, reached by a tokenised read-only link at `/track/[token]`
+  (token stored as SHA-256; page is `no-referrer`, noindex, no-store, and shows
+  position/status only — never the customer or the address).
+- **Risk signals** — `lib/safety/risk.ts` surfaces counts only (verified,
+  account age, completed, prior alerts, blocked-by-count) on the worker's
+  accept/decline card, with the address now visible BEFORE acceptance.
+  `worker_customer_blocks` is silent: a blocked worker simply reads as
+  unavailable.
+- **Safety closure decoupled from payment** — `endSafetySession` works
+  regardless of payment state. `completeBooking` keeps its payment rule for the
+  money only; a worker leaving in a hurry must never be trapped in a monitored
+  session by an unpaid balance.
+- **Hardening** — constant-time PIN compare + per-booking throttle and lockout
+  (`lib/safety/pins.ts`); SSRF allowlist on push endpoints; global security
+  headers (`next.config.ts`); audited PIN reveal; zod caps on every field.
+- **Migration**: `npm run db:migrate-safety` (idempotent, run once per machine
+  before the first deploy including this batch). New env: `VAPID_PRIVATE_KEY`,
+  `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_SUBJECT`, optional
+  `SMS_PROVIDER_URL`/`SMS_PROVIDER_TOKEN`, optional `SAFETY_SCHEDULER=off`.
+  Generate keys with `npx web-push generate-vapid-keys`.
+- Full audit that motivated this work: `docs/SAFETY-ARCHITECTURE.md`.
 
 **2026-07-06 update (2) — realtime, safety, roles, slugs, maps, categories:**
 - **Live booking room** at `/bookings/[id]` (moved out of the customer-only

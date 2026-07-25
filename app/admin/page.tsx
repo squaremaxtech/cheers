@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { and, count, desc, eq, sum } from "drizzle-orm";
+import { and, count, desc, eq, isNull, ne, sum } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
 import {
   bookings,
   customerVerifications,
   payments,
+  safetyAlerts,
+  safetySessions,
   users,
   workers,
 } from "@/db/schema";
@@ -24,6 +26,8 @@ export default async function AdminDashboard() {
     [pendingVerifications],
     [pendingWorkers],
     recent,
+    [openAlerts],
+    [liveSessions],
   ] = await Promise.all([
     db
       .select({ total: sum(payments.amountCents), fees: sum(payments.platformFeeCents) })
@@ -45,6 +49,14 @@ export default async function AdminDashboard() {
       .from(bookings)
       .orderBy(desc(bookings.createdAt))
       .limit(8),
+    db
+      .select({ n: count() })
+      .from(safetyAlerts)
+      .where(isNull(safetyAlerts.resolvedAt)),
+    db
+      .select({ n: count() })
+      .from(safetySessions)
+      .where(ne(safetySessions.state, "ended")),
   ]);
 
   const cards = [
@@ -65,10 +77,46 @@ export default async function AdminDashboard() {
 
   const pendingCount = pendingVerifications?.n ?? 0;
   const pendingWorkerCount = pendingWorkers?.n ?? 0;
+  const alertCount = openAlerts?.n ?? 0;
+  const liveCount = liveSessions?.n ?? 0;
 
   return (
     <div className="space-y-8">
       <h1 className="font-display text-2xl text-ink">Platform overview</h1>
+
+      {/* Safety comes first, above revenue. An open alert is the only thing on
+          this page that can still be made worse by being seen late. */}
+      {alertCount > 0 && (
+        <Link
+          href="/safety"
+          className="card flex items-center justify-between gap-3 border-danger/60 bg-danger/5 p-4 hover:border-danger"
+        >
+          <p className="text-sm text-ink">
+            <Badge tone="danger">{alertCount}</Badge>
+            <span className="ml-3">
+              unresolved safety alert{alertCount === 1 ? "" : "s"} — someone is
+              waiting on a response
+            </span>
+          </p>
+          <span className="shrink-0 text-sm text-gold">Open safety desk →</span>
+        </Link>
+      )}
+
+      {alertCount === 0 && liveCount > 0 && (
+        <Link
+          href="/safety"
+          className="card flex items-center justify-between gap-3 p-4 hover:border-gold/40"
+        >
+          <p className="text-sm text-muted">
+            <Badge tone="success">{liveCount}</Badge>
+            <span className="ml-3">
+              monitored visit{liveCount === 1 ? "" : "s"} in progress — all
+              checked in
+            </span>
+          </p>
+          <span className="shrink-0 text-sm text-gold">Live board →</span>
+        </Link>
+      )}
 
       {pendingCount > 0 && (
         <Link

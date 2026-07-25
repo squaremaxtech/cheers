@@ -10,12 +10,15 @@ import {
   reviews,
   safetyAlerts,
   wellnessChecks,
+  workers,
 } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import AlertActions from "@/components/bookings/AlertActions";
 import BookingCustomerActions from "@/components/bookings/BookingCustomerActions";
 import BookingLive from "@/components/bookings/BookingLive";
+import PostVisitReport from "@/components/bookings/PostVisitReport";
 import ReviewForm from "@/components/bookings/ReviewForm";
+import SafetyBar from "@/components/bookings/SafetyBar";
 import SafetyControls from "@/components/bookings/SafetyControls";
 import WorkerBookingActions from "@/components/worker/WorkerBookingActions";
 import SiteFooter from "@/components/layout/SiteFooter";
@@ -24,19 +27,22 @@ import { getUserRow } from "@/lib/auth";
 import { loadBookingAccess } from "@/lib/booking-access";
 import { customerCanCancel } from "@/lib/bookings";
 import {
+  CHECKIN_GRACE_MINUTES,
   formatCents,
   formatTime12,
+  safetyAlertLabel,
   WELLNESS_CHECK_INTERVAL_MINUTES,
 } from "@/lib/constants";
+import { canSeePinInline } from "@/lib/guards";
+import {
+  pendingCheckin,
+  sessionForBooking,
+  sessionHealth,
+} from "@/lib/safety/session";
 import { statusTone } from "@/lib/status";
+import type { SafetyClientState } from "@/types";
 
 export const metadata: Metadata = { title: "Booking" };
-
-const alertLabels = {
-  sos: "Emergency alert",
-  wellness_help: "Worker requested help",
-  other: "Safety alert",
-} as const;
 
 // The live booking room. One shared URL for everyone on a booking — the
 // customer, the assigned worker, drivers and desk support — with realtime
@@ -52,8 +58,16 @@ export default async function BookingRoomPage(
   if (!access) notFound();
   const { booking, worker, viewerRole } = access;
 
-  const [events, checks, alerts, locations, existingReview, pendingCash] =
-    await Promise.all([
+  const [
+    events,
+    checks,
+    alerts,
+    locations,
+    existingReview,
+    pendingCash,
+    session,
+    workerRow,
+  ] = await Promise.all([
       db
         .select()
         .from(bookingEvents)
@@ -95,7 +109,16 @@ export default async function BookingRoomPage(
           )
           .then((rows) => rows[0] ?? null)
         : Promise.resolve(null),
-    ]);
+    sessionForBooking(booking.id),
+    db
+      .select({ cancelPinHash: workers.cancelPinHash })
+      .from(workers)
+      .where(eq(workers.id, booking.workerId))
+      .then((rows) => rows[0] ?? null),
+  ]);
+
+  const checkin = session ? await pendingCheckin(session.id) : null;
+  const sessionOpen = Boolean(session && session.state !== "ended");
 
   const total = booking.priceCents + booking.addonsCents;
   const live =
@@ -105,28 +128,64 @@ export default async function BookingRoomPage(
     booking.status === "declined" ||
     booking.status === "cancelled" ||
     booking.status === "refunded";
-  const openAlerts = alerts.filter((a) => !a.resolvedAt);
+  // COVERT ALERTS (duress, quiet help requests) must never be rendered to the
+  // worker or the customer: the whole point is that the screen looks normal to
+  // anyone standing over it. Only the safety desk sees them.
+  const openAlerts = alerts.filter(
+    (a) => !a.resolvedAt && (!a.covert || viewerRole === "staff")
+  );
   // Driver = transport only: no pricing, no PIN, no instructions.
   const seesMoney = viewerRole !== "driver";
 
   const lastCheck = checks[0] ?? null;
-  const inProgressSince = events.find(
-    (e) => e.toStatus === "in_progress"
-  )?.createdAt;
-  const wellnessAnchor = lastCheck?.createdAt ?? inProgressSince ?? null;
+
   // Server component renders per-request (app is force-dynamic), so reading
   // the clock here is per-request, not a purity hazard.
   // eslint-disable-next-line react-hooks/purity
-  const wellnessOverdue =
-    booking.status === "in_progress" &&
-    wellnessAnchor !== null &&
-    Date.now() - wellnessAnchor.getTime() >
-    WELLNESS_CHECK_INTERVAL_MINUTES * 60_000;
+  const now = Date.now();
+  const health = sessionHealth({
+    session,
+    openAlerts: openAlerts.length,
+    pendingCheckin: checkin,
+    now: new Date(now),
+  });
+  // "Unresponsive" internally includes the routine case of a pocketed phone
+  // (heartbeats only flow while the screen is on). The desk sees NO SIGNAL as
+  // a triage signal; a customer shown "no signal from the worker's phone"
+  // mid-massage would only be alarmed by normal behaviour. Non-staff viewers
+  // therefore see routine monitoring until something is genuinely wrong (an
+  // open alert or an overdue check-in — both survive this mapping).
+  const displayHealth =
+    health === "unresponsive" && viewerRole !== "staff" ? "ok" : health;
+  const checkinDue = checkin !== null && checkin.dueAt.getTime() <= now;
+  const overdueMs = checkin ? now - checkin.dueAt.getTime() : 0;
+  const safetyState: SafetyClientState = {
+    sessionState: session?.state ?? null,
+    health,
+    nextCheckInAt: session?.nextCheckInAt?.toISOString() ?? null,
+    checkinDue,
+    // "Overdue" on screen means past the reminder window — that is when the
+    // full-screen prompt takes over.
+    checkinOverdue: checkinDue && overdueMs > 2 * 60_000,
+    pendingCheckinId: checkin?.id ?? null,
+    secondsUntilEscalation: checkinDue
+      ? Math.max(
+          0,
+          Math.round((CHECKIN_GRACE_MINUTES * 60_000 - overdueMs) / 1000)
+        )
+      : null,
+    monitorName: null,
+    alertOpen: openAlerts.length > 0,
+  };
 
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto w-full max-w-3xl flex-1 space-y-6 px-5 py-10">
+      <main
+        className={`mx-auto w-full max-w-3xl flex-1 space-y-6 px-5 py-10 ${
+          live || sessionOpen ? "has-safety-bar" : ""
+        }`}
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="font-display text-2xl text-ink">
@@ -159,7 +218,7 @@ export default async function BookingRoomPage(
               >
                 <div>
                   <p className="text-sm text-ink">
-                    {alertLabels[a.kind]}
+                    {safetyAlertLabel(a.kind)}
                     {a.message && (
                       <span className="ml-2 text-muted">— {a.message}</span>
                     )}
@@ -273,7 +332,10 @@ export default async function BookingRoomPage(
                 </p>
               </div>
             )}
-            {viewerRole === "staff" && booking.safetyPin && (
+            {/* Staff PIN visibility is narrowed to admins. Everyone else on the
+                desk uses the audited reveal action, so "who looked at this
+                PIN" always has an answer. */}
+            {viewerRole === "staff" && booking.safetyPin && canSeePinInline(user) && (
               <p className="text-sm text-muted">
                 Meeting PIN:{" "}
                 <span className="tracking-[0.3em] text-ink">
@@ -282,34 +344,37 @@ export default async function BookingRoomPage(
               </p>
             )}
 
-            {/* Wellness status — everyone in the room sees the worker is OK */}
-            {booking.status === "in_progress" && (
+            {/* Monitoring status — everyone in the room can see the session is
+                being watched and when the next deadline falls. */}
+            {session && session.state !== "ended" && (
               <div
-                className={`rounded-xl border p-4 text-sm ${wellnessOverdue
-                    ? "border-warn/60 bg-warn/5 text-warn"
-                    : "border-hairline text-muted"
-                  }`}
+                className={`rounded-xl border p-4 text-sm ${
+                  displayHealth === "alarm" || displayHealth === "unresponsive"
+                    ? "border-danger/60 bg-danger/5 text-danger"
+                    : displayHealth === "overdue"
+                      ? "border-warn/60 bg-warn/5 text-warn"
+                      : "border-success/40 text-muted"
+                }`}
               >
-                {lastCheck ? (
-                  <>
-                    Last wellness check-in:{" "}
-                    <span className="text-ink">
-                      {lastCheck.createdAt.toLocaleTimeString()}
-                    </span>{" "}
-                    ({lastCheck.status === "ok" ? "OK" : "requested help"})
-                    {wellnessOverdue &&
-                      " — overdue, our team keeps a close eye on this booking."}
-                  </>
-                ) : (
-                  <>
-                    No wellness check-in yet
-                    {wellnessOverdue &&
-                      " — overdue, our team keeps a close eye on this booking."}
-                  </>
+                <span className="font-medium">
+                  {displayHealth === "unresponsive"
+                    ? "No signal from the worker's phone"
+                    : displayHealth === "overdue"
+                      ? "Check-in overdue"
+                      : displayHealth === "alarm"
+                        ? "Safety alert active"
+                        : "Monitoring active"}
+                </span>
+                {lastCheck && (
+                  <span className="mt-1 block text-xs">
+                    Last check-in {lastCheck.createdAt.toLocaleTimeString()} (
+                    {lastCheck.status === "ok" ? "OK" : "requested help"})
+                  </span>
                 )}
                 <span className="mt-1 block text-xs text-faint">
                   Workers check in every {WELLNESS_CHECK_INTERVAL_MINUTES}{" "}
-                  minutes while a session is in progress.
+                  minutes, and their phone signals us every minute in between.
+                  If either stops, our safety team is alerted automatically.
                 </span>
               </div>
             )}
@@ -318,13 +383,17 @@ export default async function BookingRoomPage(
               bookingId={booking.id}
               viewerRole={viewerRole}
               status={booking.status}
+              sessionStarted={Boolean(session && session.state !== "ended")}
+              // The duress PIN belongs to the assigned worker alone.
+              duressPin={viewerRole === "worker" ? booking.duressPin : null}
             />
 
             {viewerRole === "customer" && (
               <p className="text-xs text-faint">
                 Every Cheers booking is monitored: PIN-verified start, timed
-                wellness check-ins, live location sharing and a 24/7 safety
-                team. In an emergency, always call 119.
+                check-ins, live location and a safety desk that is alerted
+                automatically if anything is missed. In an emergency, always
+                call 119.
               </p>
             )}
 
@@ -386,6 +455,14 @@ export default async function BookingRoomPage(
           </p>
         )}
 
+        {/* Private post-visit report. Never shown to the customer, and never
+            surfaced back to them — a worker must be able to say "that felt
+            wrong" without fearing retaliation. */}
+        {viewerRole === "worker" &&
+          (booking.status === "completed" || booking.status === "in_progress") && (
+            <PostVisitReport bookingId={booking.id} />
+          )}
+
         {viewerRole === "customer" &&
           booking.status === "completed" &&
           !existingReview && (
@@ -426,6 +503,22 @@ export default async function BookingRoomPage(
         )}
       </main>
       <SiteFooter />
+
+      {/* Fixed, always-reachable safety surface. Rendered last so it sits above
+          everything.
+
+          Shown while the booking is live OR while a session is still open —
+          a worker who marks the job complete before confirming they got home
+          must keep the "I got home safely" control, or the get-home timer
+          would escalate with no way for them to stand it down. */}
+      {(live || sessionOpen) && (viewerRole === "worker" || viewerRole === "customer") && (
+        <SafetyBar
+          bookingId={booking.id}
+          initial={safetyState}
+          hasCancelPin={Boolean(workerRow?.cancelPinHash)}
+          isWorker={viewerRole === "worker"}
+        />
+      )}
     </>
   );
 }

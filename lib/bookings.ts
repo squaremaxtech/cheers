@@ -1,4 +1,4 @@
-import { randomBytes, randomInt } from "crypto";
+import { randomBytes } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { bookingEvents, bookings } from "@/db/schema";
@@ -23,9 +23,9 @@ export function generateBookingCode(): string {
 }
 
 // 4-digit safety PIN the customer shares with the worker at meeting time.
-export function generateSafetyPin(): string {
-  return String(randomInt(0, 10000)).padStart(4, "0");
-}
+// Generation and comparison live in lib/safety/pins.ts so every caller gets
+// the CSPRNG and the constant-time compare by default.
+export { generatePin as generateSafetyPin } from "@/lib/safety/pins";
 
 // Parse a booking's date + time as Jamaica wall-clock time regardless of the
 // server's timezone. Accepts "HH:MM" (forms) and "HH:MM:SS" (pg time column).

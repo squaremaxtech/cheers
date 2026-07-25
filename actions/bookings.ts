@@ -29,6 +29,8 @@ import { guardErrorMessage, requireUser } from "@/lib/guards";
 import type { ActionResult, BookingRow, TimeSlot, UserRow } from "@/types";
 import { hasMembershipAccess } from "@/lib/membership";
 import { notify, notifyAdmins } from "@/lib/notify";
+import { generateDistinctPin } from "@/lib/safety/pins";
+import { workerHasBlocked } from "@/lib/safety/risk";
 import { isCustomerVerified } from "@/lib/verification";
 import { publicWorkerConditions } from "@/lib/workers";
 import {
@@ -181,6 +183,12 @@ export async function createBooking(
       );
     if (!worker) return err("This worker is not currently accepting bookings.");
     if (worker.userId === user.id) return err("You cannot book yourself.");
+    // A worker's private block. The customer is never told they were blocked —
+    // the worker simply reads as unavailable, exactly as if they had no free
+    // slots. Telling them would invite retaliation against the worker.
+    if (await workerHasBlocked(worker.id, user.id)) {
+      return err("This worker is not currently accepting bookings.");
+    }
 
     const [service] = await db
       .select({
@@ -222,6 +230,7 @@ export async function createBooking(
 
     const priceCents = service.ws.priceCents;
     const addonsCents = addonRows.reduce((sum, a) => sum + a.priceCents, 0);
+    const safetyPin = generateSafetyPin();
 
     // Race-safe slot claim: the per-worker advisory lock serializes concurrent
     // submissions, so the availability/overlap re-check inside the lock is
@@ -255,7 +264,11 @@ export async function createBooking(
             addonsCents,
             platformFeeCents: platformFeeCents(priceCents + addonsCents),
             addons: addonRows,
-            safetyPin: generateSafetyPin(),
+            safetyPin,
+            // The worker's covert alternative for this booking. Always
+            // distinct from safetyPin — an identical duress PIN would be
+            // silently useless.
+            duressPin: generateDistinctPin(safetyPin),
           })
           .returning();
         return { booking };

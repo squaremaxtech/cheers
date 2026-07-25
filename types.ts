@@ -2,24 +2,34 @@
 // scattered across modules. Row types derive from the Drizzle schema.
 import type {
   availability,
+  bookingDrivers,
   bookingEvents,
   bookingLocations,
   bookings,
   chatMessages,
   chatRooms,
   customerVerifications,
+  escalations,
+  locationPings,
   membershipPayments,
   memberships,
+  monitorShifts,
   notifications,
   payments,
   payouts,
+  pushSubscriptions,
   reviews,
   safetyAlerts,
+  safetyCheckins,
+  safetyEvents,
+  safetySessions,
   serviceAddons,
   serviceCategories,
   serviceTypes,
+  trustedContacts,
   users,
   wellnessChecks,
+  workerCustomerBlocks,
   workerInvites,
   workerMedia,
   workers,
@@ -112,16 +122,76 @@ export type InboxStreamEvent = { kind: "inbox"; at: string };
 export type BookingLocationRow = typeof bookingLocations.$inferSelect;
 export type WellnessCheckRow = typeof wellnessChecks.$inferSelect;
 export type SafetyAlertRow = typeof safetyAlerts.$inferSelect;
+export type SafetyAlertKind = SafetyAlertRow["kind"];
+
+export type SafetySessionRow = typeof safetySessions.$inferSelect;
+export type SafetySessionState = SafetySessionRow["state"];
+export type SafetyCheckinRow = typeof safetyCheckins.$inferSelect;
+export type SafetyCheckinStatus = SafetyCheckinRow["status"];
+export type SafetyEventRow = typeof safetyEvents.$inferSelect;
+export type LocationPingRow = typeof locationPings.$inferSelect;
+export type EscalationRow = typeof escalations.$inferSelect;
+export type MonitorShiftRow = typeof monitorShifts.$inferSelect;
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
+export type TrustedContactRow = typeof trustedContacts.$inferSelect;
+export type WorkerCustomerBlockRow = typeof workerCustomerBlocks.$inferSelect;
+export type BookingDriverRow = typeof bookingDrivers.$inferSelect;
 
 // The viewer's relationship to a booking — drives what the live booking room
 // shows and allows. "driver"/"staff" are support sub-type views.
 export type BookingViewerRole = "customer" | "worker" | "driver" | "staff";
 
+// How healthy a monitored visit looks right now, worst-first. Derived on the
+// server (lib/safety/session.ts) so the worker's chip, the booking room and
+// the safety desk can never disagree about who is in trouble.
+export type SafetyHealth = "alarm" | "unresponsive" | "overdue" | "ok" | "idle";
+
+// One row on the safety desk board.
+export type SafetyBoardEntry = {
+  sessionId: string;
+  bookingId: string;
+  bookingCode: string;
+  workerName: string;
+  state: SafetySessionState;
+  health: SafetyHealth;
+  address: string;
+  lastHeartbeatAt: string | null;
+  batteryPct: number | null;
+  nextCheckInAt: string | null;
+  expectedEndAt: string | null;
+  lastPing: { lat: string; lng: string; at: string } | null;
+  openAlerts: {
+    id: string;
+    kind: SafetyAlertKind;
+    message: string | null;
+    covert: boolean;
+    createdAt: string;
+    acknowledgedAt: string | null;
+    acknowledgedBy: string | null;
+    stage: number;
+  }[];
+};
+
+// What the worker's safety bar needs to render its state machine, refreshed
+// over the booking stream. Deliberately carries no covert flags — anything on
+// this object may be read over the worker's shoulder.
+export type SafetyClientState = {
+  sessionState: SafetySessionState | null;
+  health: SafetyHealth;
+  nextCheckInAt: string | null;
+  checkinDue: boolean;
+  checkinOverdue: boolean;
+  pendingCheckinId: string | null;
+  secondsUntilEscalation: number | null;
+  monitorName: string | null;
+  alertOpen: boolean;
+};
+
 // Realtime events streamed to the booking room over SSE. "refresh" kinds
 // re-render server data; "location" updates the map without a refresh.
 export type BookingStreamEvent =
   | {
-      kind: "status" | "schedule" | "payment" | "wellness" | "alert";
+      kind: "status" | "schedule" | "payment" | "wellness" | "alert" | "safety";
       at: string;
     }
   | {
@@ -132,6 +202,9 @@ export type BookingStreamEvent =
       lat: string;
       lng: string;
     };
+
+// Safety desk stream: "something on the board changed, re-read it".
+export type SafetyDeskStreamEvent = { kind: "safety"; at: string };
 
 // --- Availability / time slots -----------------------------------------------------
 

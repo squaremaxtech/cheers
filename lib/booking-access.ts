@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { bookings, workers } from "@/db/schema";
-import { isDriver } from "@/lib/guards";
+import { bookingDrivers, bookings, workers } from "@/db/schema";
+import { isDriver, isSafetyDesk } from "@/lib/guards";
 import type { BookingRow, BookingViewerRole, UserRow, WorkerRow } from "@/types";
 
 export type BookingAccess = {
@@ -11,8 +11,13 @@ export type BookingAccess = {
 };
 
 // Who may enter a booking's live room: the customer who booked, the assigned
-// worker, drivers (transport), and desk support/admin (safety monitoring).
-// Returns null for everyone else — callers 404 without leaking existence.
+// worker, the driver ASSIGNED TO THIS BOOKING (transport), and the safety
+// desk / admin (monitoring). Returns null for everyone else — callers 404
+// without leaking that the booking exists.
+//
+// Drivers are scoped by booking_drivers on purpose. Before that table existed,
+// any driver account could open any booking room and watch any worker's live
+// position — a platform-wide tracking feed handed out with a support login.
 export async function loadBookingAccess(
   user: UserRow,
   bookingId: string
@@ -32,12 +37,24 @@ export async function loadBookingAccess(
     return { booking, worker, viewerRole: "worker" };
   }
   if (user.role === "admin") return { booking, worker, viewerRole: "staff" };
+
   if (user.role === "support") {
-    return {
-      booking,
-      worker,
-      viewerRole: isDriver(user) ? "driver" : "staff",
-    };
+    if (isDriver(user)) {
+      const [assignment] = await db
+        .select({ id: bookingDrivers.id })
+        .from(bookingDrivers)
+        .where(
+          and(
+            eq(bookingDrivers.bookingId, booking.id),
+            eq(bookingDrivers.driverUserId, user.id)
+          )
+        );
+      // An unassigned driver is a stranger to this booking.
+      return assignment ? { booking, worker, viewerRole: "driver" } : null;
+    }
+    // Desk support and safety monitors both monitor; anything narrower than
+    // isSafetyDesk here would silently lock a role out of an emergency.
+    if (isSafetyDesk(user)) return { booking, worker, viewerRole: "staff" };
   }
   return null;
 }

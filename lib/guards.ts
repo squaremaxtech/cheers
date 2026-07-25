@@ -68,8 +68,36 @@ export function isDriver(user: UserRow): boolean {
   return user.role === "support" && user.supportRole === "driver";
 }
 
+// Safety monitors watch live sessions and answer escalations. That is their
+// WHOLE job: they are deliberately excluded from isDeskSupport below, so they
+// never inherit chat transcripts, identity documents, payments or moderation.
+// Least privilege — a monitor account is on all night, so it is the support
+// account most likely to be left logged in on a shared machine.
+export function isSafetyMonitor(user: UserRow): boolean {
+  return user.role === "support" && user.supportRole === "safety_monitor";
+}
+
+// "Desk support" = support staff who run the customer/moderation desk.
+// A NULL sub-role still counts (accounts created before sub-roles existed),
+// but drivers and safety monitors never do.
 export function isDeskSupport(user: UserRow): boolean {
-  return user.role === "support" && user.supportRole !== "driver";
+  return (
+    user.role === "support" &&
+    user.supportRole !== "driver" &&
+    user.supportRole !== "safety_monitor"
+  );
+}
+
+// Who may work the safety desk: admins, desk support, and monitors. This is
+// the ONLY predicate that widens to monitors — keep it that way.
+export function isSafetyDesk(user: UserRow): boolean {
+  return user.role === "admin" || isDeskSupport(user) || isSafetyMonitor(user);
+}
+
+export async function requireSafetyDesk(): Promise<UserRow> {
+  const user = await requireUser();
+  if (!isSafetyDesk(user)) throw new GuardError("forbidden");
+  return user;
 }
 
 // Read-only moderation set: admins + desk support. Gates chat transcripts,
@@ -77,6 +105,13 @@ export function isDeskSupport(user: UserRow): boolean {
 // predicate so the moderator set can never diverge between surfaces.
 export function isModeratingStaff(user: UserRow): boolean {
   return user.role === "admin" || isDeskSupport(user);
+}
+
+// The meeting PIN identifies a real person at a door. Only admins see it
+// inline; everyone else on the safety desk must use the audited reveal action
+// (actions/safety-desk.ts), so "who looked at a PIN" is always answerable.
+export function canSeePinInline(user: UserRow): boolean {
+  return user.role === "admin";
 }
 
 // The signed-in worker's profile row (plus user row) or throw.

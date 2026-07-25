@@ -31,11 +31,14 @@ export const userRole = pgEnum("user_role", [
 
 // Support staff sub-types. Only meaningful when users.role = 'support':
 // customer_support handles disputes/tickets, supervisor additionally manages
-// other support staff, driver transports workers to bookings.
+// other support staff, driver transports workers to bookings, safety_monitor
+// watches live sessions and answers safety escalations (and NOTHING else —
+// monitors deliberately get no chat/identity/payment access, see lib/guards).
 export const supportRole = pgEnum("support_role", [
   "customer_support",
   "supervisor",
   "driver",
+  "safety_monitor",
 ]);
 
 export const mediaType = pgEnum("media_type", ["photo", "video"]);
@@ -96,10 +99,56 @@ export const chatMessageKind = pgEnum("chat_message_kind", ["text", "image"]);
 // Worker wellness check-ins while a booking is in progress.
 export const wellnessStatus = pgEnum("wellness_status", ["ok", "help"]);
 
+// Every safety escalation — whether a person pressed a button or the scheduler
+// noticed silence — becomes a safety_alerts row of one of these kinds, so a
+// single escalation ladder drives all of them.
 export const safetyAlertKind = pgEnum("safety_alert_kind", [
   "sos",
   "wellness_help",
   "other",
+  // Raised by the scheduler, not by a human:
+  "missed_checkin", // check-in went unanswered past its grace window
+  "unresponsive", // heartbeat stopped — phone off/taken/flat/no signal
+  "overrun", // session ran past its expected end with no closure
+  "no_arrival", // never arrived at the destination by ETA + grace
+  "get_home_overdue", // did not confirm getting home after the visit
+  "duress", // duress PIN entered — COVERT, never surfaced to the worker's screen
+  "pin_failures", // repeated wrong PINs at the door
+]);
+
+// Lifecycle of a monitored visit. Health (overdue/unresponsive) is a state
+// here rather than a derived flag so the monitor board can sort on it.
+export const safetySessionState = pgEnum("safety_session_state", [
+  "travelling", // en route, not yet on site
+  "on_site", // PIN verified, session running
+  "overrun", // past expected end, not closed out
+  "unresponsive", // heartbeat lost while the visit was live
+  "heading_home", // left the visit, get-home-safe timer running
+  "ended",
+]);
+
+// A scheduled check-in. 'pending' rows are what the scheduler chases.
+export const safetyCheckinStatus = pgEnum("safety_checkin_status", [
+  "pending",
+  "ok",
+  "help",
+  "missed",
+]);
+
+// How a check-in was answered — a one-tap answer from a push notification is
+// the fast path we optimise for.
+export const safetyCheckinMethod = pgEnum("safety_checkin_method", [
+  "in_app",
+  "push_action",
+  "auto",
+]);
+
+export const escalationChannel = pgEnum("escalation_channel", [
+  "in_app",
+  "push",
+  "email",
+  "sms",
+  "voice",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -113,6 +162,10 @@ export const users = pgTable("users", {
   emailVerified: timestamp("email_verified", { mode: "date" }),
   image: text("image"),
   phone: text("phone"),
+  // Set once the number has been proven (code sent to it and echoed back).
+  // Safety escalation only ever dials/texts a VERIFIED number — an unverified
+  // one is worse than none, because it looks like a working channel.
+  phoneVerifiedAt: timestamp("phone_verified_at", { mode: "date" }),
   role: userRole("role").notNull().default("customer"),
   // Set iff role = 'support'; null for every other role.
   supportRole: supportRole("support_role"),
@@ -194,6 +247,11 @@ export const workers = pgTable(
     verified: boolean("verified").notNull().default(false),
     // Worker's choice: let customers see when they're online in chat.
     showOnlineStatus: boolean("show_online_status").notNull().default(true),
+    // Scrypt hash of the worker's personal 4-digit code for CANCELLING an
+    // armed SOS countdown. Hashed because a plaintext code in the DB would let
+    // anyone with read access silence an alarm. Null = fall back to
+    // hold-to-cancel (see components/bookings/SosButton.tsx).
+    cancelPinHash: text("cancel_pin_hash"),
     // active = worker's own visibility toggle; suspended = admin override
     active: boolean("active").notNull().default(true),
     suspended: boolean("suspended").notNull().default(false),
@@ -398,6 +456,11 @@ export const bookings = pgTable(
     cancellationReason: text("cancellation_reason"),
     // Safety: customer shares this PIN with the worker at meeting time
     safetyPin: text("safety_pin"),
+    // The worker's covert alternative to safetyPin for THIS booking. Entering
+    // it starts the session exactly as a correct PIN does — same screen, same
+    // toast, same status — while silently raising a duress alert. Shown ONLY
+    // to the assigned worker: never to the customer, staff, or a driver.
+    duressPin: text("duress_pin"),
     // Set when this booking's earnings are included in a payout — a booking
     // can only ever be paid out once (prevents double-pay structurally).
     payoutId: uuid("payout_id").references((): AnyPgColumn => payouts.id, {
@@ -733,8 +796,12 @@ export const wellnessChecks = pgTable(
   (t) => [index("wellness_checks_booking_idx").on(t.bookingId)]
 );
 
-// Emergency escalations. Unresolved alerts surface on the booking page and
-// the admin dashboard until staff resolves them.
+// Emergency escalations. Unresolved alerts surface on the booking page, the
+// admin overview and the safety desk until staff resolves them.
+//
+// Acknowledging CLAIMS an alert (first responder wins) and stops the ladder
+// paging further people; resolving closes it. The two are separate on purpose:
+// "someone is on it" and "it's over" are different facts.
 export const safetyAlerts = pgTable(
   "safety_alerts",
   {
@@ -742,11 +809,24 @@ export const safetyAlerts = pgTable(
     bookingId: uuid("booking_id")
       .notNull()
       .references(() => bookings.id, { onDelete: "cascade" }),
+    // Set for scheduler-raised alerts; null for legacy/manual rows.
+    sessionId: uuid("session_id").references((): AnyPgColumn => safetySessions.id, {
+      onDelete: "cascade",
+    }),
     raisedByUserId: uuid("raised_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
     kind: safetyAlertKind("kind").notNull(),
     message: text("message"),
+    // Ladder position: which stage of ESCALATION_LADDER has been fired.
+    stage: smallint("stage").notNull().default(0),
+    // When the scheduler should fire the next stage. Null = ladder parked
+    // (acknowledged, resolved, or exhausted).
+    nextEscalationAt: timestamp("next_escalation_at", { mode: "date" }),
+    // Covert alerts (duress) must never render anything the worker's screen
+    // could betray — the booking room hides them from every viewer except the
+    // safety desk.
+    covert: boolean("covert").notNull().default(false),
     acknowledgedByUserId: uuid("acknowledged_by_user_id").references(
       () => users.id,
       { onDelete: "set null" }
@@ -756,9 +836,310 @@ export const safetyAlerts = pgTable(
       onDelete: "set null",
     }),
     resolvedAt: timestamp("resolved_at", { mode: "date" }),
+    resolutionNote: text("resolution_note"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   },
-  (t) => [index("safety_alerts_booking_idx").on(t.bookingId)]
+  (t) => [
+    index("safety_alerts_booking_idx").on(t.bookingId),
+    index("safety_alerts_session_idx").on(t.sessionId),
+    // The scheduler's hot path: "which ladders are due?"
+    index("safety_alerts_next_escalation_idx").on(t.nextEscalationAt),
+    // The desk's hot path: "what is still open?"
+    index("safety_alerts_open_idx").on(t.resolvedAt),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// Safety sessions — the monitored visit
+// ---------------------------------------------------------------------------
+
+// One row per monitored visit (unique per booking). This is what the safety
+// scheduler ticks over: it holds every deadline that, when missed, escalates.
+//
+// The design principle: SILENCE IS THE ALARM. A worker in trouble cannot be
+// relied on to press a button, so the platform watches for the absence of
+// signals (heartbeats, check-in answers, a closing confirmation) rather than
+// waiting for the presence of a distress call.
+export const safetySessions = pgTable(
+  "safety_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    // Denormalised from bookings→workers so the scheduler and the desk board
+    // can page the right person without a three-table join per tick.
+    workerUserId: uuid("worker_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    state: safetySessionState("state").notNull().default("travelling"),
+    startedAt: timestamp("started_at", { mode: "date" }).notNull().defaultNow(),
+    // Booking start + duration + grace. Passing it un-closed raises 'overrun'.
+    expectedEndAt: timestamp("expected_end_at", { mode: "date" }),
+    // Expected arrival, set when the worker says they're on their way.
+    expectedArrivalAt: timestamp("expected_arrival_at", { mode: "date" }),
+    // The passive alarm: the safety screen pings while it is open. Silence
+    // beyond HEARTBEAT_GRACE_MINUTES is itself an emergency.
+    lastHeartbeatAt: timestamp("last_heartbeat_at", { mode: "date" }),
+    lastBatteryPct: smallint("last_battery_pct"),
+    // Rolled forward on every answered check-in.
+    nextCheckInAt: timestamp("next_check_in_at", { mode: "date" }),
+    // Set when the worker confirms they've left; the get-home-safe timer.
+    getHomeDueAt: timestamp("get_home_due_at", { mode: "date" }),
+    homeSafeAt: timestamp("home_safe_at", { mode: "date" }),
+    // SHA-256 of the trusted-contact tracking token. The plaintext token only
+    // ever exists in the link we send — a DB leak grants no tracking access.
+    trackTokenHash: text("track_token_hash"),
+    trackExpiresAt: timestamp("track_expires_at", { mode: "date" }),
+    endedAt: timestamp("ended_at", { mode: "date" }),
+    endReason: text("end_reason"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("safety_sessions_booking_idx").on(t.bookingId),
+    index("safety_sessions_state_idx").on(t.state),
+    index("safety_sessions_worker_idx").on(t.workerUserId),
+    // Scheduler lookups by deadline.
+    index("safety_sessions_next_check_in_idx").on(t.nextCheckInAt),
+    uniqueIndex("safety_sessions_track_token_idx").on(t.trackTokenHash),
+  ]
+);
+
+// One row per scheduled check-in. Created 'pending' with a dueAt the scheduler
+// enforces — this is what replaces the old render-time "overdue" flag, which
+// only ever evaluated when somebody happened to load the page.
+export const safetyCheckins = pgTable(
+  "safety_checkins",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => safetySessions.id, { onDelete: "cascade" }),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    dueAt: timestamp("due_at", { mode: "date" }).notNull(),
+    status: safetyCheckinStatus("status").notNull().default("pending"),
+    respondedAt: timestamp("responded_at", { mode: "date" }),
+    method: safetyCheckinMethod("method"),
+    // A "quiet" answer: shows as a normal OK on the worker's screen while the
+    // desk is paged. Never rendered anywhere the worker's screen is visible.
+    covert: boolean("covert").notNull().default(false),
+    note: text("note"),
+    // How many reminder stages have fired for this check-in.
+    remindersSent: smallint("reminders_sent").notNull().default(0),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("safety_checkins_session_idx").on(t.sessionId),
+    // Scheduler: "which check-ins are pending and due?"
+    index("safety_checkins_due_idx").on(t.status, t.dueAt),
+  ]
+);
+
+// Append-only audit of everything the safety system observed or did. This is
+// the timeline an incident review reads back; nothing here is ever updated.
+export const safetyEvents = pgTable(
+  "safety_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id").references(() => safetySessions.id, {
+      onDelete: "cascade",
+    }),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    // e.g. session_started, heartbeat_lost, heartbeat_resumed, checkin_due,
+    // checkin_answered, checkin_missed, geofence_arrived, battery_low,
+    // went_offline, duress_pin, sharing_disabled, overrun, sos_armed,
+    // sos_cancelled, post_visit_flag, monitor_ping, driver_dispatched.
+    kind: text("kind").notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    payload: jsonb("payload").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("safety_events_session_idx").on(t.sessionId),
+    index("safety_events_booking_idx").on(t.bookingId),
+  ]
+);
+
+// Append-only location breadcrumbs. Replaces the old "latest point only"
+// upsert: after an incident you need the TRAIL — where they went, when they
+// stopped moving, where they were last seen — not a single coordinate.
+export const locationPings = pgTable(
+  "location_pings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id").references(() => safetySessions.id, {
+      onDelete: "cascade",
+    }),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    lat: text("lat").notNull(),
+    lng: text("lng").notNull(),
+    accuracyM: integer("accuracy_m"),
+    speedMps: text("speed_mps"),
+    headingDeg: integer("heading_deg"),
+    batteryPct: smallint("battery_pct"),
+    online: boolean("online").notNull().default(true),
+    recordedAt: timestamp("recorded_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("location_pings_booking_recorded_idx").on(t.bookingId, t.recordedAt),
+    index("location_pings_session_idx").on(t.sessionId),
+  ]
+);
+
+// Every escalation attempt: who we tried to reach, how, and whether they
+// answered. Kept so that after an incident you can prove exactly who was told
+// what and when — and so the ladder never pages the same person twice.
+export const escalations = pgTable(
+  "escalations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    alertId: uuid("alert_id")
+      .notNull()
+      .references(() => safetyAlerts.id, { onDelete: "cascade" }),
+    stage: smallint("stage").notNull(),
+    channel: escalationChannel("channel").notNull(),
+    // Recipient user, when the target is a platform account.
+    targetUserId: uuid("target_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // Free-text target for off-platform recipients (a trusted contact).
+    targetLabel: text("target_label"),
+    sentAt: timestamp("sent_at", { mode: "date" }).notNull().defaultNow(),
+    failedReason: text("failed_reason"),
+  },
+  (t) => [index("escalations_alert_idx").on(t.alertId)]
+);
+
+// Who is on duty. Safety escalations page the monitors covering the current
+// moment FIRST — a fan-out email to every staff account is not a paging
+// system, because nobody owns it.
+export const monitorShifts = pgTable(
+  "monitor_shifts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    startsAt: timestamp("starts_at", { mode: "date" }).notNull(),
+    endsAt: timestamp("ends_at", { mode: "date" }).notNull(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("monitor_shifts_window_idx").on(t.startsAt, t.endsAt)]
+);
+
+// Web Push endpoints. One row per browser/device a user has subscribed from —
+// the only channel that reaches a phone whose browser is closed.
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Push-service URL. Validated against an allowlist of known push hosts
+    // before we ever POST to it (lib/safety/push.ts) — an unchecked, caller
+    // supplied URL that the server fetches is a textbook SSRF hole.
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("user_agent"),
+    lastSeenAt: timestamp("last_seen_at", { mode: "date" }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("push_subscriptions_endpoint_idx").on(t.endpoint),
+    index("push_subscriptions_user_idx").on(t.userId),
+  ]
+);
+
+// A worker's own people. They are outside the platform, so they are reached by
+// a tokenised read-only tracking link — never with the customer's identity or
+// the visit address.
+export const trustedContacts = pgTable(
+  "trusted_contacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    phone: text("phone"),
+    email: text("email"),
+    // Proven by clicking the confirmation link mailed to them.
+    verifiedAt: timestamp("verified_at", { mode: "date" }),
+    // SHA-256 of the confirmation token (same reasoning as trackTokenHash).
+    verifyTokenHash: text("verify_token_hash"),
+    verifyExpiresAt: timestamp("verify_expires_at", { mode: "date" }),
+    // Which events reach them: session_start | overdue | alert
+    notifyOn: text("notify_on").array().notNull().default(["alert"]),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("trusted_contacts_user_idx").on(t.userId),
+    uniqueIndex("trusted_contacts_verify_token_idx").on(t.verifyTokenHash),
+  ]
+);
+
+// A worker's private "never match me with this person again". The customer is
+// never told; a blocked pairing simply reports the worker as unavailable.
+export const workerCustomerBlocks = pgTable(
+  "worker_customer_blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Worker's private reason — staff-visible for risk review, never public.
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("worker_customer_blocks_pair_idx").on(t.workerId, t.customerId),
+    index("worker_customer_blocks_customer_idx").on(t.customerId),
+  ]
+);
+
+// Which driver is transporting which booking. Without this, "driver" is a
+// platform-wide licence to see every worker's live position — the assignment
+// is what scopes them down to their own jobs.
+export const bookingDrivers = pgTable(
+  "booking_drivers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    driverUserId: uuid("driver_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    assignedByUserId: uuid("assigned_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("booking_drivers_pair_idx").on(t.bookingId, t.driverUserId),
+    index("booking_drivers_driver_idx").on(t.driverUserId),
+  ]
 );
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import type {
   BookingStreamEvent,
   ChatStreamEvent,
   InboxStreamEvent,
+  SafetyDeskStreamEvent,
 } from "@/types";
 
 // In-memory pub/sub for the live booking room and chat rooms. The app runs
@@ -11,6 +12,7 @@ import type {
 type Listener = (event: BookingStreamEvent) => void;
 type ChatListener = (event: ChatStreamEvent) => void;
 type InboxListener = (event: InboxStreamEvent) => void;
+type SafetyDeskListener = (event: SafetyDeskStreamEvent) => void;
 
 // Stored on globalThis so dev-server hot reloads reuse one registry instead
 // of stranding subscribers in an old module copy. The cast is unavoidable —
@@ -20,6 +22,7 @@ const globalStore = globalThis as unknown as {
   __bookingChannels?: Map<string, Set<Listener>>;
   __chatChannels?: Map<string, Set<ChatListener>>;
   __inboxChannels?: Map<string, Set<InboxListener>>;
+  __safetyDeskListeners?: Set<SafetyDeskListener>;
 };
 const channels = (globalStore.__bookingChannels ??= new Map<
   string,
@@ -130,6 +133,36 @@ export function publishInbox(userId: string): void {
       listener(event);
     } catch {
       set.delete(listener);
+    }
+  }
+}
+
+// --- Safety desk (one global channel, not per-entity) ------------------------
+// The desk watches every live session at once, so there is a single broadcast
+// channel rather than one per booking: any safety state change re-reads the
+// whole board. Volume is low (a handful of events per session) and correctness
+// beats granularity when someone may be in danger.
+
+const safetyDeskListeners = (globalStore.__safetyDeskListeners ??=
+  new Set<SafetyDeskListener>());
+
+export function subscribeSafetyDesk(listener: SafetyDeskListener): () => void {
+  safetyDeskListeners.add(listener);
+  return () => {
+    safetyDeskListeners.delete(listener);
+  };
+}
+
+export function publishSafetyDesk(): void {
+  const event: SafetyDeskStreamEvent = {
+    kind: "safety",
+    at: new Date().toISOString(),
+  };
+  for (const listener of [...safetyDeskListeners]) {
+    try {
+      listener(event);
+    } catch {
+      safetyDeskListeners.delete(listener);
     }
   }
 }

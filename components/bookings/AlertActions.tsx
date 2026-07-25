@@ -6,9 +6,10 @@ import toast from "react-hot-toast";
 import {
   acknowledgeSafetyAlert,
   resolveSafetyAlert,
-} from "@/actions/safety";
+} from "@/actions/safety-desk";
 
-// Staff-only controls on an open safety alert.
+// Safety-desk controls on an open alert. Acknowledging CLAIMS it (and stops
+// the escalation ladder paging more people); resolving closes it.
 export default function AlertActions({
   alertId,
   acknowledged,

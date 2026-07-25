@@ -17,7 +17,8 @@ import {
 type Role = (typeof users.$inferSelect)["role"];
 type SupportRole = (typeof users.$inferSelect)["supportRole"];
 
-// 4 user types; support staff carry a sub-role (customer_support/supervisor/driver).
+// 4 user types; support staff carry a sub-role
+// (customer_support/supervisor/driver/safety_monitor).
 const accounts: {
   email: string;
   role: Role;
@@ -31,6 +32,9 @@ const accounts: {
   { email: "managestorymaker@gmail.com", role: "support", supportRole: "customer_support", name: "Tanya Reid" },
   { email: "maxwell.wedderburn@icta.gov.jm", role: "support", supportRole: "supervisor", name: "Andre Palmer" },
   { email: "maxwellwedderburn@outlook.com", role: "support", supportRole: "driver", name: "Devon Brown", phone: "+1 876 555 0193" },
+  // Safety monitors watch the live board and answer escalations — and get
+  // nothing else (no chats, no identity documents, no payments).
+  { email: "cheers.safetydesk@gmail.com", role: "support", supportRole: "safety_monitor", name: "Simone Clarke", phone: "+1 876 555 0166" },
 ];
 
 // Stage-worthy worker profile for the worker account.

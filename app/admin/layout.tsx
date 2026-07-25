@@ -2,10 +2,11 @@ import { redirect } from "next/navigation";
 import DashboardShell from "@/components/layout/DashboardShell";
 import SiteHeader from "@/components/layout/SiteHeader";
 import { getUserRow } from "@/lib/auth";
-import { isDriver } from "@/lib/guards";
+import { isDriver, isSafetyMonitor } from "@/lib/guards";
 
 const nav = [
   { href: "/admin", label: "Overview" },
+  { href: "/safety", label: "Safety desk" },
   { href: "/admin/workers", label: "Workers" },
   { href: "/admin/verifications", label: "Verifications" },
   { href: "/admin/bookings", label: "Bookings" },
@@ -18,7 +19,10 @@ const nav = [
 
 // Admin + desk support (customer_support/supervisor) share this area; server
 // actions gate destructive operations to the admin role specifically.
-// Drivers are support staff too but only get the transport view.
+// Drivers and safety monitors are support staff too, but each gets only their
+// own surface: transport at /driver, the live board at /safety. Routing them
+// away here is what keeps least privilege from depending on remembering to
+// guard every individual admin page.
 export default async function AdminLayout({
   children,
 }: {
@@ -28,6 +32,7 @@ export default async function AdminLayout({
   if (!user || user.suspended) redirect("/login");
   if (user.role !== "admin" && user.role !== "support") redirect("/dashboard");
   if (isDriver(user)) redirect("/driver");
+  if (isSafetyMonitor(user)) redirect("/safety");
 
   return (
     <>

@@ -58,9 +58,136 @@ export const LANGUAGES = [
 
 export const BOOKING_DURATIONS_MINUTES = [60, 90, 120, 180, 240, 360] as const;
 
-// While a booking is in progress the worker checks in on this cadence; the
-// booking room flags the check as overdue past it.
+// ---------------------------------------------------------------------------
+// Safety monitoring
+// ---------------------------------------------------------------------------
+// Every value below is a DEADLINE the safety scheduler enforces server-side
+// (lib/safety/scheduler.ts). None of them depend on anyone having a page open:
+// the whole point is that silence escalates on its own.
+
+// While a booking is in progress the worker checks in on this cadence.
 export const WELLNESS_CHECK_INTERVAL_MINUTES = 30;
+
+// The safety screen pings this often while it is open. Missing heartbeats are
+// the passive alarm that catches a phone switched off, taken, or gone flat —
+// the cases a "press SOS" model is completely blind to.
+export const HEARTBEAT_SECONDS = 45;
+
+// Silence longer than this while a visit is live = 'unresponsive' + escalate.
+export const HEARTBEAT_GRACE_MINUTES = 3;
+
+// A worker has this long to answer a due check-in before it counts as missed
+// and the staff ladder starts. Reminders fire inside the window.
+export const CHECKIN_GRACE_MINUTES = 5;
+
+// Reminder nudges to the worker inside the grace window (minutes past due).
+export const CHECKIN_REMINDER_MINUTES = [0, 2] as const;
+
+// Slack past the booking's scheduled end before an un-closed session is an
+// 'overrun'. Sessions legitimately run a little long.
+export const OVERRUN_GRACE_MINUTES = 20;
+
+// Travelling home is a real risk window. After a worker says they're out, they
+// have this long to confirm they got home.
+export const GET_HOME_SAFE_MINUTES = 45;
+
+// Grace past a declared ETA before 'no_arrival' is raised.
+export const ARRIVAL_GRACE_MINUTES = 20;
+
+// How long the trusted-contact tracking link stays live after a session ends.
+export const TRACK_LINK_GRACE_MINUTES = 120;
+
+// The SOS is armed by holding, then runs a countdown that must be actively
+// cancelled — so a snatched phone cannot silently stop an alert already begun.
+export const SOS_HOLD_MS = 800;
+export const SOS_COUNTDOWN_SECONDS = 10;
+
+// Server-side floor between stored breadcrumbs, so a chatty or hostile client
+// cannot flood location_pings.
+export const LOCATION_PING_MIN_SECONDS = 20;
+
+// Anti-abuse limits for safety endpoints. Generous for real use, tight enough
+// that a stolen session cannot brute-force a PIN or flood the safety desk.
+export const PIN_ATTEMPTS_PER_MINUTE = 3;
+// Consecutive wrong PINs at the door before staff are alerted and the booking
+// is locked out of PIN entry for the cooloff.
+export const PIN_FAILURES_BEFORE_ALERT = 5;
+export const PIN_LOCKOUT_MINUTES = 15;
+export const SOS_PER_HOUR = 5;
+export const HEARTBEAT_PER_MINUTE = 6;
+export const CHECKIN_RESPONSES_PER_MINUTE = 10;
+export const PUSH_SUBSCRIBES_PER_HOUR = 10;
+// Global cap across ALL tracking-page views (the limiter cannot be keyed per
+// token — an attacker's whole method is a fresh token per request). It exists
+// purely as a DB-abuse backstop; guessing a 32-byte token is infeasible. Sized
+// so a busy night of legitimate contacts (each page polls twice a minute)
+// cannot starve a real contact into a 404 mid-crisis.
+export const TRACK_VIEWS_PER_MINUTE = 240;
+export const TRUSTED_CONTACTS_PER_DAY = 10;
+export const MAX_TRUSTED_CONTACTS = 3;
+
+// The staff escalation ladder. Stage 0 fires the moment an alert is raised;
+// each later stage fires `afterMinutes` after the alert unless someone
+// acknowledges first. Acknowledging parks the ladder — resolving closes it.
+//
+// Ordering principle: reach the people who can act fastest first, widen only
+// when nobody answers, and involve the worker's own contacts before the
+// situation is escalated outward.
+export const ESCALATION_LADDER = [
+  {
+    afterMinutes: 0,
+    audience: "on_duty",
+    label: "On-duty safety monitors paged",
+  },
+  {
+    afterMinutes: 3,
+    audience: "all_desk",
+    label: "All desk support + supervisors paged",
+  },
+  {
+    afterMinutes: 7,
+    audience: "trusted_contacts",
+    label: "Worker's trusted contacts notified",
+  },
+  {
+    afterMinutes: 11,
+    audience: "admins",
+    label: "Admins paged; driver dispatch and breadcrumbs surfaced",
+  },
+] as const;
+
+export type EscalationAudience = (typeof ESCALATION_LADDER)[number]["audience"];
+
+// SMS and voice stages stay dark until a provider is configured — a channel
+// that silently fails is worse than one that is honestly absent.
+export function smsEnabled(): boolean {
+  return Boolean(process.env.SMS_PROVIDER_URL && process.env.SMS_PROVIDER_TOKEN);
+}
+
+export function pushEnabled(): boolean {
+  return Boolean(
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY
+  );
+}
+
+// Human label for an alert kind — shared by the booking room, the desk board
+// and every notification, so one incident is never described two ways.
+export const SAFETY_ALERT_LABELS: Record<string, string> = {
+  sos: "Emergency SOS",
+  wellness_help: "Worker requested help",
+  other: "Safety alert",
+  missed_checkin: "Missed check-in",
+  unresponsive: "Unresponsive — heartbeat lost",
+  overrun: "Session overrun",
+  no_arrival: "Never arrived",
+  get_home_overdue: "No get-home-safe confirmation",
+  duress: "DURESS PIN USED",
+  pin_failures: "Repeated wrong PINs at the door",
+};
+
+export function safetyAlertLabel(kind: string): string {
+  return SAFETY_ALERT_LABELS[kind] ?? "Safety alert";
+}
 
 // Chat rules: each text message is capped, and each room keeps at most
 // CHAT_ROOM_MESSAGE_CAP messages. Pruning runs in batches — once a room

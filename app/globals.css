@@ -132,6 +132,28 @@ body > * {
   @apply border border-danger/40 text-danger hover:bg-danger/10;
 }
 
+/* ---------------------------------------------------------------------------
+   Safety bar — the worker's permanent safety surface.
+
+   Fixed to the bottom of the viewport so the check-in and the emergency
+   control are in the SAME place every time, within thumb reach, and can never
+   scroll out of view. Under stress people reach by memory, not by looking.
+   The safe-area inset keeps it clear of the iPhone home indicator, and pages
+   that render it add matching bottom padding so it never covers content.
+--------------------------------------------------------------------------- */
+.safety-bar {
+  @apply fixed inset-x-0 bottom-0 z-30 border-t border-hairline;
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  backdrop-filter: blur(12px);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  box-shadow: 0 -12px 32px -18px rgba(0, 0, 0, 0.8);
+}
+
+/* Room to breathe under content on pages that carry the bar. */
+.has-safety-bar {
+  padding-bottom: 11rem;
+}
+
 /* Subtle gold shimmer divider used on marketing pages */
 .gold-line {
   height: 1px;

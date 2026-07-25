@@ -1,16 +1,32 @@
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { bookings, users } from "@/db/schema";
+import { bookings, safetySessions, users } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
+import CustomerRiskCard from "@/components/worker/CustomerRiskCard";
 import WorkerBookingActions from "@/components/worker/WorkerBookingActions";
 import { formatCents, formatTime12 } from "@/lib/constants";
+import { customerRiskSummaries } from "@/lib/safety/risk";
 import { statusTone } from "@/lib/status";
 import { getWorkerContext } from "@/lib/worker-context";
+import type { SafetySessionState } from "@/types";
 
 export const metadata: Metadata = { title: "Bookings" };
+
+const safetyChip: Partial<
+  Record<SafetySessionState, { tone: "success" | "warn" | "danger"; label: string }>
+> = {
+  travelling: { tone: "success", label: "monitored · travelling" },
+  on_site: { tone: "success", label: "monitored · on site" },
+  heading_home: { tone: "success", label: "monitored · heading home" },
+  overrun: { tone: "warn", label: "running over" },
+  // On the worker's OWN list, "unresponsive" usually just means the booking
+  // room isn't open (heartbeats only flow from that screen). Check-ins still
+  // arrive by push; amber nudges them to reopen the room without crying wolf.
+  unresponsive: { tone: "warn", label: "open booking room to resume live signal" },
+};
 
 export default async function WorkerBookingsPage() {
   const { worker } = await getWorkerContext();
@@ -22,6 +38,24 @@ export default async function WorkerBookingsPage() {
     .where(eq(bookings.workerId, worker.id))
     .orderBy(desc(bookings.createdAt))
     .limit(100);
+
+  const bookingIds = rows.map((r) => r.booking.id);
+  const [sessions, risk] = await Promise.all([
+    bookingIds.length
+      ? db
+          .select({ bookingId: safetySessions.bookingId, state: safetySessions.state })
+          .from(safetySessions)
+          .where(inArray(safetySessions.bookingId, bookingIds))
+      : Promise.resolve([]),
+    // Risk signals only matter where a decision is still to be made, so they
+    // are computed for pending requests rather than for every historical row.
+    customerRiskSummaries(
+      rows.filter((r) => r.booking.status === "pending").map((r) => r.booking.customerId)
+    ),
+  ]);
+  const sessionByBooking = new Map(
+    sessions.filter((s) => s.state !== "ended").map((s) => [s.bookingId, s.state])
+  );
 
   const requests = rows.filter((r) => r.booking.status === "pending");
   const upcoming = rows.filter(
@@ -54,58 +88,76 @@ export default async function WorkerBookingsPage() {
           {title}
         </h2>
         <div className="mt-3 space-y-3">
-          {items.map(({ booking, customerName }) => (
-            <div key={booking.id} className="card p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-ink">
-                    <Link href={`/bookings/${booking.id}`} className="hover:text-gold-soft">
-                      {booking.serviceName}
-                    </Link>
-                    <span className="ml-2 text-xs text-faint">{booking.code}</span>
-                  </p>
-                  <p className="mt-1 text-xs text-muted">
-                    {customerName ?? "Customer"} · {booking.date} at{" "}
-                    {formatTime12(booking.startTime)} · {booking.durationMinutes} min
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-gold">
-                    {formatCents(booking.priceCents + booking.addonsCents)}
-                  </span>
-                  <Badge tone={statusTone(booking.status)}>{booking.status}</Badge>
-                </div>
-              </div>
-
-              {(booking.status === "confirmed" ||
-                booking.status === "in_progress") && (
-                <p className="mt-3 text-xs text-muted">
-                  📍 {booking.address}
-                  {booking.instructions && (
-                    <span className="mt-1 block text-faint">
-                      “{booking.instructions}”
+          {items.map(({ booking, customerName }) => {
+            const sessionState = sessionByBooking.get(booking.id);
+            const chip = sessionState ? safetyChip[sessionState] : undefined;
+            return (
+              <div key={booking.id} className="card p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-ink">
+                      <Link href={`/bookings/${booking.id}`} className="hover:text-gold-soft">
+                        {booking.serviceName}
+                      </Link>
+                      <span className="ml-2 text-xs text-faint">{booking.code}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-muted">
+                      {customerName ?? "Customer"} · {booking.date} at{" "}
+                      {formatTime12(booking.startTime)} · {booking.durationMinutes} min
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {/* Safety state before money: a glance at this list should
+                        answer "is anything wrong right now?" first. */}
+                    {chip && <Badge tone={chip.tone}>{chip.label}</Badge>}
+                    <span className="text-sm text-gold">
+                      {formatCents(booking.priceCents + booking.addonsCents)}
                     </span>
-                  )}
-                  <Link
-                    href={`/bookings/${booking.id}`}
-                    className="mt-1 block text-gold"
-                  >
-                    Open live booking room → (map, PIN start, wellness checks)
-                  </Link>
-                </p>
-              )}
-
-              {showActions && (
-                <div className="mt-4">
-                  <WorkerBookingActions
-                    bookingId={booking.id}
-                    status={booking.status}
-                    serviceTotalCents={booking.priceCents + booking.addonsCents}
-                  />
+                    <Badge tone={statusTone(booking.status)}>{booking.status}</Badge>
+                  </div>
                 </div>
-              )}
-            </div>
-          ))}
+
+                {/* What the worker is entitled to know BEFORE agreeing to be
+                    alone with someone in a private home. */}
+                {booking.status === "pending" && (
+                  <div className="mt-3">
+                    <CustomerRiskCard
+                      summary={risk.get(booking.customerId) ?? null}
+                      address={booking.address}
+                    />
+                  </div>
+                )}
+
+                {(booking.status === "confirmed" ||
+                  booking.status === "in_progress") && (
+                  <p className="mt-3 text-xs text-muted">
+                    📍 {booking.address}
+                    {booking.instructions && (
+                      <span className="mt-1 block text-faint">
+                        “{booking.instructions}”
+                      </span>
+                    )}
+                    <Link
+                      href={`/bookings/${booking.id}`}
+                      className="mt-1 block text-gold"
+                    >
+                      Open live booking room → (map, PIN start, check-ins, SOS)
+                    </Link>
+                  </p>
+                )}
+
+                {showActions && (
+                  <div className="mt-4">
+                    <WorkerBookingActions
+                      bookingId={booking.id}
+                      status={booking.status}
+                      serviceTotalCents={booking.priceCents + booking.addonsCents}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
     );
