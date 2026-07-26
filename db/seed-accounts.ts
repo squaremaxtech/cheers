@@ -17,8 +17,16 @@ import {
 type Role = (typeof users.$inferSelect)["role"];
 type SupportRole = (typeof users.$inferSelect)["supportRole"];
 
-// 4 user types; support staff carry a sub-role
-// (customer_support/supervisor/driver/safety_monitor).
+// The five demo accounts, one per role we actually demo with. Names are
+// deliberately role-labelled ("Devon Driver", not "Devon Brown") so that during
+// a live client demo the name on screen always says which hat that person is
+// wearing — see docs/DEMO-WALKTHROUGH.md Part 1.
+//
+// The schema supports two further support sub-roles that are NOT seeded here:
+// `supervisor` (customer support + approves ID verifications) and
+// `safety_monitor` (the live safety board and nothing else). The safety desk is
+// reachable by admin and customer support already, so the demo does not need a
+// dedicated monitor login. To add one, append an entry with the sub-role set.
 const accounts: {
   email: string;
   role: Role;
@@ -27,14 +35,10 @@ const accounts: {
   phone?: string;
 }[] = [
   { email: "squaremaxtech@gmail.com", role: "admin", name: "Max Admin" },
-  { email: "uncommonfavour32@gmail.com", role: "customer", name: "Favour Campbell", phone: "+1 876 555 0142" },
-  { email: "maxwellwedderburn32@gmail.com", role: "worker", name: "Maxwell Wedderburn", phone: "+1 876 555 0177" },
-  { email: "managestorymaker@gmail.com", role: "support", supportRole: "customer_support", name: "Tanya Reid" },
-  { email: "maxwell.wedderburn@icta.gov.jm", role: "support", supportRole: "supervisor", name: "Andre Palmer" },
-  { email: "maxwellwedderburn@outlook.com", role: "support", supportRole: "driver", name: "Devon Brown", phone: "+1 876 555 0193" },
-  // Safety monitors watch the live board and answer escalations — and get
-  // nothing else (no chats, no identity documents, no payments).
-  { email: "cheers.safetydesk@gmail.com", role: "support", supportRole: "safety_monitor", name: "Simone Clarke", phone: "+1 876 555 0166" },
+  { email: "uncommonfavour32@gmail.com", role: "customer", name: "Favour Customer", phone: "+1 876 555 0142" },
+  { email: "maxwellwedderburn32@gmail.com", role: "worker", name: "Maxwell Worker", phone: "+1 876 555 0177" },
+  { email: "managestorymaker@gmail.com", role: "support", supportRole: "customer_support", name: "Tanya Cust Support" },
+  { email: "maxwellwedderburn@outlook.com", role: "support", supportRole: "driver", name: "Devon Driver", phone: "+1 876 555 0193" },
 ];
 
 // Stage-worthy worker profile for the worker account.

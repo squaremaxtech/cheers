@@ -216,6 +216,11 @@ phone had been taken produced **no alert at all**. This batch inverts that.
   (old +supervisor alias account replaced in DB + seed-accounts; the nameless
   icta customer's test booking/payment/review were reassigned to Andre before
   deletion).
+  > **Superseded 2026-07-26.** That account is a plain `customer` in the live DB
+  > ("Andre Customer Two") and is no longer seeded. `seed-accounts` now covers
+  > five roles only — admin, customer_support, driver, worker, customer — with
+  > role-labelled names. `supervisor` and `safety_monitor` remain in the schema
+  > but are unseeded. See `DEMO-WALKTHROUGH.md` Part 1.
 
 **2026-07-07 update (3) — customer onboarding/ID verification, chat, payout UX:**
 - **First-login customer setup** (`/welcome`, top-level so the gate can't
@@ -434,7 +439,7 @@ phone had been taken produced **no alert at all**. This batch inverts that.
 **V1 code complete.** Remaining before launch (V1.1):
 1. `.env` — confirm all names in `.env.example` exist locally (esp. `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `EMAIL_*`, `STRIPE_*` incl. `STRIPE_MEMBERSHIP_PRICE_ID` + webhook secret, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `FREE_ACCESS_UNTIL`). Admin role already seeded for the owner email.
 2. Stripe dashboard: create the monthly membership Price; point a webhook at `/api/stripe/webhook` (events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`).
-2b. Test accounts seeded via `npm run db:seed-accounts` (idempotent, edit `db/seed-accounts.ts` to change): admin squaremaxtech@gmail.com · customer uncommonfavour32@gmail.com · worker maxwellwedderburn32@gmail.com (profile "Maxx" at `/workers/maxx`, 4 services configured — one ACTIVE per category — + add-ons + availability, verified) · support/customer_support managestorymaker@gmail.com · support/supervisor squaremaxtech+supervisor@gmail.com · support/driver maxwellwedderburn@outlook.com. All sign in via magic link (or Google where the email is a Google account).
+2b. Test accounts seeded via `npm run db:seed-accounts` (idempotent, matched on email — edit `db/seed-accounts.ts` to change). Five roles, role-labelled names so a live demo always shows which hat is being worn: **Max Admin** admin squaremaxtech@gmail.com · **Favour Customer** customer uncommonfavour32@gmail.com · **Maxwell Worker** worker maxwellwedderburn32@gmail.com (profile "Maxx" at `/workers/maxx`, 4 services configured — one ACTIVE per category — + add-ons + availability, verified) · **Tanya Cust Support** support/customer_support managestorymaker@gmail.com · **Devon Driver** support/driver maxwellwedderburn@outlook.com. The `supervisor` and `safety_monitor` sub-roles exist in the schema but are deliberately not seeded — admin + customer_support already cover the safety desk. All sign in via magic link (or Google where the email is a Google account). Per-role capabilities: `DEMO-WALKTHROUGH.md` Part 1.
 3. Booking **reminder** emails need a scheduled job (e.g. `scripts/send-reminders.ts` via PM2 cron) — not yet written.
 4. ~~Media is URL-based~~ → local uploads implemented (stored in `uploads/` on
    the VPS; include in backups). Move to object storage only if video traffic
