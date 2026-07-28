@@ -213,6 +213,26 @@ export function safetyAlertLabel(kind: string): string {
   return SAFETY_ALERT_LABELS[kind] ?? "Safety alert";
 }
 
+// "Overdue-shaped" alerts: the worker was expected to do something by a certain
+// time and didn't. These are the ones a worker's own trusted contacts can ask
+// to hear about IMMEDIATELY, rather than waiting for the staff ladder to reach
+// them — the "if I'm late checking in, tell my people" option.
+//
+// The other kinds (sos, duress, wellness_help, pin_failures) are live
+// emergencies handled by staff first; contacts hear about those through the
+// ladder's trusted_contacts rung, and never at all when the alert is covert.
+export const OVERDUE_ALERT_KINDS = [
+  "missed_checkin",
+  "unresponsive",
+  "no_arrival",
+  "overrun",
+  "get_home_overdue",
+] as const;
+
+export function isOverdueAlertKind(kind: string): boolean {
+  return (OVERDUE_ALERT_KINDS as readonly string[]).includes(kind);
+}
+
 // Chat rules: each text message is capped, and each room keeps at most
 // CHAT_ROOM_MESSAGE_CAP messages. Pruning runs in batches — once a room
 // overflows by CHAT_PRUNE_BATCH, the oldest overflow is deleted — so new

@@ -1,11 +1,12 @@
 # Cheers — Demo Walkthrough
 
 > **Reading order.** Part 1 is who the accounts are. Part 2 is what to do
-> before the client arrives. Part 3 is the script — read it almost verbatim.
-> Parts 4–5 are reference you only reach for if asked.
+> before the client arrives. **Part 3 explains how the safety system works in
+> plain English — read it once.** Part 4 is the script, which you can read
+> almost verbatim. Parts 5–6 are reference you only reach for if asked.
 >
 > **All environment-variable configuration lives in Appendix A**, at the bottom.
-> Nothing in Parts 1–3 requires you to read it mid-demo.
+> Nothing in Parts 1–4 requires you to read it mid-demo.
 >
 > Companion docs: `USER-GUIDE.md` (role handbook), `HANDOFF.md` (build log),
 > `SAFETY-ARCHITECTURE.md` (the safety audit that drove the latest work).
@@ -216,7 +217,97 @@ Devon Driver is a 30-second cameo in Act 5 — a fifth window is optional.
 
 ---
 
-## PART 3 — The demo script
+## PART 3 — How the safety system works
+
+*Read this once before you present. Act 4 makes a lot more sense — and you'll
+be able to answer questions — if you hold these eight ideas.*
+
+**The one-sentence version:** the system watches for **silence**, and silence
+is what sets off the alarm. Nobody has to press anything.
+
+**1. A visit becomes a "session."**
+When the worker taps *"I'm on my way"*, a monitored session opens. It stays
+open until they confirm they got home — not until the job is marked complete.
+Those are two different things on purpose.
+
+**2. A clock asks "are you OK?" on a fixed cycle.**
+Every 30 minutes in production (2 minutes with the demo timings). It shows up
+as a gold **I'M OK** button in a bar pinned to the bottom of the screen, and as
+a phone notification they can answer from the lock screen without unlocking.
+Answering resets the clock.
+
+**3. There's also a silent heartbeat.**
+The open page quietly pings the server. If those pings stop, the phone screen
+is off — which is usually completely normal (it's in a pocket). So the desk
+board shows **NO SIGNAL**, but **nobody gets paged for this alone**. Auto-paging
+every locked screen would bury the desk in false alarms and train people to
+ignore the real one.
+
+**4. Missing a check-in is the alarm.**
+Due time passes, then a short grace window, then the system raises an **alert**
+by itself. If the phone was *also* silent, it's labelled **unresponsive** and
+sorts to the top of the board — that's the true emergency shape: the worker
+didn't answer *and* their device can't be reached.
+
+**5. An alert climbs a ladder until a human claims it.**
+Each rung fires a few minutes after the last, and **only while nobody has
+claimed it**:
+
+| Stage | Who gets paged |
+|---|---|
+| 1 | On-duty safety monitors (from the rota) |
+| 2 | All desk support + supervisors |
+| 3 | **The worker's own trusted contacts** |
+| 4 | Admins; driver dispatch and location breadcrumbs surfaced |
+
+Clicking **Claim** stops the ladder — it's now a named person's problem.
+**Resolving** is separate and closes it. "Someone's on it" and "it's over" are
+different facts, so they're different buttons. Nobody rostered? The ladder
+falls straight through to the whole desk rather than paging nobody.
+
+**6. Other things that raise alerts.**
+Hold-to-arm **SOS** (10-second countdown, cancelled only with the worker's
+personal code) · the **duress PIN** · never arrived · session ran over ·
+no get-home-safe confirmation · repeated wrong PINs at the door.
+
+**7. Covert alerts are handled differently.**
+A duress PIN means someone may be standing over the worker. That alert is
+marked **covert**: nothing changes on the worker's screen, and **trusted
+contacts are deliberately skipped** — an outside contact told "try to reach
+them now" would ring that phone at the worst possible moment. Trained staff
+only.
+
+**8. A scheduler ticks every 30 seconds.**
+It's what makes every timed part above actually happen. If
+`[safety] scheduler started` isn't in the console, none of this works.
+
+### The worker's own people ("trusted contacts")
+
+Each worker can add up to **three** of their own people — a partner, a sibling,
+a friend. This is separate from the staff desk: it's their personal safety net.
+
+- They add a **name plus an email address and/or phone number**, and the contact
+  must **confirm by clicking a link** before anything is ever sent to them.
+  Consent first — being woken at 3am about someone else's safety isn't
+  something you opt a person into.
+- The worker picks **exactly what reaches them**, in any combination:
+
+  | Option | When it fires |
+  |---|---|
+  | *When a visit starts* | A live tracking link, the moment the session opens |
+  | *If I'm late checking in* | **Immediately** on a missed check-in — "they're late, we're on it" |
+  | *If there's an emergency* | At **stage 3** of the ladder — "we still can't reach them, please try" |
+
+- Contacts see **only** the worker's status and last known position. **Never**
+  the customer's name and **never** the address. A safety link is not a licence
+  to watch someone's working life.
+- Messages go out by **email, and by text once an SMS provider is configured**
+  (Appendix A5). Until then the UI says so plainly rather than pretending a
+  phone number is covered.
+
+---
+
+## PART 4 — The demo script
 
 **Total ≈ 30 minutes.** Acts 1–3 build the story; **Act 4 is what you're
 actually selling.** If you only have 15 minutes: Act 3 briefly, Act 4 in full.
@@ -431,9 +522,26 @@ Then **"I got home safely"** → monitoring ends cleanly.
 
 - **`/worker/safety`** — plain-English *"What happens automatically"*, push
   toggle, emergency cancel code, trusted contacts.
-  > *"Trusted contacts get a live tracking link — but it shows only where the
-  > worker is and whether they're OK. Never the customer's name, never the
-  > address. A safety link isn't a licence to watch someone's working life."*
+
+  **Add a trusted contact live** — it takes fifteen seconds and lands well.
+  Show the three tick-boxes: *when a visit starts* · *if I'm late checking in* ·
+  *if there's an emergency*.
+  > *"Up to three of their own people — a partner, a sister, a friend. The
+  > worker chooses what each one hears. The middle option is the one workers
+  > actually want: the moment they miss a check-in, their person is told 'she's
+  > late, we're already on it.' Not after our ladder has run for seven minutes.
+  > Straight away."*
+  >
+  > *"And the contact has to click a confirmation link before we ever send them
+  > anything. You don't opt someone into being woken at 3am about somebody
+  > else's safety."*
+  >
+  > *"What they see is only where the worker is and whether they're OK. Never
+  > the customer's name, never the address. A safety link isn't a licence to
+  > watch someone's working life."*
+
+  *(If SMS isn't configured, the form says so honestly — contacts are reached by
+  email until a provider is set. Don't hide that; the honesty is the point.)*
 - **`/safety/rota`** — on-call shifts. *(View it in Tanya's window; edit it in
   Max's — only admins can change the rota.)*
   > *"Escalations page whoever is on duty first. An alert that belongs to
@@ -480,14 +588,14 @@ Then **"I got home safely"** → monitoring ends cleanly.
 
 ---
 
-## PART 4 — Feature reference
+## PART 5 — Feature reference
 
-### 4.1 Public
+### 5.1 Public
 Homepage · browse (grid/list/swipe) with filters · worker profiles (gallery,
 services, availability, reviews) · about · contact · FAQ · privacy · terms ·
 invite-only worker recruitment via `general@cheersja.com`
 
-### 4.2 Customer
+### 5.2 Customer
 `/welcome` 3-step onboarding (profile → ID → membership) · ID verification with
 auto-deletion after review · browse + favourites · chat with photos and
 presence · booking (calendar → slots → maps address → add-ons → instructions) ·
@@ -496,7 +604,7 @@ worker) · safety PIN · live booking room with map · SOS · 5-hour cancellatio
 reschedule · auto-refunds · reviews (optionally anonymous) · 30-day stacking
 membership · notifications feed
 
-### 4.3 Worker
+### 5.3 Worker
 Invite-only onboarding · profile with private real name · media gallery tagged
 by category · service customisation (one active per category) + add-ons ·
 weekly availability + date exceptions · visibility toggle · accept/decline
@@ -506,22 +614,28 @@ settlement · chat with online-status toggle · cash proof upload
 **Safety:** "I'm on my way" with ETA · PIN start · **duress PIN** · persistent
 safety bar · timed check-ins with push one-tap answers · quiet ("report
 quietly") help · hold-to-arm SOS with PIN-cancel countdown · wake lock · offline
-queue · heartbeat · "I've left" → get-home-safe · trusted contacts with
-tokenised tracking links · personal cancel code · private post-visit report ·
-silent customer block · PWA install
+queue · heartbeat · "I've left" → get-home-safe · personal cancel code ·
+private post-visit report · silent customer block · PWA install
 
-### 4.4 Admin
+**Trusted contacts** (up to 3 per worker): email and/or phone · consent
+confirmed by single-use link before anything is ever sent · per-contact choice
+of **session start** (tokenised tracking link), **overdue** (fires the instant a
+check-in is missed) and **emergency** (ladder stage 3) · delivered by email, and
+by SMS once a provider is configured · never carries the customer's identity or
+the visit address · skipped entirely for covert (duress) alerts
+
+### 5.4 Admin
 Overview with safety/verification/worker alert cards · worker invites and
 approval · customer ID review · booking lifecycle override · payments, refunds,
 weekly payout generation, cash settlement · read-only chat transcripts · review
 moderation · reports with CSV · settings · audit log · driver dispatch
 
-### 4.5 Safety desk (`/safety` — admin, desk support, monitors)
+### 5.5 Safety desk (`/safety` — admin, desk support, monitors)
 Live board sorted worst-first with live countdowns · claim/acknowledge/resolve ·
 proactive ping · audited PIN reveal · last-position map link · orphan alert
 queue · on-call rota
 
-### 4.6 Support roles
+### 5.6 Support roles
 **Customer support** — read-only admin tooling, review moderation, CSV export,
 and full safety-desk powers.
 **Supervisor** — the above, plus ID verification approvals.
@@ -529,7 +643,7 @@ and full safety-desk powers.
 **Safety monitor** — `/safety` only; deliberately no chat, ID documents, or
 payment access.
 
-### 4.7 Platform
+### 5.7 Platform
 NextAuth (Google + magic link) · role-based access · SSE realtime (booking room,
 chat inbox, safety desk) · in-process pub/sub · rate limiting · audit logging ·
 PWA with web push · security headers · scrypt-hashed codes, SHA-256 tokens,
@@ -537,7 +651,7 @@ constant-time PIN comparison, SSRF-allowlisted push endpoints
 
 ---
 
-## PART 5 — Troubleshooting
+## PART 6 — Troubleshooting
 
 | Symptom | Cause & fix |
 |---|---|
@@ -604,7 +718,7 @@ usually fine, since alerts also appear in-app and via push.
 |---|---|---|
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | from `npx web-push generate-vapid-keys` | Web Push. Without them push is **off** and the UI says so honestly. Check-ins still work in-app. |
 | `VAPID_SUBJECT` | `mailto:general@cheersja.com` | Contact address required by the push spec. |
-| `SMS_PROVIDER_URL` / `SMS_PROVIDER_TOKEN` | — | Optional. Generic HTTP SMS provider for the escalation ladder. Unset = SMS rungs are skipped (deliberately: a channel that silently fails is worse than an absent one). |
+| `SMS_PROVIDER_URL` / `SMS_PROVIDER_TOKEN` | — | Optional. Generic HTTP SMS provider (`POST {to, text}` with a bearer token). Powers SMS to **staff** on the escalation ladder **and to workers' trusted contacts**. Unset = SMS is skipped everywhere, the trusted-contact form says so plainly, and a phone-only contact is refused at the point of adding (deliberately: a channel that silently fails is worse than an absent one). |
 | `SAFETY_SCHEDULER` | `off` | Disables the safety clock. **Leave unset** — setting it turns off all time-based escalation. |
 
 > ⚠️ **Push notifications need HTTPS.** `localhost` counts as secure, so push
@@ -779,6 +893,34 @@ before any real demo.
 - [ ] Trusted contact: add → confirmation email → confirm → tracking link shows
       position/status and **no customer identity or address**
 - [ ] Expired/invalid tracking token → 404
+
+### Trusted contacts — the worker's own people
+- [ ] Add with **email only** → confirmation email arrives → confirm → verified
+- [ ] Add with **phone only while SMS is unconfigured** → **refused** with a
+      clear message (it could never be confirmed or reached)
+- [ ] Add with **phone only while SMS is configured** → confirmation **text**
+      arrives with the same single-use link → confirm → verified
+- [ ] Add with **both** → confirmation goes out on **both** channels; the
+      success toast names the channels actually used
+- [ ] An **unconfirmed** contact receives nothing at any stage
+- [ ] *"When a visit starts"* → tracking link on session start, email **and**
+      SMS where available
+- [ ] ⭐ *"If I'm late checking in"* → message fires **immediately** when the
+      missed-checkin alert is raised, not at ladder stage 3
+- [ ] *"If there's an emergency"* → message fires at ladder **stage 3**, and
+      **not at all** if a staff member claimed the alert first
+- [ ] A contact who ticked **both** overdue and emergency gets the early
+      heads-up first, then the stronger "please try to reach them" only if the
+      alert is still unclaimed
+- [ ] A contact who did **not** tick "when a visit starts" gets **no reference
+      to a tracking link** they never received
+- [ ] **Duress/covert alert → trusted contacts receive nothing** (staff only)
+- [ ] Repeatedly missing check-ins on one session produces **one** contact
+      message, not one per tick
+- [ ] `escalations` rows for contacts record **only channels actually sent** —
+      with SMS unconfigured there must be **no `sms` rows**
+- [ ] Contact messages contain the worker's stage name and status only — grep a
+      sent message for the customer name and the address: **neither appears**
 - [ ] Post-visit "felt unsafe" → desk alert; block → that customer can no longer
       book that worker (and is not told why)
 
@@ -813,7 +955,9 @@ before any real demo.
 - [ ] **Staff the on-call rota** at `/safety/rota` — the UI promises workers a
       "24/7 safety team"; if nobody is rostered, escalations page the whole desk
       with nobody owning them. Either staff it or change that copy.
-- [ ] Configure SMS (`SMS_PROVIDER_*`) so the ladder has a channel past email/push
+- [ ] Configure SMS (`SMS_PROVIDER_*`) so the ladder has a channel past
+      email/push — and so workers' trusted contacts can be reached by text.
+      Until it is set, a worker cannot add a phone-only contact at all.
 - [ ] Collect and verify worker phone numbers
 - [ ] Confirm HTTPS end to end (push, geolocation and wake lock all require it)
 - [ ] Run a **live drill**: trigger a real missed check-in and time the human

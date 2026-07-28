@@ -21,13 +21,17 @@ import {
   PIN_LOCKOUT_MINUTES,
   PUSH_SUBSCRIBES_PER_HOUR,
   SOS_PER_HOUR,
+  smsEnabled,
   TRUSTED_CONTACTS_PER_DAY,
 } from "@/lib/constants";
 import { guardErrorMessage, requireUser } from "@/lib/guards";
-import { emailLayout, sendEmail } from "@/lib/mailer";
 import { notify } from "@/lib/notify";
 import { rateLimit } from "@/lib/rate-limit";
 import { bookingEventNow, publishBooking, publishSafetyDesk } from "@/lib/realtime";
+import {
+  sendContactConfirmation,
+  sendTrackingLinks,
+} from "@/lib/safety/contacts";
 import { raiseAlert } from "@/lib/safety/escalate";
 import { pinsMatch, hashPin } from "@/lib/safety/pins";
 import { isAllowedPushEndpoint, removeSubscription } from "@/lib/safety/push";
@@ -86,7 +90,7 @@ export async function startTravelling(
     });
     // The plaintext tracking token exists only on the creating call, so this
     // is the one moment a tracking link can be sent.
-    await notifyTrustedContacts(user.id, "session_start", {
+    await sendTrackingLinks(user.id, {
       stageName: access.worker.stageName,
       token: session.trackToken,
     });
@@ -185,7 +189,7 @@ export async function startServiceWithPin(
     // way". If THIS call created the session, the tracking token exists only
     // right now — send the trusted-contact links or they never go out.
     if (session.trackToken) {
-      await notifyTrustedContacts(access.worker.userId, "session_start", {
+      await sendTrackingLinks(access.worker.userId, {
         stageName: access.worker.stageName,
         token: session.trackToken,
       });
@@ -631,35 +635,39 @@ export async function addTrustedContact(
     }
 
     const email = parsed.data.email || null;
+    const phone = parsed.data.phone || null;
+
+    // Refuse a contact we cannot actually confirm or reach. A phone-only
+    // contact added while SMS is unconfigured could never be verified and so
+    // could never be notified — it would sit in the worker's list looking like
+    // cover while being nothing at all. Say so now rather than at 2am.
+    if (!email && !smsEnabled()) {
+      return err(
+        "Text messaging isn't switched on yet, so we can only confirm contacts by email. Add an email address for this person."
+      );
+    }
+
     const token = generateToken();
     await db.insert(trustedContacts).values({
       userId: user.id,
       name: parsed.data.name,
       email,
-      phone: parsed.data.phone || null,
+      phone,
       notifyOn: parsed.data.notifyOn,
-      verifyTokenHash: email ? hashToken(token) : null,
-      verifyExpiresAt: email ? minutesFromNow(60 * 24 * 7) : null,
+      verifyTokenHash: hashToken(token),
+      verifyExpiresAt: minutesFromNow(60 * 24 * 7),
     });
 
     // Consent before contact: someone must agree to be an emergency contact
-    // before we start sending them alarming messages at 3am.
-    if (email) {
-      const base = (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "");
-      await sendEmail({
-        to: email,
-        subject: "Cheers — you've been added as a safety contact",
-        html: emailLayout(
-          "Confirm you're a safety contact",
-          `<p><strong>${user.name ?? "A Cheers worker"}</strong> listed you as a trusted safety contact.</p>
-           <p>If they don't check in during a booking, our safety team may contact you and share a live tracking link.</p>
-           <p style="margin-top:24px;">
-             <a href="${base}/track/confirm/${token}" style="background:#d6b25e;color:#0c0a09;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;">Confirm</a>
-           </p>
-           <p style="color:#6b6b6b;font-size:13px;">If this wasn't expected, ignore this email — you won't be contacted.</p>`
-        ),
-      });
-    }
+    // before we start sending them alarming messages at 3am. The link goes out
+    // on every channel we have for them.
+    await sendContactConfirmation({
+      contactName: parsed.data.name,
+      email,
+      phone,
+      workerName: user.name ?? "A Cheers worker",
+      token,
+    });
 
     revalidatePath("/worker/safety");
     return ok(undefined);
@@ -692,48 +700,7 @@ export async function removeTrustedContact(
   }
 }
 
-// --- Trusted-contact fan-out ------------------------------------------------------------
-
-// Sends the tokenised tracking link at session start. Contacts get position and
-// status only — never the customer's identity and never the address.
-async function notifyTrustedContacts(
-  workerUserId: string,
-  trigger: "session_start" | "overdue" | "alert",
-  ctx: { stageName: string; token: string | null }
-): Promise<void> {
-  try {
-    if (!ctx.token) return;
-    const contacts = await db
-      .select()
-      .from(trustedContacts)
-      .where(eq(trustedContacts.userId, workerUserId));
-    const targets = contacts.filter(
-      (c) => c.verifiedAt && c.email && c.notifyOn.includes(trigger)
-    );
-    if (targets.length === 0) return;
-
-    const base = (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "");
-    await Promise.all(
-      targets.map((contact) =>
-        sendEmail({
-          to: contact.email!,
-          subject: `Cheers — ${ctx.stageName} has started a booking`,
-          html: emailLayout(
-            "Live tracking link",
-            `<p><strong>${ctx.stageName}</strong> has started a monitored booking and listed you as a safety contact.</p>
-             <p>You can follow their status and last known position here:</p>
-             <p style="margin-top:24px;">
-               <a href="${base}/track/${ctx.token}" style="background:#d6b25e;color:#0c0a09;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;">Open tracking</a>
-             </p>
-             <p style="color:#6b6b6b;font-size:13px;">This link expires shortly after the booking ends. Our safety team monitors every session; you'll only hear from us again if something needs attention.</p>`
-          ),
-        })
-      )
-    );
-  } catch (error) {
-    console.error(
-      "trusted contact notify failed:",
-      error instanceof Error ? error.message : error
-    );
-  }
-}
+// The trusted-contact fan-out lives in lib/safety/contacts.ts — one module owns
+// every message that leaves the platform for a worker's own people, so the
+// "never the customer's identity, never the address" boundary cannot drift
+// apart between the session-start link, the overdue warning and the ladder.

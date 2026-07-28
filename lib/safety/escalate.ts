@@ -5,22 +5,25 @@ import {
   escalations,
   monitorShifts,
   safetyAlerts,
-  safetySessions,
-  trustedContacts,
   users,
   workers,
 } from "@/db/schema";
 import {
   ESCALATION_LADDER,
+  isOverdueAlertKind,
   safetyAlertLabel,
   smsEnabled,
   type EscalationAudience,
 } from "@/lib/constants";
-import { emailLayout, sendEmail } from "@/lib/mailer";
 import { notify } from "@/lib/notify";
 import { bookingEventNow, publishBooking, publishSafetyDesk } from "@/lib/realtime";
+import {
+  notifyContactsOfConcern,
+  type ContactDelivery,
+} from "@/lib/safety/contacts";
 import { sendPush } from "@/lib/safety/push";
 import { usersWithVerifiedPhone } from "@/lib/safety/risk";
+import { sendSms } from "@/lib/safety/sms";
 import { MINUTE_MS, recordEvent } from "@/lib/safety/session";
 import type { SafetyAlertKind, SafetyAlertRow } from "@/types";
 
@@ -133,7 +136,59 @@ export async function raiseAlert(opts: {
   publishBooking(opts.bookingId, bookingEventNow("alert"));
   publishSafetyDesk();
   void fireStage(alert, 0);
+  void notifyOverdueContacts(alert);
   return alert;
+}
+
+// The worker's own early warning.
+//
+// A worker can ask for their people to be told the MOMENT they are late —
+// without waiting for the staff ladder to reach the trusted_contacts rung
+// minutes later. That is a different promise from the ladder's: it says "we
+// noticed, we're on it", not "please go find them". Only overdue-shaped alerts
+// qualify (see isOverdueAlertKind); live emergencies stay with trained staff
+// first and reach contacts through the ladder.
+//
+// Runs off the raise path deliberately, so a slow SMTP or SMS provider never
+// delays the desk being paged. Deduplication comes free: raiseAlert only
+// creates one alert per (session, kind) while one is open, so a worker who is
+// late for twenty minutes generates exactly one message to their mother.
+async function notifyOverdueContacts(alert: SafetyAlertRow): Promise<void> {
+  try {
+    if (!isOverdueAlertKind(alert.kind)) return;
+    // Same rule as the ladder rung: covert means someone may be watching the
+    // worker, and an outside contact reaching out is the last thing they need.
+    if (alert.covert) return;
+
+    const ctx = await contextFor(alert);
+    if (!ctx.workerUserId) return;
+
+    const delivered = await notifyContactsOfConcern(ctx.workerUserId, "overdue", {
+      stageName: ctx.stageName,
+      kind: alert.kind,
+    });
+    if (delivered.length === 0) return;
+
+    // Stage 0: this happened at the same moment as the first staff page, and
+    // the incident log should read that way.
+    await logDeliveries(alert.id, 0, delivered);
+    await recordEvent({
+      sessionId: alert.sessionId,
+      bookingId: alert.bookingId,
+      kind: "escalation_fired",
+      payload: {
+        alertId: alert.id,
+        stage: 0,
+        audience: "trusted_contacts_overdue",
+        delivered: delivered.length,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "overdue contact notify failed:",
+      error instanceof Error ? error.message : error
+    );
+  }
 }
 
 // --- Ladder execution ---------------------------------------------------------------
@@ -306,96 +361,62 @@ async function dispatch(
     // situations are handled by trained staff only; the ladder skips this
     // rung and proceeds to admins on schedule.
     if (alert.covert) return;
-    const contacts = await db
-      .select()
-      .from(trustedContacts)
-      .where(eq(trustedContacts.userId, ctx.workerUserId));
-    const reachable = contacts.filter(
-      (c) => c.verifiedAt && c.notifyOn.includes("alert")
-    );
-    if (reachable.length === 0) return;
 
-    // Trusted contacts are NOT staff: they get the tracking link and a plain
-    // statement of concern — never the customer's identity, never the address.
-    const [session] = ctx.sessionId
-      ? await db
-          .select({ token: safetySessions.trackTokenHash })
-          .from(safetySessions)
-          .where(eq(safetySessions.id, ctx.sessionId))
-      : [];
-    const base = (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "");
-    // The stored value is a hash; the live link is mailed at session start.
-    // Here we point at the generic tracking entry so the contact can use the
-    // link they already hold.
-    const trackHint = session && base ? `${base}/track` : null;
-
-    await Promise.all(
-      reachable.map(async (contact) => {
-        if (!contact.email) return;
-        await sendEmail({
-          to: contact.email,
-          subject: `Cheers — please check on ${ctx.stageName}`,
-          html: emailLayout(
-            "Safety check requested",
-            `<p>You are listed as a trusted contact for <strong>${ctx.stageName}</strong>.</p>
-             <p>Our safety team has not been able to confirm they are OK during a booking, and is actively working on it.</p>
-             <p>If you can reach them directly, please try now.</p>
-             ${trackHint ? `<p>Your tracking link was sent when the visit began — open it to see their last known position.</p>` : ""}
-             <p style="color:#6b6b6b;font-size:13px;">If you believe they are in immediate danger, call 119.</p>`
-          ),
-        });
-      })
-    );
-    await logAttempts(
-      alert.id,
-      stage,
-      "email",
-      reachable.map((c) => ({ label: c.email ?? c.name }))
-    );
-    if (smsEnabled()) {
-      await logAttempts(
-        alert.id,
-        stage,
-        "sms",
-        reachable.filter((c) => c.phone).map((c) => ({ label: c.phone ?? "" }))
-      );
-    }
+    // The fan-out itself lives in lib/safety/contacts.ts, which owns every
+    // message that leaves the platform for a worker's own people — and the
+    // rule that none of them ever carry the customer's identity or address.
+    const delivered = await notifyContactsOfConcern(ctx.workerUserId, "alert", {
+      stageName: ctx.stageName,
+      kind: alert.kind,
+    });
+    await logDeliveries(alert.id, stage, delivered);
   }
 }
 
-// SMS/voice go through a generic HTTP provider so the ladder does not hard-bind
-// to one vendor. Disabled (and honestly absent) until configured.
+// Writes what a trusted-contact fan-out ACTUALLY delivered. Previously this
+// rung logged an `sms` attempt per contact whenever SMS was merely configured,
+// without ever calling the provider — so the incident record claimed outreach
+// that never happened. Log only what came back.
+async function logDeliveries(
+  alertId: string,
+  stage: number,
+  delivered: ContactDelivery[]
+): Promise<void> {
+  for (const channel of ["email", "sms"] as const) {
+    await logAttempts(
+      alertId,
+      stage,
+      channel,
+      delivered.filter((d) => d.channel === channel).map((d) => ({ label: d.label }))
+    );
+  }
+}
+
+// Staff SMS. Sending goes through lib/safety/sms.ts so the ladder does not
+// hard-bind to one vendor, and so "what was actually delivered" is decided in
+// exactly one place.
 async function sendSmsToUsers(
   userIds: string[],
   text: string,
   alertId: string,
   stage: number
 ): Promise<void> {
-  const url = process.env.SMS_PROVIDER_URL;
-  const token = process.env.SMS_PROVIDER_TOKEN;
-  if (!url || !token || userIds.length === 0) return;
+  if (userIds.length === 0) return;
   try {
     // Only VERIFIED numbers are dialled. An unverified number is worse than no
     // number: it presents as a working escalation channel while going nowhere.
     const targets = await usersWithVerifiedPhone(userIds);
     if (targets.length === 0) return;
-    await Promise.all(
-      targets.map((t) =>
-        fetch(url, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ to: t.phone, text }),
-        }).catch(() => undefined)
-      )
+    const sent = await sendSms(
+      targets.map((t) => ({ to: t.phone, userId: t.id })),
+      text
     );
+    // Log the accepted sends only — never the whole target list.
     await logAttempts(
       alertId,
       stage,
       "sms",
-      targets.map((t) => ({ userId: t.id }))
+      sent.map((t) => ({ userId: t.userId }))
     );
   } catch {
     // provider outage — the other channels already carried this stage

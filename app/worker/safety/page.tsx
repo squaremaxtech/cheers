@@ -9,6 +9,7 @@ import {
   CHECKIN_GRACE_MINUTES,
   GET_HOME_SAFE_MINUTES,
   HEARTBEAT_GRACE_MINUTES,
+  smsEnabled,
   WELLNESS_CHECK_INTERVAL_MINUTES,
 } from "@/lib/constants";
 import { getWorkerContext } from "@/lib/worker-context";
@@ -101,13 +102,15 @@ export default async function WorkerSafetyPage() {
             Trusted contacts
           </h2>
           <p className="mt-1 text-xs text-faint">
-            Your own people. They get a live tracking link when a visit starts,
-            and we contact them if we can&apos;t reach you. They never see the
-            customer&apos;s name or the address — only where you are and whether
-            you&apos;re OK.
+            Your own people — up to three. Choose what reaches them: a live
+            tracking link when a visit starts, a heads-up the moment you miss a
+            check-in, and a request to try you directly if our team still
+            can&apos;t reach you. They never see the customer&apos;s name or the
+            address — only where you are and whether you&apos;re OK.
           </p>
         </div>
         <TrustedContacts
+          smsEnabled={smsEnabled()}
           contacts={contacts.map((c) => ({
             id: c.id,
             name: c.name,

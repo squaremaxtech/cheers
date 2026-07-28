@@ -42,6 +42,48 @@ CAS booking transitions, auto-refund on cancel/conflict, suspension hardening
 (session revoke + layout gates + suspended-worker action block), and app-level
 error/loading/not-found boundaries.
 
+**2026-07-28 update — trusted contacts: real channels, real logs, real timing:**
+
+Trusted contacts existed but had three holes, all of the same shape — the
+feature *looked* like cover while being none.
+
+- **Phone-only contacts were a permanent dead end.** `addTrustedContact`
+  accepted a phone with no email, but verification only ever went out by
+  emailed link, and every fan-out filters on `verifiedAt`. Such a contact could
+  never be confirmed and so could never be notified — while sitting in the
+  worker's list looking active. Now the single-use confirmation link goes out
+  on **every channel the contact has**, and a phone-only contact added while
+  SMS is unconfigured is **refused at the point of adding**, with the reason.
+- **SMS to contacts was logged but never sent.** The `trusted_contacts` ladder
+  rung wrote `escalations` rows with channel `sms` for every contact with a
+  phone whenever `smsEnabled()` was true — without ever calling the provider.
+  After an incident that record would have claimed outreach that never
+  happened. Sending now goes through `lib/safety/sms.ts`, which returns only
+  what the provider accepted, and **only accepted sends are logged** (staff SMS
+  had the same defect and got the same fix).
+- **The `overdue` trigger was dead.** The UI offered *"If I'm late checking
+  in"* and the schema had the enum value, but nothing ever fired with that
+  trigger — those contacts silently got nothing. `raiseAlert` now notifies
+  opted-in contacts **the instant an overdue-shaped alert is raised**
+  (`isOverdueAlertKind`: missed_checkin, unresponsive, no_arrival, overrun,
+  get_home_overdue), separate from and earlier than the ladder's stage-3 rung.
+  Different promise, different wording: "they're late, we're on it" now, versus
+  "we still can't reach them, please try" later.
+
+- **`lib/safety/contacts.ts`** (new) now owns *every* message that leaves the
+  platform for a worker's own people — confirmation, tracking link, overdue,
+  alert — so the "never the customer's identity, never the address" boundary
+  cannot drift apart between surfaces. `actions/safety.ts` and
+  `lib/safety/escalate.ts` both call into it; it returns a delivery report
+  rather than logging directly, which keeps escalate.ts as the only writer of
+  `escalations` and avoids an import cycle.
+- Covert (duress) alerts still skip contacts entirely, now enforced on **both**
+  paths. Contacts who did not opt into `session_start` no longer receive copy
+  telling them to open a tracking link they were never sent. The worker's UI
+  states plainly when SMS is off instead of implying a phone number is covered.
+- **No schema change.** Consent is to being a contact, not to a channel, so the
+  existing single `verifyTokenHash` / `verifiedAt` pair carries both channels.
+
 **2026-07-25 update — ACTIVE safety monitoring (the safety spine):**
 
 Before this, every safety protection required a human to press a button or be
