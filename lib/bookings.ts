@@ -2,8 +2,14 @@ import { randomBytes } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { bookingEvents, bookings } from "@/db/schema";
-import { CANCEL_MIN_HOURS, JAMAICA_UTC_OFFSET } from "@/lib/constants";
+import { lockWorkerSchedule, slotConflictError } from "@/lib/availability";
+import {
+  CANCEL_MIN_HOURS,
+  JAMAICA_UTC_OFFSET,
+  platformFeeCents,
+} from "@/lib/constants";
 import { bookingEventNow, publishBooking } from "@/lib/realtime";
+import { generateDistinctPin, generatePin } from "@/lib/safety/pins";
 import type { BookingRow, BookingStatus } from "@/types";
 
 // Thrown when a compare-and-swap status update loses a race.
@@ -42,6 +48,84 @@ export function customerCanCancel(booking: BookingRow): boolean {
   const hoursUntil =
     (bookingStartDate(booking).getTime() - Date.now()) / 3_600_000;
   return hoursUntil >= CANCEL_MIN_HOURS;
+}
+
+// Race-safe booking creation, shared by direct booking (actions/bookings.ts)
+// and quote acceptance (actions/quotes.ts): the per-worker advisory lock
+// serializes concurrent submissions, so the availability/overlap re-check
+// inside the lock is authoritative — the loser of a same-slot race is
+// rejected with a conflict message instead of double-booking the worker.
+export async function claimBookingSlot(opts: {
+  customerId: string;
+  workerId: string;
+  gigId: string | null;
+  serviceName: string;
+  monitored: boolean;
+  date: string;
+  startTime: string;
+  durationMinutes: number;
+  address: string;
+  lat?: string | null;
+  lng?: string | null;
+  instructions?: string | null;
+  priceCents: number;
+  addonsCents: number;
+  addons: { name: string; priceCents: number }[];
+  // Quote-accepted bookings skip 'pending' — the worker already said yes.
+  initialStatus?: "pending" | "accepted";
+  actorUserId?: string | null;
+  eventNote?: string;
+}): Promise<{ conflict?: string; booking?: BookingRow }> {
+  const safetyPin = generatePin();
+  return db.transaction(
+    async (tx): Promise<{ conflict?: string; booking?: BookingRow }> => {
+      await lockWorkerSchedule(tx, opts.workerId);
+      const conflict = await slotConflictError(
+        opts.workerId,
+        opts.date,
+        opts.startTime,
+        opts.durationMinutes
+      );
+      if (conflict) return { conflict };
+      const [booking] = await tx
+        .insert(bookings)
+        .values({
+          code: generateBookingCode(),
+          customerId: opts.customerId,
+          workerId: opts.workerId,
+          gigId: opts.gigId,
+          serviceName: opts.serviceName,
+          monitored: opts.monitored,
+          date: opts.date,
+          startTime: opts.startTime,
+          durationMinutes: opts.durationMinutes,
+          address: opts.address,
+          lat: opts.lat ?? null,
+          lng: opts.lng ?? null,
+          instructions: opts.instructions ?? null,
+          status: opts.initialStatus ?? "pending",
+          priceCents: opts.priceCents,
+          addonsCents: opts.addonsCents,
+          platformFeeCents: platformFeeCents(opts.priceCents + opts.addonsCents),
+          addons: opts.addons,
+          safetyPin,
+          // The worker's covert alternative for this booking. Always distinct
+          // from safetyPin — an identical duress PIN would be silently useless.
+          duressPin: generateDistinctPin(safetyPin),
+        })
+        .returning();
+      if (opts.initialStatus === "accepted") {
+        await tx.insert(bookingEvents).values({
+          bookingId: booking.id,
+          fromStatus: null,
+          toStatus: "accepted",
+          actorUserId: opts.actorUserId ?? null,
+          note: opts.eventNote,
+        });
+      }
+      return { booking };
+    }
+  );
 }
 
 // Allowed lifecycle transitions (admin can force transitions between LIVE

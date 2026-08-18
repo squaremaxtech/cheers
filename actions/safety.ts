@@ -83,6 +83,12 @@ export async function startTravelling(
     if (access.booking.status !== "confirmed") {
       return err("Only a confirmed booking can be started.");
     }
+    // Monitoring is per-gig opt-in (gigs.safetyMonitored, snapshotted onto
+    // the booking). Unmonitored bookings never open a session, so the
+    // scheduler has nothing to chase — SOS and location tools still work.
+    if (!access.booking.monitored) {
+      return err("Safety monitoring is off for this gig.");
+    }
 
     const session = await ensureSession(access.booking, user.id, {
       state: "travelling",
@@ -180,32 +186,40 @@ export async function startServiceWithPin(
     // The session belongs to the WORKER, not the actor — an admin may start a
     // booking on the worker's behalf, and every check-in ping must still reach
     // the worker's devices, never the admin's.
-    const session = await ensureSession(access.booking, access.worker.userId, {
-      state: "on_site",
-    });
-    await startOnSite(session, user.id);
-
-    // A worker may go straight to the door without ever tapping "I'm on my
-    // way". If THIS call created the session, the tracking token exists only
-    // right now — send the trusted-contact links or they never go out.
-    if (session.trackToken) {
-      await sendTrackingLinks(access.worker.userId, {
-        stageName: access.worker.stageName,
-        token: session.trackToken,
+    //
+    // Unmonitored gigs (gigs.safetyMonitored off, snapshotted onto the
+    // booking) skip the session entirely: no check-in clock, no heartbeat
+    // expectations, nothing for the scheduler to chase. The duress PIN still
+    // works below — a covert alert never depends on monitoring being on.
+    let session: Awaited<ReturnType<typeof ensureSession>> | null = null;
+    if (access.booking.monitored) {
+      session = await ensureSession(access.booking, access.worker.userId, {
+        state: "on_site",
       });
+      await startOnSite(session, user.id);
+
+      // A worker may go straight to the door without ever tapping "I'm on my
+      // way". If THIS call created the session, the tracking token exists only
+      // right now — send the trusted-contact links or they never go out.
+      if (session.trackToken) {
+        await sendTrackingLinks(access.worker.userId, {
+          stageName: access.worker.stageName,
+          token: session.trackToken,
+        });
+      }
     }
 
     if (duress) {
       // Covert: nothing about this alert may surface on the worker's screen.
       await recordEvent({
-        sessionId: session.id,
+        sessionId: session?.id ?? null,
         bookingId: access.booking.id,
         kind: "duress_pin",
         actorUserId: user.id,
       });
       await raiseAlert({
         bookingId: access.booking.id,
-        sessionId: session.id,
+        sessionId: session?.id ?? null,
         kind: "duress",
         message: "Duress PIN entered at the door. Do NOT call the worker's phone.",
         raisedByUserId: user.id,

@@ -1,22 +1,17 @@
 "use server";
 
-import { z } from "zod";
-import { and, eq, asc, isNull, ne } from "drizzle-orm";
+import { and, eq, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
   availability,
   availabilityExceptions,
-  serviceAddons,
-  serviceTypes,
+  gigs,
   users,
-  workerInvites,
   workerMedia,
   workers,
-  workerServices,
 } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
-import { WORKER_CONTACT_EMAIL } from "@/lib/constants";
 import { guardErrorMessage, requireUser, requireWorker } from "@/lib/guards";
 import { uniqueWorkerSlug } from "@/lib/slug";
 import { deleteUpload } from "@/lib/uploads";
@@ -24,54 +19,35 @@ import type { ActionResult } from "@/types";
 import { notifyVerificationTeam } from "@/lib/notify";
 import {
   availabilityExceptionSchema,
-  mediaCategorySchema,
+  mediaGigSchema,
   mediaSchema,
-  serviceAddonSchema,
   weeklyAvailabilitySchema,
   workerProfileSchema,
-  workerServiceSchema,
 } from "@/schemas/worker";
 
-// --- Onboarding: invite-only ---------------------------------------------------
-// Two gates keep the roster trustworthy: (1) signup needs a single-use admin
-// invite code, and (2) the created profile stays OFF the site until an admin
-// approves it (workers.verified — see publicWorkerConditions).
-
-const createWorkerSchema = workerProfileSchema.extend({
-  inviteCode: z.string().trim().min(1, "An invite code is required.").optional(),
-});
+// --- Onboarding: open signup, approval-gated -----------------------------------
+// Anyone can become a worker (Jamaica's open marketplace) — but the created
+// profile stays OFF the site until an admin approves it (workers.verified —
+// see publicWorkerConditions). Gigs auto-publish once the worker is approved.
 
 export async function createWorkerProfile(
   input: unknown
 ): Promise<ActionResult<{ workerId: string }>> {
   try {
     const user = await requireUser();
-    const parsed = createWorkerSchema.safeParse(input);
+    // Drivers keep one hat per account: they cannot double as workers.
+    if (user.role === "driver") {
+      return err("Driver accounts cannot open a worker profile. Use a separate account.");
+    }
+    const parsed = workerProfileSchema.safeParse(input);
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
-    const { inviteCode, ...profile } = parsed.data;
+    const profile = parsed.data;
 
     const [existing] = await db
       .select({ id: workers.id })
       .from(workers)
       .where(eq(workers.userId, user.id));
     if (existing) return err("You already have a worker profile.");
-
-    // Admins can create a profile directly; everyone else needs a live invite.
-    const inviteError =
-      "Worker signup is invite-only. Ask our team for an invite link — email " +
-      `${WORKER_CONTACT_EMAIL}.`;
-    let inviteId: string | null = null;
-    if (user.role !== "admin") {
-      if (!inviteCode) return err(inviteError);
-      const [invite] = await db
-        .select()
-        .from(workerInvites)
-        .where(eq(workerInvites.code, inviteCode.toUpperCase()));
-      if (!invite || invite.usedByUserId || invite.expiresAt < new Date()) {
-        return err(inviteError);
-      }
-      inviteId = invite.id;
-    }
 
     const [taken] = await db
       .select({ id: workers.id })
@@ -81,21 +57,7 @@ export async function createWorkerProfile(
 
     const slug = await uniqueWorkerSlug(profile.stageName);
     const result = await db.transaction(
-      async (tx): Promise<{ workerId?: string; conflict?: string }> => {
-        // CAS-consume the invite: two people racing the same code — one wins.
-        if (inviteId) {
-          const consumed = await tx
-            .update(workerInvites)
-            .set({ usedByUserId: user.id, usedAt: new Date() })
-            .where(
-              and(
-                eq(workerInvites.id, inviteId),
-                isNull(workerInvites.usedByUserId)
-              )
-            )
-            .returning({ id: workerInvites.id });
-          if (consumed.length === 0) return { conflict: inviteError };
-        }
+      async (tx): Promise<{ workerId: string }> => {
         const [worker] = await tx
           .insert(workers)
           .values({ userId: user.id, slug, ...profile })
@@ -110,9 +72,6 @@ export async function createWorkerProfile(
         return { workerId: worker.id };
       }
     );
-    if (result.conflict || !result.workerId) {
-      return err(result.conflict ?? ERR.server);
-    }
 
     // New profiles await admin approval — tell the people who approve.
     await notifyVerificationTeam({
@@ -203,13 +162,24 @@ export async function addWorkerMedia(
         ? 0
         : Math.max(...existing.map((m) => m.sortOrder)) + 1;
 
+    // A gig tag must point at this worker's own gig.
+    if (parsed.data.gigId) {
+      const [gig] = await db
+        .select({ id: gigs.id })
+        .from(gigs)
+        .where(
+          and(eq(gigs.id, parsed.data.gigId), eq(gigs.workerId, worker.id))
+        );
+      if (!gig) return err(ERR.notFound);
+    }
+
     const [row] = await db
       .insert(workerMedia)
       .values({
         workerId: worker.id,
         type: parsed.data.type,
         url: parsed.data.url,
-        categoryId: parsed.data.categoryId ?? null,
+        gigId: parsed.data.gigId ?? null,
         sortOrder: nextSort,
       })
       .returning({ id: workerMedia.id });
@@ -222,19 +192,29 @@ export async function addWorkerMedia(
   }
 }
 
-// Tag (or untag) a media item with a service category so the public profile
-// can show media matching the selected category.
-export async function setWorkerMediaCategory(
+// Tag (or untag) a media item with one of the worker's gigs; untagged media
+// shows on every gig and the profile itself.
+export async function setWorkerMediaGig(
   input: unknown
 ): Promise<ActionResult<undefined>> {
   try {
     const { worker } = await requireWorker();
-    const parsed = mediaCategorySchema.safeParse(input);
+    const parsed = mediaGigSchema.safeParse(input);
     if (!parsed.success) return err(ERR.badRequest);
+
+    if (parsed.data.gigId) {
+      const [gig] = await db
+        .select({ id: gigs.id })
+        .from(gigs)
+        .where(
+          and(eq(gigs.id, parsed.data.gigId), eq(gigs.workerId, worker.id))
+        );
+      if (!gig) return err(ERR.notFound);
+    }
 
     await db
       .update(workerMedia)
-      .set({ categoryId: parsed.data.categoryId })
+      .set({ gigId: parsed.data.gigId })
       .where(
         and(
           eq(workerMedia.id, parsed.data.mediaId),
@@ -275,154 +255,6 @@ export async function deleteWorkerMedia(
 
     revalidatePath("/worker/media");
     revalidatePath(`/workers/${worker.slug}`);
-    return ok(undefined);
-  } catch (error) {
-    return err(guardErrorMessage(error));
-  }
-}
-
-// --- Services (fixed catalog; workers customize, never create types) ----------
-
-// A worker keeps one ACTIVE (enabled) service per category — activating a
-// service deactivates whichever sibling in the category was active before.
-export async function upsertWorkerService(
-  input: unknown
-): Promise<ActionResult<undefined>> {
-  try {
-    const { worker } = await requireWorker();
-    const parsed = workerServiceSchema.safeParse(input);
-    if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
-
-    const [serviceType] = await db
-      .select({ id: serviceTypes.id, categoryId: serviceTypes.categoryId })
-      .from(serviceTypes)
-      .where(eq(serviceTypes.id, parsed.data.serviceTypeId));
-    if (!serviceType) return err(ERR.notFound);
-
-    const [existing] = await db
-      .select({ id: workerServices.id })
-      .from(workerServices)
-      .where(
-        and(
-          eq(workerServices.workerId, worker.id),
-          eq(workerServices.serviceTypeId, parsed.data.serviceTypeId)
-        )
-      );
-
-    await db.transaction(async (tx) => {
-      // Make room first — the partial unique index on (worker, category)
-      // WHERE enabled would reject two active services in one category.
-      if (parsed.data.enabled) {
-        const demote = tx
-          .update(workerServices)
-          .set({ enabled: false, updatedAt: new Date() });
-        await (existing
-          ? demote.where(
-              and(
-                eq(workerServices.workerId, worker.id),
-                eq(workerServices.categoryId, serviceType.categoryId),
-                eq(workerServices.enabled, true),
-                ne(workerServices.id, existing.id)
-              )
-            )
-          : demote.where(
-              and(
-                eq(workerServices.workerId, worker.id),
-                eq(workerServices.categoryId, serviceType.categoryId),
-                eq(workerServices.enabled, true)
-              )
-            ));
-      }
-
-      if (existing) {
-        await tx
-          .update(workerServices)
-          .set({
-            enabled: parsed.data.enabled,
-            priceCents: parsed.data.priceCents,
-            durationMinutes: parsed.data.durationMinutes,
-            description: parsed.data.description,
-            updatedAt: new Date(),
-          })
-          .where(eq(workerServices.id, existing.id));
-      } else {
-        await tx.insert(workerServices).values({
-          workerId: worker.id,
-          serviceTypeId: parsed.data.serviceTypeId,
-          categoryId: serviceType.categoryId,
-          enabled: parsed.data.enabled,
-          priceCents: parsed.data.priceCents,
-          durationMinutes: parsed.data.durationMinutes,
-          description: parsed.data.description,
-        });
-      }
-    });
-
-    revalidatePath("/worker/services");
-    revalidatePath(`/workers/${worker.slug}`);
-    return ok(undefined);
-  } catch (error) {
-    return err(guardErrorMessage(error));
-  }
-}
-
-export async function addServiceAddon(
-  input: unknown
-): Promise<ActionResult<{ id: string }>> {
-  try {
-    const { worker } = await requireWorker();
-    const parsed = serviceAddonSchema.safeParse(input);
-    if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
-
-    // Ownership: the worker_service must belong to this worker.
-    const [ws] = await db
-      .select({ id: workerServices.id })
-      .from(workerServices)
-      .where(
-        and(
-          eq(workerServices.id, parsed.data.workerServiceId),
-          eq(workerServices.workerId, worker.id)
-        )
-      );
-    if (!ws) return err(ERR.notFound);
-
-    const [row] = await db
-      .insert(serviceAddons)
-      .values({
-        workerServiceId: ws.id,
-        name: parsed.data.name,
-        priceCents: parsed.data.priceCents,
-        description: parsed.data.description,
-      })
-      .returning({ id: serviceAddons.id });
-
-    revalidatePath("/worker/services");
-    revalidatePath(`/workers/${worker.slug}`);
-    return ok({ id: row.id });
-  } catch (error) {
-    return err(guardErrorMessage(error));
-  }
-}
-
-export async function deleteServiceAddon(
-  addonId: string
-): Promise<ActionResult<undefined>> {
-  try {
-    const { worker } = await requireWorker();
-    const [addon] = await db
-      .select({ id: serviceAddons.id, workerServiceId: serviceAddons.workerServiceId })
-      .from(serviceAddons)
-      .innerJoin(
-        workerServices,
-        eq(serviceAddons.workerServiceId, workerServices.id)
-      )
-      .where(
-        and(eq(serviceAddons.id, addonId), eq(workerServices.workerId, worker.id))
-      );
-    if (!addon) return err(ERR.notFound);
-
-    await db.delete(serviceAddons).where(eq(serviceAddons.id, addon.id));
-    revalidatePath("/worker/services");
     return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));

@@ -1,17 +1,12 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import {
-  serviceAddons,
-  serviceCategories,
-  serviceTypes,
-  workers,
-  workerServices,
-} from "@/db/schema";
+import { workers } from "@/db/schema";
 import BookingForm from "@/components/bookings/BookingForm";
 import { getUserRow } from "@/lib/auth";
+import { getPublicWorkerGigs } from "@/lib/gigs";
 import { isUuid } from "@/lib/slug";
 import { getCustomerVerification } from "@/lib/verification";
 import { publicWorkerConditions } from "@/lib/workers";
@@ -21,9 +16,7 @@ export const metadata: Metadata = { title: "Book" };
 export default async function BookPage(props: PageProps<"/book/[slug]">) {
   const { slug } = await props.params;
   const search = await props.searchParams;
-  const requestedService = Array.isArray(search.service)
-    ? search.service[0]
-    : search.service;
+  const requestedGig = Array.isArray(search.gig) ? search.gig[0] : search.gig;
 
   // Booking is gated on identity verification (mirrors createBooking).
   const viewer = await getUserRow();
@@ -45,40 +38,11 @@ export default async function BookPage(props: PageProps<"/book/[slug]">) {
   // Old /book/<uuid> links redirect to the canonical slug URL.
   if (worker.slug !== slug) redirect(`/book/${worker.slug}`);
 
-  // Only ACTIVE services (one per category) are bookable.
-  const services = await db
-    .select({
-      workerServiceId: workerServices.id,
-      serviceTypeId: workerServices.serviceTypeId,
-      priceCents: workerServices.priceCents,
-      durationMinutes: workerServices.durationMinutes,
-      description: workerServices.description,
-      name: serviceTypes.name,
-      categoryName: serviceCategories.name,
-    })
-    .from(workerServices)
-    .innerJoin(serviceTypes, eq(workerServices.serviceTypeId, serviceTypes.id))
-    .innerJoin(
-      serviceCategories,
-      eq(workerServices.categoryId, serviceCategories.id)
-    )
-    .where(
-      and(eq(workerServices.workerId, worker.id), eq(workerServices.enabled, true))
-    )
-    .orderBy(asc(serviceCategories.sortOrder), asc(serviceTypes.sortOrder));
-
-  const addons =
-    services.length > 0
-      ? await db
-          .select()
-          .from(serviceAddons)
-          .where(
-            inArray(
-              serviceAddons.workerServiceId,
-              services.map((s) => s.workerServiceId)
-            )
-          )
-      : [];
+  // Only FIXED-price gigs are bookable directly — quote-mode gigs go through
+  // the request-a-quote flow on the worker's profile.
+  const gigs = (await getPublicWorkerGigs(worker.id)).filter(
+    (g) => g.pricingMode === "fixed"
+  );
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -116,9 +80,8 @@ export default async function BookPage(props: PageProps<"/book/[slug]">) {
         ) : (
           <BookingForm
             workerId={worker.id}
-            services={services}
-            addons={addons}
-            initialServiceTypeId={requestedService}
+            gigs={gigs}
+            initialGigId={requestedGig}
           />
         )}
       </div>

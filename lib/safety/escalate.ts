@@ -9,7 +9,7 @@ import {
   workers,
 } from "@/db/schema";
 import {
-  ESCALATION_LADDER,
+  escalationLadder,
   isOverdueAlertKind,
   safetyAlertLabel,
   smsEnabled,
@@ -106,7 +106,7 @@ export async function raiseAlert(opts: {
   }
 
   const now = new Date();
-  const nextStage = ESCALATION_LADDER[1];
+  const nextStage = escalationLadder()[1];
   const [alert] = await db
     .insert(safetyAlerts)
     .values({
@@ -252,7 +252,7 @@ export async function fireStage(
   alert: SafetyAlertRow,
   stage: number
 ): Promise<void> {
-  const rung = ESCALATION_LADDER[stage];
+  const rung = escalationLadder()[stage];
   if (!rung) return;
   try {
     const ctx = await contextFor(alert);
@@ -443,8 +443,9 @@ export async function advanceDueLadders(now: Date): Promise<number> {
   let fired = 0;
   for (const alert of due) {
     const nextStage = alert.stage + 1;
-    const rung = ESCALATION_LADDER[nextStage];
-    const following = ESCALATION_LADDER[nextStage + 1];
+    const ladder = escalationLadder();
+    const rung = ladder[nextStage];
+    const following = ladder[nextStage + 1];
     // CAS on stage: if a concurrent tick already advanced this alert, skip it
     // rather than paging the same people twice.
     const claimed = await db

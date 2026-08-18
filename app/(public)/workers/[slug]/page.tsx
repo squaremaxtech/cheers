@@ -1,27 +1,15 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import {
-  availability,
-  reviews,
-  serviceAddons,
-  serviceCategories,
-  serviceTypes,
-  users,
-  workerMedia,
-  workers,
-  workerServices,
-} from "@/db/schema";
-import Badge from "@/components/ui/Badge";
+import { availability, reviews, users, workerMedia, workers } from "@/db/schema";
 import StarRating from "@/components/ui/StarRating";
 import ChatButton from "@/components/chat/ChatButton";
-import CategoryShowcase, {
-  type CategoryOffering,
-} from "@/components/workers/CategoryShowcase";
 import FavoriteButton from "@/components/workers/FavoriteButton";
+import GigShowcase from "@/components/workers/GigShowcase";
 import { getUserRow } from "@/lib/auth";
 import { formatCents, formatTime12 } from "@/lib/constants";
+import { getPublicWorkerGigs } from "@/lib/gigs";
 import { isUuid } from "@/lib/slug";
 import { publicWorkerColumns, publicWorkerConditions } from "@/lib/workers";
 
@@ -32,6 +20,10 @@ function workerBySlugOrId(slug: string) {
     isUuid(slug) ? eq(workers.id, slug) : eq(workers.slug, slug),
     ...publicWorkerConditions()
   );
+}
+
+function firstParam(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[0] : v;
 }
 
 export async function generateMetadata(props: PageProps<"/workers/[slug]">) {
@@ -53,6 +45,8 @@ export default async function WorkerProfilePage(
   props: PageProps<"/workers/[slug]">
 ) {
   const { slug } = await props.params;
+  const search = await props.searchParams;
+  const requestedGig = firstParam(search.gig);
 
   const [worker] = await db
     .select(publicWorkerColumns)
@@ -62,37 +56,13 @@ export default async function WorkerProfilePage(
   // Old /workers/<uuid> links redirect to the canonical slug URL.
   if (worker.slug !== slug) redirect(`/workers/${worker.slug}`);
 
-  const [media, services, slots, workerReviews, viewer] = await Promise.all([
+  const [media, gigs, slots, workerReviews, viewer] = await Promise.all([
     db
       .select()
       .from(workerMedia)
       .where(eq(workerMedia.workerId, worker.id))
       .orderBy(asc(workerMedia.sortOrder)),
-    // Only ACTIVE services — one per category by construction.
-    db
-      .select({
-        id: workerServices.id,
-        serviceTypeId: workerServices.serviceTypeId,
-        priceCents: workerServices.priceCents,
-        durationMinutes: workerServices.durationMinutes,
-        description: workerServices.description,
-        typeName: serviceTypes.name,
-        categoryId: serviceCategories.id,
-        categoryName: serviceCategories.name,
-      })
-      .from(workerServices)
-      .innerJoin(serviceTypes, eq(workerServices.serviceTypeId, serviceTypes.id))
-      .innerJoin(
-        serviceCategories,
-        eq(workerServices.categoryId, serviceCategories.id)
-      )
-      .where(
-        and(
-          eq(workerServices.workerId, worker.id),
-          eq(workerServices.enabled, true)
-        )
-      )
-      .orderBy(asc(serviceCategories.sortOrder), asc(serviceTypes.sortOrder)),
+    getPublicWorkerGigs(worker.id),
     db
       .select()
       .from(availability)
@@ -115,37 +85,8 @@ export default async function WorkerProfilePage(
     getUserRow(),
   ]);
 
-  const addons =
-    services.length > 0
-      ? await db
-          .select()
-          .from(serviceAddons)
-          .where(
-            inArray(serviceAddons.workerServiceId, services.map((s) => s.id))
-          )
-      : [];
-
   const bookHref = viewer ? `/book/${worker.slug}` : "/login";
-  const categories: CategoryOffering[] = services.map((s) => ({
-    id: s.categoryId,
-    name: s.categoryName,
-    service: {
-      id: s.id,
-      serviceTypeId: s.serviceTypeId,
-      typeName: s.typeName,
-      priceCents: s.priceCents,
-      durationMinutes: s.durationMinutes,
-      description: s.description,
-      addons: addons
-        .filter((a) => a.workerServiceId === s.id)
-        .map((a) => ({
-          id: a.id,
-          name: a.name,
-          priceCents: a.priceCents,
-          description: a.description,
-        })),
-    },
-  }));
+  const hasFixedGigs = gigs.some((g) => g.pricingMode === "fixed");
 
   const facts: [string, string][] = [];
   if (worker.age !== null) facts.push(["Age", String(worker.age)]);
@@ -159,13 +100,15 @@ export default async function WorkerProfilePage(
   return (
     <div className="mx-auto max-w-6xl px-5 py-10">
       <div className="grid gap-10 lg:grid-cols-[1fr_380px]">
-        {/* Left: category tabs + gallery + active service + details */}
+        {/* Left: gig tabs + gallery + selected gig + details */}
         <div>
-          <CategoryShowcase
+          <GigShowcase
             stageName={worker.stageName}
+            workerSlug={worker.slug}
             media={media}
-            categories={categories}
-            bookHref={bookHref}
+            gigs={gigs}
+            initialGigSlug={requestedGig}
+            signedIn={viewer !== null}
           />
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -233,11 +176,13 @@ export default async function WorkerProfilePage(
               <FavoriteButton workerId={worker.id} signedIn={viewer !== null} />
             </div>
             <p className="font-display text-3xl text-gold">
-              {formatCents(worker.baseRateCents)}
+              {worker.baseRateCents > 0
+                ? formatCents(worker.baseRateCents)
+                : "Custom"}
             </p>
 
-            {categories.length === 0 && (
-              <p className="mt-6 text-sm text-faint">No services listed yet.</p>
+            {gigs.length === 0 && (
+              <p className="mt-6 text-sm text-faint">No gigs listed yet.</p>
             )}
 
             {slots.length > 0 && (
@@ -258,9 +203,17 @@ export default async function WorkerProfilePage(
               </>
             )}
 
-            <Link href={bookHref} className="btn-gold mt-8 w-full">
-              {viewer ? "Book now" : "Sign in to book"}
-            </Link>
+            {hasFixedGigs ? (
+              <Link href={bookHref} className="btn-gold mt-8 w-full">
+                {viewer ? "Book now" : "Sign in to book"}
+              </Link>
+            ) : (
+              gigs.length > 0 && (
+                <p className="mt-8 text-center text-sm text-muted">
+                  Priced per job — request a quote from one of the gigs.
+                </p>
+              )
+            )}
             {(!viewer || viewer.role === "customer") && (
               <ChatButton
                 workerId={worker.id}

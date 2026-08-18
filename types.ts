@@ -9,7 +9,12 @@ import type {
   chatMessages,
   chatRooms,
   customerVerifications,
+  driverVerifications,
+  drivers,
   escalations,
+  gigAddons,
+  gigCategories,
+  gigs,
   locationPings,
   membershipPayments,
   memberships,
@@ -18,22 +23,22 @@ import type {
   payments,
   payouts,
   pushSubscriptions,
+  quotes,
   reviews,
+  rideEvents,
+  rideOffers,
+  rideReviews,
+  rides,
   safetyAlerts,
   safetyCheckins,
   safetyEvents,
   safetySessions,
-  serviceAddons,
-  serviceCategories,
-  serviceTypes,
   trustedContacts,
   users,
   wellnessChecks,
   workerCustomerBlocks,
-  workerInvites,
   workerMedia,
   workers,
-  workerServices,
 } from "@/db/schema";
 
 // --- Action results -----------------------------------------------------------
@@ -50,12 +55,22 @@ export type SupportRole = NonNullable<UserRow["supportRole"]>;
 
 export type WorkerRow = typeof workers.$inferSelect;
 export type WorkerMediaRow = typeof workerMedia.$inferSelect;
-export type WorkerInviteRow = typeof workerInvites.$inferSelect;
-export type ServiceCategoryRow = typeof serviceCategories.$inferSelect;
-export type ServiceTypeRow = typeof serviceTypes.$inferSelect;
-export type WorkerServiceRow = typeof workerServices.$inferSelect;
-export type ServiceAddonRow = typeof serviceAddons.$inferSelect;
+export type GigCategoryRow = typeof gigCategories.$inferSelect;
+export type GigRow = typeof gigs.$inferSelect;
+export type GigPricingMode = GigRow["pricingMode"];
+export type GigAddonRow = typeof gigAddons.$inferSelect;
+export type QuoteRow = typeof quotes.$inferSelect;
+export type QuoteStatus = QuoteRow["status"];
 export type AvailabilityRow = typeof availability.$inferSelect;
+
+export type DriverRow = typeof drivers.$inferSelect;
+export type DriverVerificationRow = typeof driverVerifications.$inferSelect;
+export type RideRow = typeof rides.$inferSelect;
+export type RideStatus = RideRow["status"];
+export type RideOfferRow = typeof rideOffers.$inferSelect;
+export type RideOfferStatus = RideOfferRow["status"];
+export type RideEventRow = typeof rideEvents.$inferSelect;
+export type RideReviewRow = typeof rideReviews.$inferSelect;
 
 export type BookingRow = typeof bookings.$inferSelect;
 export type BookingStatus = BookingRow["status"];
@@ -220,18 +235,22 @@ export type TimeSlot = {
 
 // --- Browse / search ---------------------------------------------------------------
 
-// No "verified" filter: unapproved workers are never publicly visible at
-// all (admin approval gates the whole profile), so every browsable worker
-// is verified by construction.
+// Gig-centric browse. No "verified" filter: unapproved workers are never
+// publicly visible at all (admin approval gates the whole profile), so every
+// browsable gig belongs to a verified worker by construction.
 export type BrowseFilters = {
-  q?: string;
+  q?: string; // matches gig title, tags and worker stage name
+  category?: string; // gig category slug
   parish?: string;
-  service?: string; // service type slug
-  minAge?: number;
-  maxAge?: number;
   maxPriceCents?: number;
   minRatingX100?: number;
   language?: string;
+};
+
+export type DriverBrowseFilters = {
+  q?: string;
+  parish?: string;
+  minRatingX100?: number;
 };
 
 // --- Public-facing DTOs -----------------------------------------------------------
@@ -255,3 +274,60 @@ export type PublicWorker = Pick<
 >;
 
 export type PublicWorkerWithPhoto = PublicWorker & { photoUrl: string | null };
+
+// One gig as the public sees it — a browse card or a profile section.
+export type PublicGig = Pick<
+  GigRow,
+  | "id"
+  | "slug"
+  | "title"
+  | "tags"
+  | "description"
+  | "pricingMode"
+  | "priceCents"
+  | "durationMinutes"
+> & {
+  categorySlug: string;
+  categoryName: string;
+};
+
+// A browse-page card: the gig plus just enough of its worker to render.
+export type GigCard = PublicGig & {
+  photoUrl: string | null;
+  worker: Pick<
+    PublicWorker,
+    "id" | "stageName" | "slug" | "parish" | "city" | "avgRating" | "reviewCount"
+  >;
+};
+
+// PublicDriver deliberately excludes userId and stripeAccountId.
+export type PublicDriver = Pick<
+  DriverRow,
+  | "id"
+  | "displayName"
+  | "slug"
+  | "bio"
+  | "facePhotoUrl"
+  | "parish"
+  | "city"
+  | "vehicleMake"
+  | "vehicleModel"
+  | "vehicleYear"
+  | "vehicleColor"
+  | "vehiclePhotoUrl"
+  | "perKmRateCents"
+  | "minFareCents"
+  | "avgRating"
+  | "reviewCount"
+>;
+
+// --- Rides ------------------------------------------------------------------------
+
+// Realtime events streamed to a ride room over SSE: lifecycle/offer changes
+// re-render server data; "location" moves the map pin without a refresh.
+export type RideStreamEvent =
+  | { kind: "status" | "offer"; at: string }
+  | { kind: "location"; at: string; role: string; lat: string; lng: string };
+
+// Driver request board stream: "an open request in your area changed".
+export type DriverBoardStreamEvent = { kind: "requests"; at: string };

@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
@@ -22,23 +21,67 @@ import type { AdapterAccount } from "next-auth/adapters";
 // Enums
 // ---------------------------------------------------------------------------
 
+// driver is a first-class marketplace role (like worker): an independent
+// operator with a public profile (drivers table) who advertises transport,
+// negotiates fares and gets rated. NOT staff.
 export const userRole = pgEnum("user_role", [
   "customer",
   "worker",
+  "driver",
   "admin",
   "support",
 ]);
 
 // Support staff sub-types. Only meaningful when users.role = 'support':
 // customer_support handles disputes/tickets, supervisor additionally manages
-// other support staff, driver transports workers to bookings, safety_monitor
-// watches live sessions and answers safety escalations (and NOTHING else —
-// monitors deliberately get no chat/identity/payment access, see lib/guards).
+// other support staff, safety_monitor watches live sessions and answers
+// safety escalations (and NOTHING else — monitors deliberately get no
+// chat/identity/payment access, see lib/guards). 'driver' is retired — staff
+// drivers were migrated to the marketplace driver role (db/migrate-v2.ts);
+// the value remains only because Postgres cannot drop enum values in place.
 export const supportRole = pgEnum("support_role", [
   "customer_support",
   "supervisor",
   "driver",
   "safety_monitor",
+]);
+
+// A gig is either bookable at its listed price, or priced per job via a
+// quote request (trades like plumbing can't publish one fixed price).
+export const gigPricingMode = pgEnum("gig_pricing_mode", ["fixed", "quote"]);
+
+// Quote lifecycle: customer describes the job (open) -> worker prices it
+// (offered) -> customer accepts (becomes a booking) or declines. Cancelled =
+// customer withdrew; expired = nobody moved before expiresAt.
+export const quoteStatus = pgEnum("quote_status", [
+  "open",
+  "offered",
+  "accepted",
+  "declined",
+  "cancelled",
+  "expired",
+]);
+
+// Ride lifecycle (inDrive model): rider posts a priced request -> drivers
+// bid/accept -> rider picks a driver (accepted) -> driver travels (arriving)
+// -> rider on board (picked_up) -> completed. Expired = no driver matched.
+export const rideStatus = pgEnum("ride_status", [
+  "requested",
+  "accepted",
+  "arriving",
+  "picked_up",
+  "completed",
+  "cancelled",
+  "expired",
+]);
+
+// One driver's bid on a ride. open until the rider decides; accepting one
+// offer rejects the siblings.
+export const rideOfferStatus = pgEnum("ride_offer_status", [
+  "open",
+  "accepted",
+  "rejected",
+  "withdrawn",
 ]);
 
 export const mediaType = pgEnum("media_type", ["photo", "video"]);
@@ -169,6 +212,9 @@ export const users = pgTable("users", {
   role: userRole("role").notNull().default("customer"),
   // Set iff role = 'support'; null for every other role.
   supportRole: supportRole("support_role"),
+  // Stripe Customer id — set lazily the first time this user pays online
+  // (chat pass, card checkout, card-on-file). Null until Stripe is live.
+  stripeCustomerId: text("stripe_customer_id"),
   suspended: boolean("suspended").notNull().default(false),
   // When the first-login customer setup (profile + ID document + membership)
   // was completed. Null = the /welcome wizard still gates the customer area.
@@ -242,7 +288,8 @@ export const workers = pgTable(
     city: text("city"),
     lat: text("lat"),
     lng: text("lng"),
-    // Displayed "from" price in cents; per-service prices live in worker_services
+    // Displayed "from" price in cents — kept in sync with the cheapest
+    // active gig by the gig actions; real prices live on gigs.
     baseRateCents: integer("base_rate_cents").notNull().default(0),
     verified: boolean("verified").notNull().default(false),
     // Worker's choice: let customers see when they're online in chat.
@@ -252,6 +299,10 @@ export const workers = pgTable(
     // anyone with read access silence an alarm. Null = fall back to
     // hold-to-cancel (see components/bookings/SosButton.tsx).
     cancelPinHash: text("cancel_pin_hash"),
+    // Stripe Connect recipient account for automatic payouts. Null until the
+    // worker completes Stripe onboarding (and until Stripe is live at all —
+    // cash-first: everything works without it).
+    stripeAccountId: text("stripe_account_id"),
     // active = worker's own visibility toggle; suspended = admin override
     active: boolean("active").notNull().default(true),
     suspended: boolean("suspended").notNull().default(false),
@@ -277,110 +328,138 @@ export const workerMedia = pgTable(
       .references(() => workers.id, { onDelete: "cascade" }),
     type: mediaType("type").notNull(),
     url: text("url").notNull(),
-    // Optional tag: which service category this media showcases. Untagged
-    // media shows for every category on the public profile.
-    categoryId: uuid("category_id").references(
-      (): AnyPgColumn => serviceCategories.id,
-      { onDelete: "set null" }
-    ),
+    // Optional tag: which gig this media showcases. Untagged media shows on
+    // every gig and the profile itself — a gig's gallery is its own tagged
+    // media plus the untagged pool.
+    gigId: uuid("gig_id").references((): AnyPgColumn => gigs.id, {
+      onDelete: "set null",
+    }),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [index("worker_media_worker_idx").on(t.workerId)]
 );
 
-// Worker signup is invite-only: an admin generates a code and shares the
-// onboarding link privately with a vetted candidate. Single-use, expiring.
-// (Second gate: the created profile stays off the site until an admin
-// approves it — workers.verified.)
-export const workerInvites = pgTable(
-  "worker_invites",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    // Shareable human code, e.g. CHW-7K2M4A
-    code: text("code").notNull().unique(),
-    // Who this invite is meant for (free text, admin's own reference).
-    note: text("note"),
-    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    usedByUserId: uuid("used_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    usedAt: timestamp("used_at", { mode: "date" }),
-    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
-    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
-  },
-  (t) => [index("worker_invites_code_idx").on(t.code)]
-);
-
 // ---------------------------------------------------------------------------
-// Service catalog (fixed, seeded) + worker customization
+// Gigs — worker-authored listings (Fiverr model, open marketplace)
 // ---------------------------------------------------------------------------
+// The fixed service catalog is gone. A worker publishes any number of gigs —
+// "Deep tissue massage", "Residential plumbing", "Birthday party DJ" — each
+// with its own price, media, add-ons and description. Categories are a browse
+// taxonomy (admin-curated, broad), not a constraint on what can be offered.
 
-export const serviceCategories = pgTable("service_categories", {
+export const gigCategories = pgTable("gig_categories", {
   id: uuid("id").primaryKey().defaultRandom(),
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
+  // Short browse-page tagline, e.g. "Electricians, plumbers, carpenters".
+  blurb: text("blurb"),
   sortOrder: integer("sort_order").notNull().default(0),
+  // Retired categories disappear from filters/pickers; existing gigs keep
+  // their assignment (deletion is restricted while gigs reference it).
+  active: boolean("active").notNull().default(true),
 });
 
-export const serviceTypes = pgTable("service_types", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  categoryId: uuid("category_id")
-    .notNull()
-    .references(() => serviceCategories.id, { onDelete: "cascade" }),
-  slug: text("slug").notNull().unique(),
-  name: text("name").notNull(),
-  description: text("description"),
-  sortOrder: integer("sort_order").notNull().default(0),
-});
-
-export const workerServices = pgTable(
-  "worker_services",
+export const gigs = pgTable(
+  "gigs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     workerId: uuid("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
-    serviceTypeId: uuid("service_type_id")
-      .notNull()
-      .references(() => serviceTypes.id, { onDelete: "cascade" }),
-    // Denormalized from serviceTypes so "one active service per category"
-    // can be enforced with a partial unique index.
+    title: text("title").notNull(),
+    // URL-safe handle, unique per worker: /workers/maxx/deep-tissue-massage
+    slug: text("slug").notNull(),
     categoryId: uuid("category_id")
       .notNull()
-      .references(() => serviceCategories.id, { onDelete: "cascade" }),
-    // enabled = this is the worker's ACTIVE service for its category. A worker
-    // may configure many services per category but only one can be enabled —
-    // that one is what customers see and book.
-    enabled: boolean("enabled").notNull().default(true),
+      .references(() => gigCategories.id, { onDelete: "restrict" }),
+    // Free-form search keywords the worker adds ("dancehall", "emergency").
+    tags: text("tags").array().notNull().default([]),
+    description: text("description"),
+    // fixed = bookable at priceCents; quote = customer requests a price
+    // (priceCents then reads as an optional "from" figure, 0 = ask).
+    pricingMode: gigPricingMode("pricing_mode").notNull().default("fixed"),
     priceCents: integer("price_cents").notNull().default(0),
     durationMinutes: integer("duration_minutes").notNull().default(60),
-    description: text("description"),
+    // Whether bookings of this gig run the full monitored-session machinery
+    // (check-ins, heartbeats, arrival deadlines). An entertainer at a private
+    // party wants it; an electrician quoting a job usually doesn't. SOS and
+    // location tools stay available either way.
+    safetyMonitored: boolean("safety_monitored").notNull().default(true),
+    // active = worker's own toggle; suspended = admin takedown (audited).
+    active: boolean("active").notNull().default(true),
+    suspended: boolean("suspended").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("worker_services_pair_idx").on(t.workerId, t.serviceTypeId),
-    uniqueIndex("worker_services_active_per_category_idx")
-      .on(t.workerId, t.categoryId)
-      .where(sql`enabled`),
+    index("gigs_worker_idx").on(t.workerId),
+    index("gigs_category_idx").on(t.categoryId),
+    uniqueIndex("gigs_worker_slug_idx").on(t.workerId, t.slug),
   ]
 );
 
-export const serviceAddons = pgTable(
-  "service_addons",
+export const gigAddons = pgTable(
+  "gig_addons",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    workerServiceId: uuid("worker_service_id")
+    gigId: uuid("gig_id")
       .notNull()
-      .references(() => workerServices.id, { onDelete: "cascade" }),
+      .references(() => gigs.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     priceCents: integer("price_cents").notNull().default(0),
     description: text("description"),
   },
-  (t) => [index("service_addons_ws_idx").on(t.workerServiceId)]
+  (t) => [index("gig_addons_gig_idx").on(t.gigId)]
+);
+
+// A customer's request for a price on a quote-mode gig. Single round by
+// design: worker sends one priced offer, customer accepts (creating the
+// booking) or declines and asks again. Negotiation beyond that happens in
+// person or after booking — keeps the paywall on chat intact.
+export const quotes = pgTable(
+  "quotes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Human reference, e.g. QT-4F7K2A
+    code: text("code").notNull().unique(),
+    gigId: uuid("gig_id")
+      .notNull()
+      .references(() => gigs.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Denormalized so the worker's quote inbox needs no join through gigs.
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    // The job, in the customer's words. The worker prices from this.
+    description: text("description").notNull(),
+    preferredDate: date("preferred_date"),
+    preferredTime: time("preferred_time"),
+    // Rough area only ("Half-Way Tree, Kingston") — the exact address is
+    // given at booking time like any other booking.
+    locationNote: text("location_note"),
+    status: quoteStatus("status").notNull().default("open"),
+    // The worker's one offer (set when status moves to 'offered').
+    offerPriceCents: integer("offer_price_cents"),
+    offerDurationMinutes: integer("offer_duration_minutes"),
+    offerNote: text("offer_note"),
+    offeredAt: timestamp("offered_at", { mode: "date" }),
+    // Set when the customer accepts and the offer becomes a real booking.
+    bookingId: uuid("booking_id").references((): AnyPgColumn => bookings.id, {
+      onDelete: "set null",
+    }),
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("quotes_customer_idx").on(t.customerId),
+    index("quotes_worker_status_idx").on(t.workerId, t.status),
+    index("quotes_gig_idx").on(t.gigId),
+  ]
 );
 
 // ---------------------------------------------------------------------------
@@ -431,11 +510,13 @@ export const bookings = pgTable(
     workerId: uuid("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
-    serviceTypeId: uuid("service_type_id").references(() => serviceTypes.id, {
-      onDelete: "set null",
-    }),
-    // Snapshot of what was booked (survives later price/name edits)
+    gigId: uuid("gig_id").references(() => gigs.id, { onDelete: "set null" }),
+    // Snapshot of what was booked (survives later price/name/gig edits)
     serviceName: text("service_name").notNull(),
+    // Snapshot of the gig's safetyMonitored flag at booking time — the safety
+    // scheduler only runs the full monitored-session machinery (check-ins,
+    // heartbeats, deadlines) when true. SOS/location tools work regardless.
+    monitored: boolean("monitored").notNull().default(true),
     date: date("date").notNull(),
     startTime: time("start_time").notNull(),
     durationMinutes: integer("duration_minutes").notNull(),
@@ -504,9 +585,14 @@ export const payments = pgTable(
   "payments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    bookingId: uuid("booking_id")
-      .notNull()
-      .references(() => bookings.id, { onDelete: "cascade" }),
+    // Exactly one of bookingId / rideId is set (enforced in code): a payment
+    // belongs to a gig booking or to a ride, never both.
+    bookingId: uuid("booking_id").references(() => bookings.id, {
+      onDelete: "cascade",
+    }),
+    rideId: uuid("ride_id").references((): AnyPgColumn => rides.id, {
+      onDelete: "cascade",
+    }),
     customerId: uuid("customer_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -515,8 +601,8 @@ export const payments = pgTable(
     platformFeeCents: integer("platform_fee_cents").notNull().default(0),
     method: paymentMethod("method").notNull(),
     status: paymentStatus("status").notNull().default("pending"),
-    // Gateway (PowerTranz) transaction id of the settled charge — refunds
-    // reference it.
+    // Gateway (Stripe) transaction id of the settled charge — the
+    // PaymentIntent id; refunds reference it.
     gatewayTransactionId: text("gateway_transaction_id"),
     // Cash bookings: worker uploads proof of collection
     cashProofUrl: text("cash_proof_url"),
@@ -526,6 +612,7 @@ export const payments = pgTable(
   },
   (t) => [
     index("payments_booking_idx").on(t.bookingId),
+    index("payments_ride_idx").on(t.rideId),
     index("payments_customer_idx").on(t.customerId),
   ]
 );
@@ -551,13 +638,16 @@ export const payouts = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Memberships
+// Chat pass (memberships table, repurposed)
 // ---------------------------------------------------------------------------
 
-// Prepaid fixed-term membership, tracked locally (no gateway subscription
-// engine): each successful membership payment extends currentPeriodEnd by
-// MEMBERSHIP_PERIOD_DAYS. Access = status active AND period end in the
-// future (or the FREE_ACCESS_UNTIL launch flag).
+// The $5/month Chat Pass: unlocks messaging any worker. Browsing is free,
+// booking never requires it, and a booked customer/worker pair can always
+// chat (coordination is never paywalled — lib/chat-access.ts).
+//
+// Until Stripe is live, access comes from the FREE_ACCESS_UNTIL launch flag.
+// Once Stripe Billing runs it, status/currentPeriodEnd are webhook-driven and
+// past_due/canceled finally get written.
 export const memberships = pgTable(
   "memberships",
   {
@@ -567,6 +657,9 @@ export const memberships = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     status: membershipStatus("status").notNull().default("none"),
     currentPeriodEnd: timestamp("current_period_end", { mode: "date" }),
+    // Stripe Billing linkage (null until the user subscribes via Stripe).
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   },
@@ -650,7 +743,9 @@ export const reviews = pgTable(
     rating: smallint("rating").notNull(), // 1-5
     body: text("body"),
     anonymous: boolean("anonymous").notNull().default(false),
-    status: reviewStatus("status").notNull().default("pending"),
+    // Auto-publish: reviews go live immediately (approved). Admin takedown
+    // sets 'rejected'; 'pending' remains only for legacy rows.
+    status: reviewStatus("status").notNull().default("approved"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [
@@ -671,6 +766,216 @@ export const favorites = pgTable(
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.customerId, t.workerId] })]
+);
+
+// ---------------------------------------------------------------------------
+// Drivers — independent transport operators (inDrive model)
+// ---------------------------------------------------------------------------
+// A driver is a marketplace user (users.role = 'driver') with a public
+// profile, exactly parallel to workers: registration requires a face photo,
+// vehicle details + photo and a reviewed ID/licence; the profile stays off
+// the site until approved (drivers.verified).
+
+export const drivers = pgTable(
+  "drivers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    displayName: text("display_name").notNull(),
+    // URL handle: /drivers/devon
+    slug: text("slug").notNull(),
+    bio: text("bio"),
+    // Public face photo — riders must see who is picking them up.
+    facePhotoUrl: text("face_photo_url").notNull(),
+    parish: text("parish").notNull(),
+    city: text("city"),
+    vehicleMake: text("vehicle_make").notNull(),
+    vehicleModel: text("vehicle_model").notNull(),
+    vehicleYear: smallint("vehicle_year"),
+    vehicleColor: text("vehicle_color").notNull(),
+    // Shown to the rider at pickup — "check the plate before you get in".
+    vehiclePlate: text("vehicle_plate").notNull(),
+    vehiclePhotoUrl: text("vehicle_photo_url").notNull(),
+    // Fare guidance for the suggested price: base minimum + per-km. 0 = the
+    // driver prices every ride by offer only.
+    perKmRateCents: integer("per_km_rate_cents").notNull().default(0),
+    minFareCents: integer("min_fare_cents").notNull().default(0),
+    // Stripe Connect recipient account (null until Stripe is live).
+    stripeAccountId: text("stripe_account_id"),
+    // verified = approval gate (profile hidden until staff approves);
+    // active = driver's own availability toggle; suspended = admin override.
+    verified: boolean("verified").notNull().default(false),
+    active: boolean("active").notNull().default(true),
+    suspended: boolean("suspended").notNull().default(false),
+    // Denormalized rating cache, updated when a ride review lands.
+    avgRating: integer("avg_rating_x100").notNull().default(0), // 0-500
+    reviewCount: integer("review_count").notNull().default(0),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("drivers_user_id_idx").on(t.userId),
+    uniqueIndex("drivers_slug_idx").on(t.slug),
+    index("drivers_parish_idx").on(t.parish),
+  ]
+);
+
+// Driver identity review, mirroring customer_verifications: government ID +
+// driver's licence, staff-reviewed, documents deleted from disk on decision
+// either way (temporary-holding policy). Swapped for Stripe Identity
+// automation once Stripe is live.
+export const driverVerifications = pgTable(
+  "driver_verifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: verificationStatus("status").notNull().default("pending"),
+    documentType: idDocumentType("document_type").notNull(),
+    // Name exactly as printed on the document.
+    fullName: text("full_name").notNull(),
+    // Government ID photo; null after review.
+    documentUrl: text("document_url"),
+    // Driver's licence photo; null after review.
+    licenseUrl: text("license_url"),
+    reviewedByUserId: uuid("reviewed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at", { mode: "date" }),
+    note: text("note"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("driver_verifications_user_idx").on(t.userId),
+    index("driver_verifications_status_idx").on(t.status),
+  ]
+);
+
+// A ride request. Riders are customers OR workers (getting to/from gigs —
+// optionally linked via bookingId). The rider names a price; drivers accept
+// it or counter through ride_offers; accepting an offer locks driver + fare.
+export const rides = pgTable(
+  "rides",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Human reference, e.g. RD-4F7K2A
+    code: text("code").notNull().unique(),
+    riderUserId: uuid("rider_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    driverId: uuid("driver_id").references(() => drivers.id, {
+      onDelete: "set null",
+    }),
+    // Optional link to the gig booking this ride serves.
+    bookingId: uuid("booking_id").references(() => bookings.id, {
+      onDelete: "set null",
+    }),
+    pickupAddress: text("pickup_address").notNull(),
+    pickupLat: text("pickup_lat"),
+    pickupLng: text("pickup_lng"),
+    dropoffAddress: text("dropoff_address").notNull(),
+    dropoffLat: text("dropoff_lat"),
+    dropoffLng: text("dropoff_lng"),
+    // Null = as soon as possible.
+    scheduledAt: timestamp("scheduled_at", { mode: "date" }),
+    // Route estimate (Google Directions), for the suggested fare.
+    distanceM: integer("distance_m"),
+    suggestedFareCents: integer("suggested_fare_cents"),
+    // The rider's opening offer — the inDrive move.
+    offerCents: integer("offer_cents").notNull(),
+    // Locked when a driver is accepted.
+    finalFareCents: integer("final_fare_cents"),
+    status: rideStatus("status").notNull().default("requested"),
+    // Cash-first: rides settle in cash at launch; card appears when Stripe
+    // is live. Fee stays 0 on cash rides (no chasing drivers for pennies) —
+    // platform fee on rides starts with online payments.
+    paymentMethod: paymentMethod("payment_method").notNull().default("cash"),
+    platformFeeCents: integer("platform_fee_cents").notNull().default(0),
+    cancellationReason: text("cancellation_reason"),
+    // Open requests expire if no driver is locked in by this time.
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("rides_rider_idx").on(t.riderUserId),
+    index("rides_driver_idx").on(t.driverId),
+    index("rides_status_idx").on(t.status),
+    index("rides_booking_idx").on(t.bookingId),
+  ]
+);
+
+// A driver's bid on an open ride: accept the rider's price as-is or counter
+// with their own. One live offer per driver per ride (update to re-price).
+export const rideOffers = pgTable(
+  "ride_offers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    rideId: uuid("ride_id")
+      .notNull()
+      .references(() => rides.id, { onDelete: "cascade" }),
+    driverId: uuid("driver_id")
+      .notNull()
+      .references(() => drivers.id, { onDelete: "cascade" }),
+    priceCents: integer("price_cents").notNull(),
+    note: text("note"),
+    status: rideOfferStatus("status").notNull().default("open"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("ride_offers_pair_idx").on(t.rideId, t.driverId),
+    index("ride_offers_driver_idx").on(t.driverId),
+  ]
+);
+
+// Ride status history — who moved a ride, when, why (mirrors booking_events).
+export const rideEvents = pgTable(
+  "ride_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    rideId: uuid("ride_id")
+      .notNull()
+      .references(() => rides.id, { onDelete: "cascade" }),
+    fromStatus: rideStatus("from_status"),
+    toStatus: rideStatus("to_status").notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    note: text("note"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("ride_events_ride_idx").on(t.rideId)]
+);
+
+// Rider rates driver after a completed ride. Auto-published; admin takedown
+// flips hidden.
+export const rideReviews = pgTable(
+  "ride_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    rideId: uuid("ride_id")
+      .notNull()
+      .references(() => rides.id, { onDelete: "cascade" }),
+    riderUserId: uuid("rider_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    driverId: uuid("driver_id")
+      .notNull()
+      .references(() => drivers.id, { onDelete: "cascade" }),
+    rating: smallint("rating").notNull(), // 1-5
+    body: text("body"),
+    hidden: boolean("hidden").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("ride_reviews_ride_idx").on(t.rideId),
+    index("ride_reviews_driver_idx").on(t.driverId),
+  ]
 );
 
 // ---------------------------------------------------------------------------

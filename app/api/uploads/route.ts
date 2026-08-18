@@ -16,6 +16,10 @@ import type { UploadKind } from "@/lib/uploads";
 //   identity        → uploads/identity/<userId>/ (customer ID documents)
 //   chat            → uploads/chat/<roomId>/     (chat images; needs roomId +
 //                                                 room participation)
+//   driver          → uploads/users/<userId>/    (driver face/vehicle photos —
+//                                                 public, image-only; open to
+//                                                 drivers and driver
+//                                                 applicants, never workers)
 export async function POST(req: Request): Promise<Response> {
   // Session check BEFORE touching the body: parsing multipart buffers the
   // whole upload into memory, and anonymous clients must be rejected without
@@ -70,6 +74,16 @@ export async function POST(req: Request): Promise<Response> {
       }
       folderId = access.room.id;
     } else if (kind === "identity") {
+      folderId = user.id;
+    } else if (kind === "driver") {
+      // Driver profile photos (face, vehicle) — public once the profile is
+      // approved. Open to existing drivers AND to accounts still creating a
+      // profile (the photos are uploaded before createDriverProfile runs).
+      // Workers/support are refused the driver marketplace entirely
+      // (actions/drivers.ts), so they are refused this kind too.
+      if (user.role === "worker" || user.role === "support") {
+        return Response.json({ error: "forbidden" }, { status: 403 });
+      }
       folderId = user.id;
     } else {
       // media/receipt stay worker-only (requireWorker re-reads the cached

@@ -3,7 +3,8 @@ import { db } from "@/db";
 import { memberships } from "@/db/schema";
 import type { MembershipRow } from "@/types";
 
-// Feature flag: platform-wide free access until this date (empty = disabled).
+// Launch flag: Chat Pass free for everyone until this date (empty = off).
+// This is what keeps chat open while Stripe is not yet live — cash-first.
 export function freeAccessActive(): boolean {
   const until = process.env.FREE_ACCESS_UNTIL;
   if (!until) return false;
@@ -21,11 +22,13 @@ export async function getMembership(
   return row ?? null;
 }
 
-// Full platform access = free-access flag active OR a prepaid membership
-// whose period hasn't lapsed. Local tracking (no gateway subscription
-// engine): renewals extend currentPeriodEnd; a lapsed date simply means no
-// access until the next payment.
-export async function hasMembershipAccess(userId: string): Promise<boolean> {
+// Chat Pass access — the $5/month subscription that unlocks messaging any
+// worker. True when the launch free-access flag is live OR the user holds a
+// paid pass whose period hasn't lapsed. Booking does NOT require this (see
+// bookingRequiresChatPass in lib/constants.ts for the owner's later lever),
+// and a booked customer/worker pair can always chat regardless
+// (lib/chat-access.ts).
+export async function hasChatAccess(userId: string): Promise<boolean> {
   if (freeAccessActive()) return true;
   const membership = await getMembership(userId);
   if (!membership) return false;

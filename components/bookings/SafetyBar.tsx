@@ -29,11 +29,17 @@ export default function SafetyBar({
   initial,
   hasCancelPin,
   isWorker,
+  monitored,
 }: {
   bookingId: string;
   initial: SafetyClientState;
   hasCancelPin: boolean;
   isWorker: boolean;
+  // bookings.monitored snapshot. When false the booking runs NO monitored
+  // session (no check-ins, heartbeats or travel deadlines) — the bar slims
+  // down to the always-available emergency controls: SOS only. Location
+  // sharing lives in BookingLive and stays available regardless.
+  monitored: boolean;
 }) {
   const router = useRouter();
   const [state, setState] = useState<SafetyClientState>(initial);
@@ -75,7 +81,8 @@ export default function SafetyBar({
 
   // --- Wake lock: the safety screen must not die with the screen -------------
   useEffect(() => {
-    if (!isWorker || !state.sessionState || state.sessionState === "ended") return;
+    if (!isWorker || !monitored) return;
+    if (!state.sessionState || state.sessionState === "ended") return;
     let released = false;
     const request = async () => {
       try {
@@ -98,7 +105,7 @@ export default function SafetyBar({
       void wakeLockRef.current?.release().catch(() => undefined);
       wakeLockRef.current = null;
     };
-  }, [isWorker, state.sessionState]);
+  }, [isWorker, monitored, state.sessionState]);
 
   // --- Heartbeat: the passive alarm ------------------------------------------
   const sendHeartbeat = useCallback(async () => {
@@ -149,12 +156,12 @@ export default function SafetyBar({
   }, [bookingId, isWorker]);
 
   useEffect(() => {
-    if (!isWorker) return;
+    if (!isWorker || !monitored) return;
     if (!state.sessionState || state.sessionState === "ended") return;
     void sendHeartbeat();
     const timer = setInterval(() => void sendHeartbeat(), HEARTBEAT_SECONDS * 1000);
     return () => clearInterval(timer);
-  }, [isWorker, sendHeartbeat, state.sessionState]);
+  }, [isWorker, monitored, sendHeartbeat, state.sessionState]);
 
   // --- Answering a check-in ---------------------------------------------------
   const answer = useCallback(
@@ -221,16 +228,21 @@ export default function SafetyBar({
     [bookingId, router]
   );
 
-  if (!isWorker) {
-    // Customers get the emergency control only — no check-ins, no session
-    // state. Their bar stays minimal so it never competes for attention.
+  if (!isWorker || !monitored) {
+    // Customers — and workers on an UNMONITORED booking — get the emergency
+    // control only: no check-ins, no session state, no travel CTAs. The slim
+    // bar stays minimal so it never competes for attention. (SOS is never
+    // gated: unmonitored means no scheduled machinery, not no help.)
     return (
       <div className="safety-bar">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <p className="text-xs text-faint">
             In danger? Call <a href="tel:119" className="text-gold underline">119</a> first.
           </p>
-          <SosButton bookingId={bookingId} hasCancelPin={false} />
+          <SosButton
+            bookingId={bookingId}
+            hasCancelPin={isWorker ? hasCancelPin : false}
+          />
         </div>
       </div>
     );

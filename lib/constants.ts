@@ -6,16 +6,32 @@ export const PLATFORM_FEE_PERCENT = Number(
   process.env.PLATFORM_FEE_PERCENT ?? 5
 );
 
-// Charge currency (PowerTranz merchant account); amounts stored as integer
-// cents. Switch to "jmd" once the merchant account settles in JMD.
+// Charge currency (Stripe); amounts stored as integer cents.
 export const CURRENCY = "usd";
 
-// Membership: a successful payment buys this many days of access, stacking
-// onto whatever time is left ("further payments pushed back").
+// Stripe is the online-payments layer and it is OPTIONAL: the platform is
+// cash-first (Jamaica) and every flow works with no keys set. Card buttons,
+// the Chat Pass checkout and Connect payouts appear only once this is true.
+export function stripeConfigured(): boolean {
+  return Boolean(process.env.STRIPE_SECRET_KEY);
+}
+
+// Chat Pass: the $5/month subscription that unlocks messaging any worker.
+// Browsing is free; booking never requires it (flag below); a booked
+// customer/worker pair can always chat regardless.
 export const MEMBERSHIP_PERIOD_DAYS = 30;
 
-export function membershipPriceCents(): number {
-  return Number(process.env.MEMBERSHIP_PRICE_CENTS ?? 2000);
+export function chatPassPriceCents(): number {
+  return Number(
+    process.env.CHAT_PASS_PRICE_CENTS ?? process.env.MEMBERSHIP_PRICE_CENTS ?? 500
+  );
+}
+
+// Owner's lever for after the launch year: when "on", creating a booking
+// also requires an active Chat Pass. Default off — booking stays
+// subscription-free.
+export function bookingRequiresChatPass(): boolean {
+  return process.env.BOOKING_REQUIRES_SUBSCRIPTION === "on";
 }
 
 // All booking dates/times are Jamaica wall-clock time (UTC-5, no DST).
@@ -57,6 +73,58 @@ export const LANGUAGES = [
 ] as const;
 
 export const BOOKING_DURATIONS_MINUTES = [60, 90, 120, 180, 240, 360] as const;
+
+// ---------------------------------------------------------------------------
+// Gigs & quotes
+// ---------------------------------------------------------------------------
+
+// A worker's listings. Generous for real portfolios, tight enough that one
+// account cannot flood browse.
+export const GIGS_PER_WORKER_MAX = 15;
+export const GIG_TAGS_MAX = 8;
+export const GIG_TITLE_MAX_CHARS = 80;
+export const GIG_DESCRIPTION_MAX_CHARS = 2000;
+
+// Quote requests (quote-mode gigs): the customer describes the job, the
+// worker sends one priced offer, accepting it becomes a booking.
+export const QUOTE_EXPIRY_DAYS = 14;
+export const QUOTE_DESCRIPTION_MAX_CHARS = 2000;
+// Anti-abuse: new quote requests per customer per day.
+export const QUOTES_PER_DAY = 10;
+
+// ---------------------------------------------------------------------------
+// Rides (driver marketplace)
+// ---------------------------------------------------------------------------
+
+// Suggested fare = max(driver minimum, base + per-km × distance). When the
+// driver has published no rates the platform defaults apply. The rider's
+// offer is always free-form — the suggestion is guidance, not a floor.
+export const RIDE_BASE_FARE_CENTS = Number(
+  process.env.RIDE_BASE_FARE_CENTS ?? 300
+);
+export const RIDE_PER_KM_CENTS = Number(process.env.RIDE_PER_KM_CENTS ?? 150);
+
+// An ASAP request stays open this long for drivers to bid before it expires;
+// scheduled rides stay open until their pickup time.
+export const RIDE_REQUEST_OPEN_HOURS = 2;
+
+// Anti-abuse: ride requests per rider per day; offer updates per driver/min.
+export const RIDES_PER_DAY = 20;
+export const RIDE_OFFERS_PER_MINUTE = 10;
+
+export const RIDE_STATUS_LABELS: Record<string, string> = {
+  requested: "Finding a driver",
+  accepted: "Driver confirmed",
+  arriving: "Driver on the way",
+  picked_up: "On the road",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  expired: "Expired",
+};
+
+export function rideStatusLabel(status: string): string {
+  return RIDE_STATUS_LABELS[status] ?? status;
+}
 
 // ---------------------------------------------------------------------------
 // Safety monitoring
@@ -142,13 +210,21 @@ export const TRACK_VIEWS_PER_MINUTE = 240;
 export const TRUSTED_CONTACTS_PER_DAY = 10;
 export const MAX_TRUSTED_CONTACTS = 3;
 
-// The staff escalation ladder. Stage 0 fires the moment an alert is raised;
-// each later stage fires `afterMinutes` after the alert unless someone
+// The escalation ladder. Stage 0 fires the moment an alert is raised; each
+// later stage fires `afterMinutes` after the alert unless someone
 // acknowledges first. Acknowledging parks the ladder — resolving closes it.
 //
-// Ordering principle: reach the people who can act fastest first, widen only
-// when nobody answers, and involve the worker's own contacts before the
-// situation is escalated outward.
+// The ladder has two shapes, because a paging system that pages an empty room
+// is worse than none (it looks like cover while being none):
+//
+// UNSTAFFED (default — no hired safety desk): the worker's own trusted
+// contacts are the first responders, the owner/admins are paged in the same
+// breath, and any staff accounts that do exist are swept in as a late rung.
+//
+// STAFFED (SAFETY_STAFFED_DESK=on, once real monitors are rostered): on-duty
+// monitors first, whole desk next, contacts and admins after — trained staff
+// take point and families are only pulled in when staff cannot resolve it.
+//
 // SAFETY_LADDER_SCALE compresses every rung by the same factor for demos and
 // tests (0.1 turns 3/7/11 minutes into ~18/42/66 seconds). Production leaves
 // it at 1.
@@ -157,30 +233,68 @@ const LADDER_SCALE =
     ? Number(process.env.SAFETY_LADDER_SCALE)
     : 1;
 
-export const ESCALATION_LADDER = [
+export type EscalationAudience =
+  | "on_duty"
+  | "all_desk"
+  | "trusted_contacts"
+  | "admins";
+
+export type EscalationRung = {
+  afterMinutes: number;
+  audience: EscalationAudience;
+  label: string;
+};
+
+export function staffedSafetyDesk(): boolean {
+  return process.env.SAFETY_STAFFED_DESK === "on";
+}
+
+const STAFFED_LADDER: EscalationRung[] = [
   {
     afterMinutes: 0,
-    audience: "on_duty" as const,
+    audience: "on_duty",
     label: "On-duty safety monitors paged",
   },
   {
     afterMinutes: 3 * LADDER_SCALE,
-    audience: "all_desk" as const,
+    audience: "all_desk",
     label: "All desk support + supervisors paged",
   },
   {
     afterMinutes: 7 * LADDER_SCALE,
-    audience: "trusted_contacts" as const,
+    audience: "trusted_contacts",
     label: "Worker's trusted contacts notified",
   },
   {
     afterMinutes: 11 * LADDER_SCALE,
-    audience: "admins" as const,
+    audience: "admins",
     label: "Admins paged; driver dispatch and breadcrumbs surfaced",
   },
 ];
 
-export type EscalationAudience = (typeof ESCALATION_LADDER)[number]["audience"];
+const UNSTAFFED_LADDER: EscalationRung[] = [
+  {
+    afterMinutes: 0,
+    audience: "trusted_contacts",
+    label: "Worker's trusted contacts notified",
+  },
+  {
+    // Fires on the next scheduler tick (~30s) — covert alerts skip the
+    // contacts rung entirely, so this is also their first real page.
+    afterMinutes: 0,
+    audience: "admins",
+    label: "Platform owner paged",
+  },
+  {
+    afterMinutes: 10 * LADDER_SCALE,
+    audience: "all_desk",
+    label: "Every staff account paged",
+  },
+];
+
+export function escalationLadder(): EscalationRung[] {
+  return staffedSafetyDesk() ? STAFFED_LADDER : UNSTAFFED_LADDER;
+}
 
 // SMS and voice stages stay dark until a provider is configured — a channel
 // that silently fails is worse than one that is honestly absent.

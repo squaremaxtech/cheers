@@ -2,25 +2,23 @@
 
 import { useState } from "react";
 import toast from "react-hot-toast";
-import { createMembershipCheckout } from "@/actions/memberships";
+import { createChatPassCheckout } from "@/actions/memberships";
 import { formatCents } from "@/lib/constants";
 
-// Join / renew the prepaid membership through the hosted card page. Each
-// payment adds a period on top of whatever time is left.
+// Join / renew the $5/month Chat Pass through Stripe Checkout. Status and
+// renewal are webhook-driven after the redirect.
 export default function MembershipActions({
   active,
   priceCents,
-  periodDays,
 }: {
   active: boolean;
   priceCents: number;
-  periodDays: number;
 }) {
   const [busy, setBusy] = useState(false);
 
   async function pay() {
     setBusy(true);
-    const res = await createMembershipCheckout("membership");
+    const res = await createChatPassCheckout("membership");
     if (res.ok) {
       window.location.href = res.data.url;
     } else {
@@ -34,8 +32,8 @@ export default function MembershipActions({
       {busy
         ? "Redirecting…"
         : active
-          ? `Renew — add ${periodDays} days (${formatCents(priceCents)})`
-          : `Join — ${formatCents(priceCents)} for ${periodDays} days`}
+          ? `Renew Chat Pass — ${formatCents(priceCents)}/month`
+          : `Get the Chat Pass — ${formatCents(priceCents)}/month`}
     </button>
   );
 }

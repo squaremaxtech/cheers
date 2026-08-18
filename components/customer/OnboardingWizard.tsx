@@ -4,38 +4,29 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { updateProfile } from "@/actions/account";
-import { createMembershipCheckout } from "@/actions/memberships";
 import { completeCustomerOnboarding } from "@/actions/verification";
 import IdentityVerificationForm from "@/components/customer/IdentityVerificationForm";
 import type { VerificationStatus } from "@/types";
 
-const STEPS = ["Your profile", "Verify identity", "Membership"] as const;
+const STEPS = ["Your profile", "Verify identity"] as const;
 
-// First-login customer setup. Linear 3-step wizard; progress is saved on the
+// First-login customer setup. Linear 2-step wizard; progress is saved on the
 // server after every step, so abandoning mid-way resumes where they left off.
+// No membership step — browsing and booking are free, and the Chat Pass is
+// offered where chat is, not here.
 export default function OnboardingWizard({
   initialName,
   initialPhone,
   verificationStatus,
   verificationNote,
-  freeAccess,
-  membershipOk,
 }: {
   initialName: string;
   initialPhone: string;
   verificationStatus: VerificationStatus | null;
   verificationNote: string | null;
-  freeAccess: boolean;
-  // hasMembershipAccess: true under the free-access flag OR a live paid
-  // subscription — the finish gate.
-  membershipOk: boolean;
 }) {
   const router = useRouter();
-  const needsIdStep =
-    verificationStatus === null || verificationStatus === "rejected";
-  const [step, setStep] = useState(
-    initialName.trim() === "" ? 0 : needsIdStep ? 1 : 2
-  );
+  const [step, setStep] = useState(initialName.trim() === "" ? 0 : 1);
   const [name, setName] = useState(initialName);
   const [idSubmitted, setIdSubmitted] = useState(
     verificationStatus === "pending" || verificationStatus === "approved"
@@ -53,19 +44,8 @@ export default function OnboardingWizard({
     setBusy(false);
     if (res.ok) {
       setName(String(form.get("name") ?? ""));
-      setStep(needsIdStep && !idSubmitted ? 1 : 2);
+      setStep(1);
     } else {
-      toast.error(res.error);
-    }
-  }
-
-  async function joinMembership() {
-    setBusy(true);
-    const res = await createMembershipCheckout("welcome");
-    if (res.ok) {
-      window.location.href = res.data.url;
-    } else {
-      setBusy(false);
       toast.error(res.error);
     }
   }
@@ -171,65 +151,22 @@ export default function OnboardingWizard({
             )}
             <div className="mt-6 max-w-sm">
               {idSubmitted ? (
-                <div>
-                  <p className="text-sm text-gold-soft">
-                    ✓ Document submitted — our team is reviewing it.
-                  </p>
-                  <button
-                    type="button"
-                    className="btn-gold mt-4"
-                    onClick={() => setStep(2)}
-                  >
-                    Continue
-                  </button>
-                </div>
+                <p className="text-sm text-gold-soft">
+                  ✓ Document submitted — our team is reviewing it.
+                </p>
               ) : (
                 <IdentityVerificationForm
                   defaultFullName={name}
-                  onSubmitted={() => {
-                    setIdSubmitted(true);
-                    setStep(2);
-                  }}
+                  onSubmitted={() => setIdSubmitted(true)}
                 />
               )}
             </div>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div>
-            <h2 className="font-display text-xl text-ink">Membership</h2>
-            {freeAccess ? (
-              <p className="mt-3 max-w-lg rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-gold-soft">
-                Launch special: full membership access is currently free for
-                everyone — no card needed.
-              </p>
-            ) : membershipOk ? (
-              <p className="mt-3 text-sm text-gold-soft">
-                ✓ Your membership is active.
-              </p>
-            ) : (
-              <div className="mt-3 max-w-lg">
-                <p className="text-sm text-muted">
-                  A monthly membership unlocks full browsing and booking
-                  access. You&apos;ll be taken to our secure checkout.
-                </p>
-                <button
-                  type="button"
-                  className="btn-gold mt-4"
-                  disabled={busy}
-                  onClick={joinMembership}
-                >
-                  {busy ? "Redirecting…" : "Join monthly membership"}
-                </button>
-              </div>
-            )}
 
             <div className="mt-8 border-t border-hairline pt-6">
               <button
                 type="button"
                 className="btn-gold"
-                disabled={busy || !idSubmitted || !membershipOk}
+                disabled={busy || !idSubmitted}
                 onClick={finish}
               >
                 {busy ? "Finishing…" : "Finish setup"}
@@ -237,11 +174,6 @@ export default function OnboardingWizard({
               {!idSubmitted && (
                 <p className="mt-2 text-xs text-faint">
                   Submit your ID document first (step 2).
-                </p>
-              )}
-              {idSubmitted && !membershipOk && (
-                <p className="mt-2 text-xs text-faint">
-                  An active membership is required to finish.
                 </p>
               )}
             </div>

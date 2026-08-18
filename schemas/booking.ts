@@ -7,7 +7,7 @@ const timeString = z
 
 export const createBookingSchema = z.object({
   workerId: z.string().uuid(),
-  serviceTypeId: z.string().uuid(),
+  gigId: z.string().uuid(),
   date: dateString,
   startTime: timeString,
   // Range check only — the action allows the standard durations plus the

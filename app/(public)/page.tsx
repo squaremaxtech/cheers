@@ -1,10 +1,13 @@
 import Link from "next/link";
 import WorkerCard from "@/components/workers/WorkerCard";
-import { WORKER_CONTACT_EMAIL } from "@/lib/constants";
+import { getGigCategories } from "@/lib/gigs";
 import { getPublicWorkers } from "@/lib/workers";
 
 export default async function HomePage() {
-  const featured = (await getPublicWorkers({})).slice(0, 6);
+  const [featured, categories] = await Promise.all([
+    getPublicWorkers({ limit: 6 }),
+    getGigCategories(),
+  ]);
 
   return (
     <div>
@@ -30,21 +33,52 @@ export default async function HomePage() {
           </p>
           <div className="mt-10 flex flex-col gap-3 sm:flex-row">
             <Link href="/browse" className="btn-gold px-8 py-3">
-              Browse talent
+              Browse gigs
             </Link>
-            {/* Worker signup is invite-only — candidates apply by email and
-                receive a private onboarding link once vetted. */}
-            <a
-              href={`mailto:${WORKER_CONTACT_EMAIL}?subject=Working%20with%20Cheers`}
-              className="btn-outline px-8 py-3"
-            >
-              Work with us
-            </a>
+            <Link href="/worker/onboarding" className="btn-outline px-8 py-3">
+              Become a worker — it&apos;s free
+            </Link>
           </div>
+          <Link
+            href="/driver"
+            className="mt-5 text-sm text-muted transition-colors hover:text-gold-soft"
+          >
+            Drive with Cheers →
+          </Link>
         </div>
       </section>
 
       <div className="gold-line mx-auto max-w-4xl" />
+
+      {/* Categories */}
+      {categories.length > 0 && (
+        <section className="mx-auto max-w-6xl px-5 pt-16">
+          <div className="mb-6">
+            <h2 className="font-display text-2xl text-ink">Explore categories</h2>
+            <p className="mt-1 text-sm text-muted">
+              Every gig is listed by the worker who delivers it.
+            </p>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {categories.map((c) => (
+              <Link
+                key={c.slug}
+                href={`/browse?category=${c.slug}`}
+                className="card group min-w-44 shrink-0 px-5 py-4 transition-colors hover:border-gold/40"
+              >
+                <p className="font-display text-ink transition-colors group-hover:text-gold-soft">
+                  {c.name}
+                </p>
+                {c.blurb && (
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
+                    {c.blurb}
+                  </p>
+                )}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Featured workers */}
       <section className="mx-auto max-w-6xl px-5 py-16">
@@ -79,7 +113,7 @@ export default async function HomePage() {
             {
               step: "01",
               title: "Browse & choose",
-              body: "Filter by service, parish, price, and rating. Every profile is reviewed by our team.",
+              body: "Filter gigs by category, parish, price, and rating. Every profile is reviewed by our team.",
             },
             {
               step: "02",

@@ -7,20 +7,28 @@ import Badge from "@/components/ui/Badge";
 import MembershipActions from "@/components/customer/MembershipActions";
 import { getUserRow } from "@/lib/auth";
 import {
+  chatPassPriceCents,
   formatCents,
-  MEMBERSHIP_PERIOD_DAYS,
-  membershipPriceCents,
+  stripeConfigured,
 } from "@/lib/constants";
-import { freeAccessActive, getMembership } from "@/lib/membership";
+import {
+  freeAccessActive,
+  getMembership,
+  hasChatAccess,
+} from "@/lib/membership";
 
-export const metadata: Metadata = { title: "Membership" };
+export const metadata: Metadata = { title: "Chat Pass" };
 
+// The Chat Pass page: the $5/month subscription that unlocks messaging any
+// worker. Browsing is always free, booking never requires it, and a booked
+// customer/worker pair can always chat regardless.
 export default async function MembershipPage() {
   const user = await getUserRow();
   if (!user) redirect("/login");
 
-  const [membership, paymentHistory] = await Promise.all([
+  const [membership, access, paymentHistory] = await Promise.all([
     getMembership(user.id),
+    hasChatAccess(user.id),
     db
       .select()
       .from(membershipPayments)
@@ -30,60 +38,87 @@ export default async function MembershipPage() {
   ]);
 
   const freeAccess = freeAccessActive();
-  const active =
+  const stripeLive = stripeConfigured();
+  // Paid pass specifically (freeAccess makes access true for everyone).
+  const paidActive =
     membership?.status === "active" &&
     membership.currentPeriodEnd !== null &&
     membership.currentPeriodEnd > new Date();
+  const freeUntil = process.env.FREE_ACCESS_UNTIL
+    ? new Date(process.env.FREE_ACCESS_UNTIL)
+    : null;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <h1 className="font-display text-2xl text-ink">Membership</h1>
+      <h1 className="font-display text-2xl text-ink">Chat Pass</h1>
 
       <div className="card velvet p-8">
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-xl text-ink">Cheers Membership</h2>
-          <Badge tone={freeAccess || active ? "gold" : "neutral"}>
-            {freeAccess ? "Free access" : active ? "Active" : "Inactive"}
+          <h2 className="font-display text-xl text-ink">
+            The {formatCents(chatPassPriceCents())}/month Chat Pass
+          </h2>
+          <Badge tone={access ? "gold" : "neutral"}>
+            {freeAccess ? "Free for everyone" : paidActive ? "Active" : "Inactive"}
           </Badge>
         </div>
-        <ul className="mt-5 space-y-2 text-sm text-muted">
-          <li>✦ Full browsing of every profile</li>
-          <li>✦ Unlimited booking access</li>
-          <li>✦ Member discounts as they launch</li>
+        <p className="mt-4 text-sm leading-6 text-muted">
+          One small subscription unlocks messaging <em>any</em> worker on
+          Cheers — ask questions, compare, and plan before you ever book.
+        </p>
+        <ul className="mt-4 space-y-2 text-sm text-muted">
+          <li>✦ Message any worker, any time</li>
+          <li>✦ Browsing every profile is always free — no pass needed</li>
+          <li>✦ Booking never requires it</li>
+          <li>
+            ✦ Once you have a booking with a worker, chat with them is always
+            free — coordination is never paywalled
+          </li>
         </ul>
+
         {freeAccess ? (
-          <p className="mt-6 text-sm text-gold-soft">
-            Launch special: full access is currently free for everyone — no
-            payment needed.
-          </p>
-        ) : (
+          <div className="mt-6 rounded-xl border border-gold/40 bg-gold/10 px-4 py-3">
+            <p className="text-sm text-gold-soft">
+              🎉 Launch special: chat is free for everyone
+              {freeUntil ? ` until ${freeUntil.toDateString()}` : ""} — no pass,
+              no payment, just say hello.
+            </p>
+          </div>
+        ) : stripeLive ? (
           <div className="mt-6 space-y-3">
-            {active && membership?.currentPeriodEnd && (
+            {paidActive && membership?.currentPeriodEnd && (
               <p className="text-sm text-gold-soft">
-                Valid until {membership.currentPeriodEnd.toDateString()} —
-                renewing adds {MEMBERSHIP_PERIOD_DAYS} days on top, so you
-                never lose time.
+                Your Chat Pass is active until{" "}
+                {membership.currentPeriodEnd.toDateString()} and renews
+                monthly.
               </p>
             )}
-            {!active && membership?.currentPeriodEnd && (
+            {!paidActive && membership?.currentPeriodEnd && (
               <p className="text-sm text-muted">
-                Your membership lapsed on{" "}
-                {membership.currentPeriodEnd.toDateString()} — rejoin any time
-                to pick back up.
+                Your Chat Pass lapsed on{" "}
+                {membership.currentPeriodEnd.toDateString()} — you can rejoin
+                any time. Your conversations are right where you left them.
               </p>
             )}
             <MembershipActions
-              active={active}
-              priceCents={membershipPriceCents()}
-              periodDays={MEMBERSHIP_PERIOD_DAYS}
+              active={paidActive}
+              priceCents={chatPassPriceCents()}
             />
+          </div>
+        ) : (
+          <div className="mt-6 rounded-xl border border-hairline bg-raised px-4 py-3">
+            <p className="text-sm text-muted">
+              Online payments are coming soon — the Chat Pass can&apos;t be
+              purchased just yet. In the meantime chat stays open where it
+              matters: any worker you have a live booking with can always be
+              messaged, and browsing and booking are free as ever.
+            </p>
           </div>
         )}
       </div>
 
       <section className="card p-6">
         <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
-          Membership payments
+          Chat Pass payments
         </h2>
         {paymentHistory.length === 0 ? (
           <p className="mt-3 text-sm text-faint">No payments yet.</p>

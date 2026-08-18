@@ -13,12 +13,17 @@ export default function SafetyControls({
   bookingId,
   viewerRole,
   status,
+  monitored,
   sessionStarted,
   duressPin,
 }: {
   bookingId: string;
   viewerRole: BookingViewerRole;
   status: BookingStatus;
+  // bookings.monitored snapshot: when false there is no travel monitoring to
+  // start — only the PIN handshake (which still verifies the meeting, it just
+  // doesn't open a monitored session).
+  monitored: boolean;
   sessionStarted: boolean;
   // Present only for the assigned worker — see the booking page.
   duressPin: string | null;
@@ -62,7 +67,7 @@ export default function SafetyControls({
 
   return (
     <div className="space-y-4">
-      {status === "confirmed" && !sessionStarted && (
+      {monitored && status === "confirmed" && !sessionStarted && (
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="label" htmlFor="s-eta">
@@ -124,7 +129,7 @@ export default function SafetyControls({
           </button>
           <p className="w-full text-xs text-faint">
             Ask the customer for their booking PIN when you arrive — verifying
-            it starts the session and the check-in clock.
+            it starts the session{monitored ? " and the check-in clock" : ""}.
           </p>
         </form>
       )}

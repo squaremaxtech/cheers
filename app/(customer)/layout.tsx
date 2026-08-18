@@ -7,6 +7,8 @@ import { getUserRow } from "@/lib/auth";
 const nav = [
   { href: "/dashboard", label: "Overview" },
   { href: "/bookings", label: "Bookings" },
+  { href: "/rides", label: "Rides" },
+  { href: "/quotes", label: "Quotes" },
   { href: "/chats", label: "Messages" },
   { href: "/favorites", label: "Favorites" },
   { href: "/membership", label: "Membership" },

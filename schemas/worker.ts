@@ -41,21 +41,6 @@ export const workerProfileSchema = z.object({
   baseRateCents: z.coerce.number().int().min(0).max(10_000_000),
 });
 
-export const workerServiceSchema = z.object({
-  serviceTypeId: z.string().uuid(),
-  enabled: z.boolean(),
-  priceCents: z.coerce.number().int().min(0).max(10_000_000),
-  durationMinutes: z.coerce.number().int().min(15).max(720),
-  description: z.string().trim().max(500).optional(),
-});
-
-export const serviceAddonSchema = z.object({
-  workerServiceId: z.string().uuid(),
-  name: z.string().trim().min(2).max(60),
-  priceCents: z.coerce.number().int().min(0).max(10_000_000),
-  description: z.string().trim().max(300).optional(),
-});
-
 // Accepts absolute http(s) URLs or files uploaded to this server (/api/media/…).
 export const mediaUrl = z
   .string()
@@ -68,13 +53,13 @@ export const mediaUrl = z
 export const mediaSchema = z.object({
   type: z.enum(["photo", "video"]),
   url: mediaUrl,
-  // Optional service-category tag; untagged media shows for every category.
-  categoryId: z.string().uuid().nullish(),
+  // Optional gig tag; untagged media shows on every gig and the profile.
+  gigId: z.string().uuid().nullish(),
 });
 
-export const mediaCategorySchema = z.object({
+export const mediaGigSchema = z.object({
   mediaId: z.string().uuid(),
-  categoryId: z.union([z.null(), z.string().uuid()]),
+  gigId: z.union([z.null(), z.string().uuid()]),
 });
 
 const timeString = z

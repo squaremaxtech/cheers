@@ -5,8 +5,9 @@ import toast from "react-hot-toast";
 
 // Uploads a file to this server (/api/uploads) and hands back its URL.
 // kind picks the storage folder: "media" (worker profile files), "receipt"
-// (cash proofs / dispute evidence), "identity" (customer ID documents) or
-// "chat" (chat images — requires roomId).
+// (cash proofs / dispute evidence), "identity" (customer ID documents),
+// "chat" (chat images — requires roomId) or "driver" (driver face/vehicle
+// photos).
 export default function FileUploadButton({
   onUploaded,
   accept = "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm",
@@ -19,7 +20,7 @@ export default function FileUploadButton({
   accept?: string;
   label?: string;
   className?: string;
-  kind?: "media" | "receipt" | "identity" | "chat";
+  kind?: "media" | "receipt" | "identity" | "chat" | "driver";
   roomId?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);

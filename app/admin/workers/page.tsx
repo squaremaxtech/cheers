@@ -1,57 +1,33 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { users, workerInvites, workers } from "@/db/schema";
+import { workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import AdminWorkerActions from "@/components/admin/AdminWorkerActions";
-import WorkerInvites, {
-  type WorkerInviteItem,
-} from "@/components/admin/WorkerInvites";
 import { formatCents } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Workers — Admin" };
 
+// Worker signup is open (no invites); the approval gate below is what keeps
+// unreviewed profiles off the site.
 export default async function AdminWorkersPage() {
-  const [rows, inviteRows] = await Promise.all([
-    // Pending approval first — those are the ones waiting on you.
-    db
-      .select()
-      .from(workers)
-      .orderBy(asc(workers.verified), desc(workers.createdAt))
-      .limit(200),
-    db
-      .select({ invite: workerInvites, usedByName: users.name })
-      .from(workerInvites)
-      .leftJoin(users, eq(workerInvites.usedByUserId, users.id))
-      .orderBy(desc(workerInvites.createdAt))
-      .limit(50),
-  ]);
-
-  const now = new Date();
-  const invites: WorkerInviteItem[] = inviteRows.map(({ invite, usedByName }) => ({
-    id: invite.id,
-    code: invite.code,
-    note: invite.note,
-    status: invite.usedByUserId
-      ? "used"
-      : invite.expiresAt < now
-        ? "expired"
-        : "active",
-    usedByLabel: usedByName,
-    expiresAt: invite.expiresAt.toISOString().slice(0, 10),
-  }));
+  // Pending approval first — those are the ones waiting on you.
+  const rows = await db
+    .select()
+    .from(workers)
+    .orderBy(asc(workers.verified), desc(workers.createdAt))
+    .limit(200);
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="font-display text-2xl text-ink">Workers</h1>
         <p className="mt-1 text-sm text-muted">
-          New profiles stay OFF the site until you approve them. Full
-          override: approve, suspend, hide, or edit any profile.
+          Anyone can sign up as a worker, but new profiles stay OFF the site
+          until you approve them. Full override: approve, suspend, hide, or
+          edit any profile.
         </p>
       </div>
-
-      <WorkerInvites invites={invites} />
 
       <div className="card overflow-x-auto p-2">
         <table className="w-full min-w-[720px] text-sm">

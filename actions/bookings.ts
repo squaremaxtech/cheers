@@ -3,36 +3,30 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import {
-  bookingEvents,
-  bookings,
-  payments,
-  serviceAddons,
-  serviceTypes,
-  workers,
-  workerServices,
-} from "@/db/schema";
+import { bookingEvents, bookings, gigAddons, gigs, payments, workers } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
 import { writeAudit } from "@/lib/audit";
 import {
   canTransition,
+  claimBookingSlot,
   customerCanCancel,
-  generateBookingCode,
-  generateSafetyPin,
   parseBookingStart,
   transitionBooking,
 } from "@/lib/bookings";
-import { BOOKING_DURATIONS_MINUTES, platformFeeCents } from "@/lib/constants";
+import {
+  BOOKING_DURATIONS_MINUTES,
+  bookingRequiresChatPass,
+} from "@/lib/constants";
 import { refundBookingPayments } from "@/lib/refunds";
 import { bookingEventNow, publishBooking } from "@/lib/realtime";
 import { guardErrorMessage, requireUser } from "@/lib/guards";
 import type { ActionResult, BookingRow, TimeSlot, UserRow } from "@/types";
-import { hasMembershipAccess } from "@/lib/membership";
+import { hasChatAccess } from "@/lib/membership";
 import { notify, notifyAdmins } from "@/lib/notify";
-import { generateDistinctPin } from "@/lib/safety/pins";
 import { workerHasBlocked } from "@/lib/safety/risk";
 import { isCustomerVerified } from "@/lib/verification";
 import { publicWorkerConditions } from "@/lib/workers";
+import { publicGigConditions } from "@/lib/gigs";
 import {
   bookingDatesSchema,
   bookingDecisionSchema,
@@ -160,8 +154,10 @@ export async function createBooking(
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
     const data = parsed.data;
 
-    if (!(await hasMembershipAccess(user.id))) {
-      return err("An active membership is required to book. Visit Membership to join.");
+    // Booking is subscription-free (cash-first launch). The owner can flip
+    // BOOKING_REQUIRES_SUBSCRIPTION=on later to gate it on the Chat Pass.
+    if (bookingRequiresChatPass() && !(await hasChatAccess(user.id))) {
+      return err("An active Chat Pass is required to book. Visit Membership to join.");
     }
     // Worker safety: customers book only after staff verifies their ID.
     if (user.role === "customer" && !(await isCustomerVerified(user.id))) {
@@ -190,90 +186,59 @@ export async function createBooking(
       return err("This worker is not currently accepting bookings.");
     }
 
-    const [service] = await db
-      .select({
-        ws: workerServices,
-        typeName: serviceTypes.name,
-      })
-      .from(workerServices)
-      .innerJoin(serviceTypes, eq(workerServices.serviceTypeId, serviceTypes.id))
+    const [gig] = await db
+      .select()
+      .from(gigs)
       .where(
         and(
-          eq(workerServices.workerId, worker.id),
-          eq(workerServices.serviceTypeId, data.serviceTypeId),
-          eq(workerServices.enabled, true)
+          eq(gigs.id, data.gigId),
+          eq(gigs.workerId, worker.id),
+          ...publicGigConditions()
         )
       );
-    if (!service) return err("That service is not offered by this worker.");
+    if (!gig) return err("That gig is not offered by this worker.");
+    if (gig.pricingMode === "quote") {
+      return err(
+        "This gig is priced per job — request a quote from the gig page instead."
+      );
+    }
 
-    // Standard durations plus the worker's own duration for this service.
+    // Standard durations plus the gig's own duration.
     const durationAllowed =
       BOOKING_DURATIONS_MINUTES.some((d) => d === data.durationMinutes) ||
-      data.durationMinutes === service.ws.durationMinutes;
+      data.durationMinutes === gig.durationMinutes;
     if (!durationAllowed) return err("Invalid duration.");
 
     let addonRows: { name: string; priceCents: number }[] = [];
     if (data.addonIds.length > 0) {
       addonRows = await db
-        .select({ name: serviceAddons.name, priceCents: serviceAddons.priceCents })
-        .from(serviceAddons)
+        .select({ name: gigAddons.name, priceCents: gigAddons.priceCents })
+        .from(gigAddons)
         .where(
-          and(
-            inArray(serviceAddons.id, data.addonIds),
-            eq(serviceAddons.workerServiceId, service.ws.id)
-          )
+          and(inArray(gigAddons.id, data.addonIds), eq(gigAddons.gigId, gig.id))
         );
       if (addonRows.length !== data.addonIds.length) {
         return err("One or more selected add-ons are unavailable.");
       }
     }
 
-    const priceCents = service.ws.priceCents;
-    const addonsCents = addonRows.reduce((sum, a) => sum + a.priceCents, 0);
-    const safetyPin = generateSafetyPin();
-
-    // Race-safe slot claim: the per-worker advisory lock serializes concurrent
-    // submissions, so the availability/overlap re-check inside the lock is
-    // authoritative — the loser of a same-slot race is rejected here.
-    const result = await db.transaction(
-      async (tx): Promise<{ conflict?: string; booking?: BookingRow }> => {
-        await lockWorkerSchedule(tx, worker.id);
-        const conflict = await slotConflictError(
-          worker.id,
-          data.date,
-          data.startTime,
-          data.durationMinutes
-        );
-        if (conflict) return { conflict };
-        const [booking] = await tx
-          .insert(bookings)
-          .values({
-            code: generateBookingCode(),
-            customerId: user.id,
-            workerId: worker.id,
-            serviceTypeId: data.serviceTypeId,
-            serviceName: service.typeName,
-            date: data.date,
-            startTime: data.startTime,
-            durationMinutes: data.durationMinutes,
-            address: data.address,
-            lat: data.lat,
-            lng: data.lng,
-            instructions: data.instructions,
-            priceCents,
-            addonsCents,
-            platformFeeCents: platformFeeCents(priceCents + addonsCents),
-            addons: addonRows,
-            safetyPin,
-            // The worker's covert alternative for this booking. Always
-            // distinct from safetyPin — an identical duress PIN would be
-            // silently useless.
-            duressPin: generateDistinctPin(safetyPin),
-          })
-          .returning();
-        return { booking };
-      }
-    );
+    const result = await claimBookingSlot({
+      customerId: user.id,
+      workerId: worker.id,
+      gigId: gig.id,
+      serviceName: gig.title,
+      monitored: gig.safetyMonitored,
+      date: data.date,
+      startTime: data.startTime,
+      durationMinutes: data.durationMinutes,
+      address: data.address,
+      lat: data.lat,
+      lng: data.lng,
+      instructions: data.instructions,
+      priceCents: gig.priceCents,
+      addonsCents: addonRows.reduce((sum, a) => sum + a.priceCents, 0),
+      addons: addonRows,
+    });
     if (result.conflict || !result.booking) {
       return err(result.conflict ?? ERR.server);
     }
@@ -287,11 +252,11 @@ export async function createBooking(
       },
       worker: {
         title: "New booking request",
-        body: `New request for ${service.typeName} on ${data.date} at ${data.startTime}. Accept or decline in your dashboard.`,
+        body: `New request for ${gig.title} on ${data.date} at ${data.startTime}. Accept or decline in your dashboard.`,
       },
       admins: {
         title: `New booking ${booking.code}`,
-        body: `${service.typeName} with ${worker.stageName} on ${data.date}.`,
+        body: `${gig.title} with ${worker.stageName} on ${data.date}.`,
       },
     });
 

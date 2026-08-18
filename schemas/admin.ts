@@ -20,7 +20,32 @@ export const markPayoutPaidSchema = z.object({
   note: z.string().trim().max(300).optional(),
 });
 
-// note = admin's own reference for who the invite is meant for.
-export const workerInviteSchema = z.object({
-  note: z.string().trim().max(200).optional(),
+// Admin can edit platform flags on any driver (approval, availability,
+// suspension). Profile fields stay the driver's own.
+export const adminUpdateDriverSchema = z.object({
+  driverId: z.string().uuid(),
+  verified: z.boolean().optional(),
+  active: z.boolean().optional(),
+  suspended: z.boolean().optional(),
+});
+
+// Gig takedown / restore.
+export const adminGigSuspendSchema = z.object({
+  gigId: z.string().uuid(),
+  suspended: z.boolean(),
+  note: z.string().trim().max(300).optional(),
+});
+
+// Browse taxonomy management.
+export const gigCategorySchema = z.object({
+  name: z.string().trim().min(2).max(60),
+  blurb: z.string().trim().max(140).optional(),
+});
+
+export const updateGigCategorySchema = z.object({
+  categoryId: z.string().uuid(),
+  name: z.string().trim().min(2).max(60).optional(),
+  blurb: z.string().trim().max(140).optional(),
+  active: z.boolean().optional(),
+  sortOrder: z.coerce.number().int().min(0).max(999).optional(),
 });

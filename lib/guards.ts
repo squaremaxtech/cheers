@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { workers } from "@/db/schema";
+import { drivers, workers } from "@/db/schema";
 import { getUserRow } from "@/lib/auth";
 import { ConflictError } from "@/lib/bookings";
-import type { UserRow, WorkerRow } from "@/types";
+import type { DriverRow, UserRow, WorkerRow } from "@/types";
 
 export class GuardError extends Error {
   constructor(public code: "unauthorized" | "forbidden") {
@@ -62,10 +62,28 @@ export async function requireVerificationReviewer(): Promise<UserRow> {
   throw new GuardError("forbidden");
 }
 
-// Support sub-type checks. Drivers are support staff who transport workers;
-// they get the transport view but NOT the admin/moderation tools.
+// Marketplace driver: a first-class role (like worker), with a drivers
+// profile row. The old support sub-role "driver" was retired in the v2
+// migration; this predicate covers the role only — profile checks live in
+// requireDriver.
 export function isDriver(user: UserRow): boolean {
-  return user.role === "support" && user.supportRole === "driver";
+  return user.role === "driver";
+}
+
+// The signed-in driver's profile row (plus user row) or throw. Admins pass
+// for oversight; suspended driver profiles are blocked from every action.
+// Null profile is allowed only for requireDriverUser (onboarding).
+export async function requireDriver(): Promise<{
+  user: UserRow;
+  driver: DriverRow;
+}> {
+  const user = await requireRole("driver", "admin");
+  const [driver] = await db
+    .select()
+    .from(drivers)
+    .where(eq(drivers.userId, user.id));
+  if (!driver || driver.suspended) throw new GuardError("forbidden");
+  return { user, driver };
 }
 
 // Safety monitors watch live sessions and answer escalations. That is their

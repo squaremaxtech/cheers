@@ -1,13 +1,11 @@
-import { asc } from "drizzle-orm";
 import type { Metadata } from "next";
-import { db } from "@/db";
-import { serviceCategories } from "@/db/schema";
-import BrowseFiltersBar from "@/components/workers/BrowseFiltersBar";
-import BrowseResults from "@/components/workers/BrowseResults";
-import { getPublicWorkers } from "@/lib/workers";
+import GigCard from "@/components/gigs/GigCard";
+import GigFilters from "@/components/gigs/GigFilters";
+import EmptyState from "@/components/ui/EmptyState";
+import { getGigCards, getGigCategories } from "@/lib/gigs";
 import type { BrowseFilters } from "@/types";
 
-export const metadata: Metadata = { title: "Browse Workers" };
+export const metadata: Metadata = { title: "Browse Gigs" };
 
 function firstParam(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
@@ -18,10 +16,8 @@ export default async function BrowsePage(props: PageProps<"/browse">) {
 
   const filters: BrowseFilters = {
     q: firstParam(params.q),
+    category: firstParam(params.category),
     parish: firstParam(params.parish),
-    service: firstParam(params.service),
-    minAge: Number(firstParam(params.minAge)) || undefined,
-    maxAge: Number(firstParam(params.maxAge)) || undefined,
     maxPriceCents: Number(firstParam(params.maxPrice))
       ? Number(firstParam(params.maxPrice)) * 100
       : undefined,
@@ -30,29 +26,36 @@ export default async function BrowsePage(props: PageProps<"/browse">) {
       : undefined,
     language: firstParam(params.language),
   };
-  const view = firstParam(params.view) ?? "grid";
 
-  // The service filter offers the two top-level categories, not individual
-  // service types — matching workers offer ANY enabled service in the category.
-  const [results, services] = await Promise.all([
-    getPublicWorkers(filters),
-    db
-      .select({ slug: serviceCategories.slug, name: serviceCategories.name })
-      .from(serviceCategories)
-      .orderBy(asc(serviceCategories.sortOrder)),
+  const [results, categories] = await Promise.all([
+    getGigCards(filters),
+    getGigCategories(),
   ]);
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-10">
-      <h1 className="font-display text-3xl text-ink">Browse</h1>
+      <h1 className="font-display text-3xl text-ink">Browse gigs</h1>
       <p className="mt-1 text-sm text-muted">
         {results.length} available across Jamaica
       </p>
       <div className="mt-6">
-        <BrowseFiltersBar services={services} />
+        <GigFilters
+          categories={categories.map((c) => ({ slug: c.slug, name: c.name }))}
+        />
       </div>
       <div className="mt-8">
-        <BrowseResults workers={results} view={view} />
+        {results.length === 0 ? (
+          <EmptyState
+            title="No matches right now"
+            hint="Try loosening your filters — new gigs go live every week."
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {results.map((g) => (
+              <GigCard key={g.id} gig={g} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -22,13 +22,9 @@ type ProfileValues = {
 export default function WorkerProfileForm({
   mode,
   initial,
-  inviteCode,
 }: {
   mode: "create" | "edit";
   initial?: ProfileValues;
-  // Worker signup is invite-only; the onboarding page passes the code from
-  // the admin-shared link and the create action validates + consumes it.
-  inviteCode?: string;
 }) {
   const router = useRouter();
   const [languages, setLanguages] = useState<string[]>(
@@ -55,12 +51,12 @@ export default function WorkerProfileForm({
     setBusy(true);
     const res =
       mode === "create"
-        ? await createWorkerProfile({ ...payload, inviteCode })
+        ? await createWorkerProfile(payload)
         : await updateWorkerProfile(payload);
     setBusy(false);
     if (res.ok) {
       toast.success(mode === "create" ? "Profile created!" : "Profile saved");
-      if (mode === "create") router.push("/worker/services");
+      if (mode === "create") router.push("/worker/gigs");
       else router.refresh();
     } else {
       toast.error(res.error);

@@ -1,17 +1,7 @@
-import { and, asc, desc, eq, gte, ilike, inArray, lte, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import {
-  serviceCategories,
-  serviceTypes,
-  workerMedia,
-  workers,
-  workerServices,
-} from "@/db/schema";
-import type {
-  BrowseFilters,
-  PublicWorker,
-  PublicWorkerWithPhoto,
-} from "@/types";
+import { workerMedia, workers } from "@/db/schema";
+import type { PublicWorker, PublicWorkerWithPhoto } from "@/types";
 
 // The ONLY columns public queries may select. realName/userId stay private.
 export const publicWorkerColumns = {
@@ -42,57 +32,18 @@ export function publicWorkerConditions(): SQL[] {
   ];
 }
 
-export async function getPublicWorkers(
-  filters: BrowseFilters
-): Promise<PublicWorkerWithPhoto[]> {
-  const conditions: SQL[] = publicWorkerConditions();
-
-  if (filters.q) conditions.push(ilike(workers.stageName, `%${filters.q}%`));
-  if (filters.parish) conditions.push(eq(workers.parish, filters.parish));
-  if (filters.minAge) conditions.push(gte(workers.age, filters.minAge));
-  if (filters.maxAge) conditions.push(lte(workers.age, filters.maxAge));
-  if (filters.maxPriceCents) {
-    conditions.push(lte(workers.baseRateCents, filters.maxPriceCents));
-  }
-  if (filters.minRatingX100) {
-    conditions.push(gte(workers.avgRating, filters.minRatingX100));
-  }
-
-  // Service filter: a service CATEGORY slug — workers with any enabled
-  // service in that category match.
-  if (filters.service) {
-    const offering = await db
-      .select({ workerId: workerServices.workerId })
-      .from(workerServices)
-      .innerJoin(serviceTypes, eq(workerServices.serviceTypeId, serviceTypes.id))
-      .innerJoin(
-        serviceCategories,
-        eq(serviceTypes.categoryId, serviceCategories.id)
-      )
-      .where(
-        and(
-          eq(serviceCategories.slug, filters.service),
-          eq(workerServices.enabled, true)
-        )
-      );
-    const ids = offering.map((o) => o.workerId);
-    if (ids.length === 0) return [];
-    conditions.push(inArray(workers.id, ids));
-  }
-
+// Worker cards for surfaces that list PEOPLE rather than gigs (home
+// featured, favorites). Browse itself is gig-centric — see lib/gigs.ts.
+export async function getPublicWorkers(opts?: {
+  limit?: number;
+}): Promise<PublicWorkerWithPhoto[]> {
   const rows = await db
     .select(publicWorkerColumns)
     .from(workers)
-    .where(and(...conditions))
+    .where(and(...publicWorkerConditions()))
     .orderBy(desc(workers.avgRating), asc(workers.stageName))
-    .limit(60);
-
-  // Language filter is an array column — filter in JS to keep the query simple.
-  const filtered = filters.language
-    ? rows.filter((w) => w.languages.some((l) => l === filters.language))
-    : rows;
-
-  return attachPrimaryPhotos(filtered);
+    .limit(opts?.limit ?? 60);
+  return attachPrimaryPhotos(rows);
 }
 
 export async function attachPrimaryPhotos(

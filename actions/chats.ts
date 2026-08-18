@@ -8,6 +8,7 @@ import { err, ok, ERR } from "@/lib/action-result";
 import {
   chatSenderLabel,
   chatSenderRole,
+  customerCanSendChat,
   loadChatAccess,
 } from "@/lib/chat-access";
 import {
@@ -60,6 +61,14 @@ export async function openChatRoom(
       .where(eq(workers.id, parsed.data.workerId));
     if (!worker) return err(ERR.notFound);
     if (worker.userId === user.id) return err("You cannot message yourself.");
+
+    // The Chat Pass paywall: starting a conversation needs an active pass —
+    // unless this pair has a live booking (coordination is never paywalled).
+    if (!(await customerCanSendChat(user.id, worker.id))) {
+      return err(
+        "Messaging workers needs an active Chat Pass ($5/month). Get yours from the Membership page."
+      );
+    }
 
     // Existing conversations stay reachable even if the worker later hides
     // their profile; only STARTING a new one requires a publicly visible
@@ -122,6 +131,17 @@ export async function sendChatMessage(
     if (!access) return err(ERR.notFound);
     if (access.viewerRole === "staff") {
       return err("Support can read chats but not send messages.");
+    }
+    // Customer side of the paywall: a lapsed pass locks the composer (reading
+    // stays open), unless this pair has a live booking. Workers always reply
+    // free — the gate is on the customer channel only.
+    if (
+      access.viewerRole === "customer" &&
+      !(await customerCanSendChat(user.id, access.worker.id))
+    ) {
+      return err(
+        "Your Chat Pass has lapsed. Renew it from the Membership page to keep messaging workers."
+      );
     }
     // Flood control: generous for humans, a wall for scripts.
     if (

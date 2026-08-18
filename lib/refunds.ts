@@ -2,14 +2,15 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { payments } from "@/db/schema";
 import { notify, notifyAdmins } from "@/lib/notify";
-import { refundGatewayPayment } from "@/lib/powertranz";
+import { refundStripePayment, stripeConfigured } from "@/lib/stripe";
 import type { BookingRow } from "@/types";
 
 // Refund every payment on a booking (used when a paid booking is cancelled).
-// Card payments are refunded through the PowerTranz gateway automatically;
-// cash payments (and card refund failures) escalate to admins for manual
-// handling. Pending payments are voided. Never throws — the cancellation
-// itself must not fail because a refund needs human follow-up.
+// Refunds here are POLICY, not judgment: cancellation inside the allowed
+// window refunds card money automatically through Stripe; cash payments (and
+// card refund failures) escalate to admins for manual handling. Pending
+// payments are voided. Never throws — the cancellation itself must not fail
+// because a refund needs human follow-up.
 export async function refundBookingPayments(booking: BookingRow): Promise<void> {
   try {
     const rows = await db
@@ -30,8 +31,12 @@ export async function refundBookingPayments(booking: BookingRow): Promise<void> 
       }
       if (payment.status !== "succeeded") continue;
 
-      if (payment.method === "card" && payment.gatewayTransactionId) {
-        const refunded = await refundGatewayPayment(
+      if (
+        payment.method === "card" &&
+        payment.gatewayTransactionId &&
+        stripeConfigured()
+      ) {
+        const refunded = await refundStripePayment(
           payment.gatewayTransactionId,
           payment.amountCents
         );

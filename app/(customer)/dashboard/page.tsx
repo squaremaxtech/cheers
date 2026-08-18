@@ -9,7 +9,7 @@ import NotificationsList from "@/components/customer/NotificationsList";
 import ProfileForm from "@/components/customer/ProfileForm";
 import VerificationCard from "@/components/customer/VerificationCard";
 import { getUserRow } from "@/lib/auth";
-import { isDriver } from "@/lib/guards";
+import { isSafetyMonitor } from "@/lib/guards";
 import { freeAccessActive, getMembership } from "@/lib/membership";
 import { statusTone } from "@/lib/status";
 import { getCustomerVerification } from "@/lib/verification";
@@ -20,8 +20,13 @@ export default async function CustomerDashboard() {
   const user = await getUserRow();
   if (!user) redirect("/login");
   // Role-based home: this route is the shared post-login landing spot.
+  // Driver is a first-class marketplace role now; the support sub-role
+  // "driver" is retired (safety monitors go to their desk, the rest to admin).
   if (user.role === "worker") redirect("/worker");
-  if (user.role === "support") redirect(isDriver(user) ? "/driver" : "/admin");
+  if (user.role === "driver") redirect("/driver");
+  if (user.role === "support") {
+    redirect(isSafetyMonitor(user) ? "/safety" : "/admin");
+  }
   if (user.role === "admin") redirect("/admin");
 
   const [recentBookings, recentNotifications, membership, verification] =

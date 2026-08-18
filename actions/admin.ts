@@ -1,106 +1,320 @@
 "use server";
 
-import { randomBytes } from "crypto";
 import { and, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
   bookings,
+  driverVerifications,
+  drivers,
+  gigCategories,
+  gigs,
   payments,
   payouts,
   sessions,
   users,
-  workerInvites,
   workers,
 } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
 import { writeAudit } from "@/lib/audit";
 import { formatCents } from "@/lib/constants";
-import { guardErrorMessage, requireAdmin } from "@/lib/guards";
+import {
+  guardErrorMessage,
+  requireAdmin,
+  requireVerificationReviewer,
+} from "@/lib/guards";
 import { notify } from "@/lib/notify";
 import { payoutContribution } from "@/lib/payouts";
-import { uniqueWorkerSlug } from "@/lib/slug";
+import { slugify, uniqueWorkerSlug } from "@/lib/slug";
+import { removeStoredUpload } from "@/lib/uploads";
 import {
+  adminGigSuspendSchema,
   adminSuspendUserSchema,
+  adminUpdateDriverSchema,
   adminUpdateWorkerSchema,
+  gigCategorySchema,
   markPayoutPaidSchema,
-  workerInviteSchema,
+  updateGigCategorySchema,
 } from "@/schemas/admin";
+import { reviewDriverVerificationSchema } from "@/schemas/driver";
 import type { ActionResult, PayoutGeneration } from "@/types";
 
-// --- Worker invites (signup is invite-only) ----------------------------------
+// --- Drivers: document review + platform flags ---------------------------------
 
-const WORKER_INVITE_DAYS = 30;
-
-function generateInviteCode(): string {
-  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no lookalikes
-  const bytes = randomBytes(6);
-  let out = "";
-  for (const b of bytes) out += alphabet[b % alphabet.length];
-  return `CHW-${out}`;
-}
-
-// Admin mints a single-use invite and shares the onboarding link privately
-// with a vetted candidate. Consumed by createWorkerProfile.
-export async function createWorkerInvite(
+// Reviewing a driver's documents (government ID + licence) is the approval:
+// approving sets drivers.verified so the profile goes live in one step —
+// there is no separate queue to remember. Documents are deleted from disk on
+// decision either way (temporary-holding policy, same as customers).
+export async function reviewDriverVerification(
   input: unknown
-): Promise<ActionResult<{ code: string }>> {
+): Promise<ActionResult<undefined>> {
   try {
-    const admin = await requireAdmin();
-    const parsed = workerInviteSchema.safeParse(input);
+    const reviewer = await requireVerificationReviewer();
+    const parsed = reviewDriverVerificationSchema.safeParse(input);
     if (!parsed.success) return err(ERR.badRequest);
 
-    const code = generateInviteCode();
-    const [invite] = await db
-      .insert(workerInvites)
-      .values({
-        code,
-        note: parsed.data.note || null,
-        createdByUserId: admin.id,
-        expiresAt: new Date(Date.now() + WORKER_INVITE_DAYS * 86_400_000),
+    const [verification] = await db
+      .select()
+      .from(driverVerifications)
+      .where(eq(driverVerifications.id, parsed.data.verificationId));
+    if (!verification) return err(ERR.notFound);
+
+    // CAS on pending: two reviewers race, first decision wins.
+    const updated = await db
+      .update(driverVerifications)
+      .set({
+        status: parsed.data.decision,
+        documentUrl: null,
+        licenseUrl: null,
+        reviewedByUserId: reviewer.id,
+        reviewedAt: new Date(),
+        note: parsed.data.note,
+        updatedAt: new Date(),
       })
-      .returning({ id: workerInvites.id });
+      .where(
+        and(
+          eq(driverVerifications.id, verification.id),
+          eq(driverVerifications.status, "pending")
+        )
+      )
+      .returning({ id: driverVerifications.id });
+    if (updated.length === 0) {
+      return err("This submission was already reviewed.");
+    }
+    for (const url of [verification.documentUrl, verification.licenseUrl]) {
+      if (url) await removeStoredUpload(url);
+    }
+
+    const [driver] = await db
+      .select()
+      .from(drivers)
+      .where(eq(drivers.userId, verification.userId));
+    if (parsed.data.decision === "approved" && driver) {
+      await db
+        .update(drivers)
+        .set({ verified: true, updatedAt: new Date() })
+        .where(eq(drivers.id, driver.id));
+    }
+
     await writeAudit({
-      actorUserId: admin.id,
-      action: "worker_invite.create",
-      entity: "worker_invites",
-      entityId: invite.id,
-      after: { code, note: parsed.data.note },
+      actorUserId: reviewer.id,
+      action: `driver_verification.${parsed.data.decision}`,
+      entity: "driver_verifications",
+      entityId: verification.id,
+      after: { note: parsed.data.note },
+    });
+    await notify({
+      userId: verification.userId,
+      type: `driver_verification_${parsed.data.decision}`,
+      title:
+        parsed.data.decision === "approved"
+          ? "You're approved — start driving"
+          : "Your driver documents were not approved",
+      body:
+        parsed.data.decision === "approved"
+          ? "Your documents check out and your driver profile is live. Open your dashboard to see ride requests."
+          : `Your submission was rejected${parsed.data.note ? `: ${parsed.data.note}` : "."} You can re-submit from your driver dashboard.`,
     });
 
-    revalidatePath("/admin/workers");
-    return ok({ code });
+    revalidatePath("/admin/drivers");
+    revalidatePath("/drivers");
+    return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));
   }
 }
 
-// Unused invites can be withdrawn (e.g. a candidate falls through).
-export async function deleteWorkerInvite(
-  inviteId: unknown
+export async function adminUpdateDriver(
+  input: unknown
 ): Promise<ActionResult<undefined>> {
   try {
     const admin = await requireAdmin();
-    if (typeof inviteId !== "string") return err(ERR.badRequest);
+    const parsed = adminUpdateDriverSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
 
-    const deleted = await db
-      .delete(workerInvites)
-      .where(
-        and(eq(workerInvites.id, inviteId), isNull(workerInvites.usedByUserId))
-      )
-      .returning({ id: workerInvites.id, code: workerInvites.code });
-    if (deleted.length === 0) {
-      return err("Only unused invites can be deleted.");
-    }
+    const [driver] = await db
+      .select()
+      .from(drivers)
+      .where(eq(drivers.id, parsed.data.driverId));
+    if (!driver) return err(ERR.notFound);
+
+    const updates = {
+      ...(parsed.data.verified !== undefined && { verified: parsed.data.verified }),
+      ...(parsed.data.active !== undefined && { active: parsed.data.active }),
+      ...(parsed.data.suspended !== undefined && { suspended: parsed.data.suspended }),
+    };
+    if (Object.keys(updates).length === 0) return err(ERR.badRequest);
+
+    await db
+      .update(drivers)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(drivers.id, driver.id));
     await writeAudit({
       actorUserId: admin.id,
-      action: "worker_invite.delete",
-      entity: "worker_invites",
-      entityId: deleted[0].id,
-      before: { code: deleted[0].code },
+      action: "driver.admin_update",
+      entity: "drivers",
+      entityId: driver.id,
+      before: {
+        verified: driver.verified,
+        active: driver.active,
+        suspended: driver.suspended,
+      },
+      after: updates,
     });
 
-    revalidatePath("/admin/workers");
+    if (parsed.data.verified === true && !driver.verified) {
+      await notify({
+        userId: driver.userId,
+        type: "driver_verified",
+        title: "Your driver profile is approved — you're live",
+        body: "Riders can now find you and you can take ride requests.",
+      });
+    }
+    if (parsed.data.suspended === true && !driver.suspended) {
+      await notify({
+        userId: driver.userId,
+        type: "driver_suspended",
+        title: "Your driver profile has been suspended",
+        body: "Your profile is hidden from the platform. Contact support for details.",
+      });
+    }
+
+    revalidatePath("/admin/drivers");
+    revalidatePath("/drivers");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// --- Gigs: takedown + browse taxonomy -------------------------------------------
+
+// Gigs auto-publish; this is the counterweight. Suspending hides the gig
+// everywhere without touching the worker's account.
+export async function adminSetGigSuspended(
+  input: unknown
+): Promise<ActionResult<undefined>> {
+  try {
+    const admin = await requireAdmin();
+    const parsed = adminGigSuspendSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const [gig] = await db
+      .select({
+        id: gigs.id,
+        title: gigs.title,
+        suspended: gigs.suspended,
+        workerId: gigs.workerId,
+      })
+      .from(gigs)
+      .where(eq(gigs.id, parsed.data.gigId));
+    if (!gig) return err(ERR.notFound);
+
+    await db
+      .update(gigs)
+      .set({ suspended: parsed.data.suspended, updatedAt: new Date() })
+      .where(eq(gigs.id, gig.id));
+    await writeAudit({
+      actorUserId: admin.id,
+      action: parsed.data.suspended ? "gig.takedown" : "gig.restore",
+      entity: "gigs",
+      entityId: gig.id,
+      after: { note: parsed.data.note },
+    });
+
+    const [worker] = await db
+      .select({ userId: workers.userId })
+      .from(workers)
+      .where(eq(workers.id, gig.workerId));
+    if (worker && parsed.data.suspended && !gig.suspended) {
+      await notify({
+        userId: worker.userId,
+        type: "gig_suspended",
+        title: `Your gig "${gig.title}" was taken down`,
+        body: `Our team removed this listing${parsed.data.note ? `: ${parsed.data.note}` : "."} Contact support if you believe this is a mistake.`,
+      });
+    }
+
+    revalidatePath("/admin/gigs");
+    revalidatePath("/browse");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+export async function createGigCategory(
+  input: unknown
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const admin = await requireAdmin();
+    const parsed = gigCategorySchema.safeParse(input);
+    if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
+
+    const slug = slugify(parsed.data.name);
+    const [taken] = await db
+      .select({ id: gigCategories.id })
+      .from(gigCategories)
+      .where(eq(gigCategories.slug, slug));
+    if (taken) return err("A category with that name already exists.");
+
+    const existing = await db.select({ id: gigCategories.id }).from(gigCategories);
+    const [category] = await db
+      .insert(gigCategories)
+      .values({
+        slug,
+        name: parsed.data.name,
+        blurb: parsed.data.blurb,
+        sortOrder: existing.length,
+      })
+      .returning({ id: gigCategories.id });
+    await writeAudit({
+      actorUserId: admin.id,
+      action: "gig_category.create",
+      entity: "gig_categories",
+      entityId: category.id,
+      after: { name: parsed.data.name },
+    });
+
+    revalidatePath("/admin/gigs");
+    revalidatePath("/browse");
+    return ok({ id: category.id });
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+export async function updateGigCategory(
+  input: unknown
+): Promise<ActionResult<undefined>> {
+  try {
+    const admin = await requireAdmin();
+    const parsed = updateGigCategorySchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+    const { categoryId, ...data } = parsed.data;
+    if (Object.keys(data).length === 0) return err(ERR.badRequest);
+
+    const [category] = await db
+      .select()
+      .from(gigCategories)
+      .where(eq(gigCategories.id, categoryId));
+    if (!category) return err(ERR.notFound);
+
+    await db
+      .update(gigCategories)
+      .set(data)
+      .where(eq(gigCategories.id, category.id));
+    await writeAudit({
+      actorUserId: admin.id,
+      action: "gig_category.update",
+      entity: "gig_categories",
+      entityId: category.id,
+      before: category,
+      after: data,
+    });
+
+    revalidatePath("/admin/gigs");
+    revalidatePath("/browse");
     return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));
@@ -304,6 +518,7 @@ export async function generateWeeklyPayouts(input: {
         { method: "card" | "cash"; tipCents: number }[]
       >();
       for (const p of paidRows) {
+        if (!p.bookingId) continue; // ride payments have no booking
         const list = paymentsByBooking.get(p.bookingId) ?? [];
         list.push({ method: p.method, tipCents: p.tipCents });
         paymentsByBooking.set(p.bookingId, list);

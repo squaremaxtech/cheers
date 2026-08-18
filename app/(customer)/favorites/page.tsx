@@ -48,10 +48,10 @@ export default async function FavoritesPage() {
         <div className="mt-6">
           <EmptyState
             title="No favorites yet"
-            hint="Tap the heart on any profile — or swipe right in browse — to save them here."
+            hint="Tap the heart on any profile to save them here."
             action={
-              <Link href="/browse?view=swipe" className="btn-gold">
-                Start swiping
+              <Link href="/browse" className="btn-gold">
+                Browse gigs
               </Link>
             }
           />

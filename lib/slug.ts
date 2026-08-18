@@ -1,6 +1,6 @@
 import { eq, ne, and } from "drizzle-orm";
 import { db } from "@/db";
-import { workers } from "@/db/schema";
+import { drivers, gigs, workers } from "@/db/schema";
 
 // "Maxx!" -> "maxx", "Déjà Vu" -> "deja-vu". Falls back to "worker" so a slug
 // is never empty (stage names are min 2 chars but could be all symbols).
@@ -34,6 +34,54 @@ export async function uniqueWorkerSlug(
         excludeWorkerId
           ? and(eq(workers.slug, candidate), ne(workers.id, excludeWorkerId))
           : eq(workers.slug, candidate)
+      );
+    if (!taken) return candidate;
+    candidate = `${base}-${n}`;
+  }
+}
+
+// A gig slug unique within one worker's listings (gigs_worker_slug_idx).
+export async function uniqueGigSlug(
+  workerId: string,
+  title: string,
+  excludeGigId?: string
+): Promise<string> {
+  const base = slugify(title);
+  let candidate = base;
+  for (let n = 2; ; n++) {
+    const [taken] = await db
+      .select({ id: gigs.id })
+      .from(gigs)
+      .where(
+        excludeGigId
+          ? and(
+              eq(gigs.workerId, workerId),
+              eq(gigs.slug, candidate),
+              ne(gigs.id, excludeGigId)
+            )
+          : and(eq(gigs.workerId, workerId), eq(gigs.slug, candidate))
+      );
+    if (!taken) return candidate;
+    candidate = `${base}-${n}`;
+  }
+}
+
+// A driver slug unique across all drivers (drivers_slug_idx).
+export async function uniqueDriverSlug(
+  displayName: string,
+  excludeDriverId?: string
+): Promise<string> {
+  let base = slugify(displayName);
+  if (isUuid(base)) base = `${base}-d`;
+  let candidate = base;
+  for (let n = 2; ; n++) {
+    const [taken] = await db
+      .select({ id: drivers.id })
+      .from(drivers)
+      .where(
+        excludeDriverId
+          ? and(eq(drivers.slug, candidate), ne(drivers.id, excludeDriverId))
+          : eq(drivers.slug, candidate)
       );
     if (!taken) return candidate;
     candidate = `${base}-${n}`;

@@ -8,43 +8,42 @@ import LocationPicker from "@/components/maps/LocationPicker";
 import BookingCalendar from "@/components/bookings/BookingCalendar";
 import TimeSlotPicker from "@/components/bookings/TimeSlotPicker";
 import { BOOKING_DURATIONS_MINUTES, formatCents } from "@/lib/constants";
-import type { ServiceAddonRow, TimeSlot } from "@/types";
+import type { TimeSlot } from "@/types";
 
-type ServiceOption = {
-  workerServiceId: string;
-  serviceTypeId: string;
+// The shape the book page passes in — a fixed-price gig with its add-ons
+// (structurally a subset of lib/gigs' PublicGigWithAddons).
+type GigOption = {
+  id: string;
+  title: string;
+  categoryName: string;
+  description: string | null;
   priceCents: number;
   durationMinutes: number;
-  description: string | null;
-  name: string;
-  categoryName: string;
+  addons: {
+    id: string;
+    name: string;
+    priceCents: number;
+    description: string | null;
+  }[];
 };
 
 export default function BookingForm({
   workerId,
-  services,
-  addons,
-  initialServiceTypeId,
+  gigs,
+  initialGigId,
 }: {
   workerId: string;
-  services: ServiceOption[];
-  addons: ServiceAddonRow[];
-  // Preselects the service the customer chose on the profile page (?service=).
-  initialServiceTypeId?: string;
+  gigs: GigOption[];
+  // Preselects the gig the customer chose on the profile page (?gig=).
+  initialGigId?: string;
 }) {
   const router = useRouter();
-  const initialService =
-    services.find((s) => s.serviceTypeId === initialServiceTypeId) ??
-    services[0];
-  const [serviceTypeId, setServiceTypeId] = useState(
-    initialService?.serviceTypeId ?? ""
-  );
+  const initialGig = gigs.find((g) => g.id === initialGigId) ?? gigs[0];
+  const [gigId, setGigId] = useState(initialGig?.id ?? "");
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
-  const [duration, setDuration] = useState(
-    initialService?.durationMinutes ?? 60
-  );
+  const [duration, setDuration] = useState(initialGig?.durationMinutes ?? 60);
   const [slots, setSlots] = useState<TimeSlot[] | null>(null);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [address, setAddress] = useState("");
@@ -52,21 +51,16 @@ export default function BookingForm({
   const [instructions, setInstructions] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const selectedService = services.find(
-    (s) => s.serviceTypeId === serviceTypeId
-  );
+  const selectedGig = gigs.find((g) => g.id === gigId);
   const availableAddons = useMemo(
-    () =>
-      addons.filter(
-        (a) => a.workerServiceId === selectedService?.workerServiceId
-      ),
-    [addons, selectedService]
+    () => selectedGig?.addons ?? [],
+    [selectedGig]
   );
   const selectedAddons = availableAddons.filter((a) =>
     addonIds.some((id) => id === a.id)
   );
   const total =
-    (selectedService?.priceCents ?? 0) +
+    (selectedGig?.priceCents ?? 0) +
     selectedAddons.reduce((sum, a) => sum + a.priceCents, 0);
 
   const handleAddress = useCallback(
@@ -107,10 +101,11 @@ export default function BookingForm({
     void refreshSlots();
   }, [refreshSlots]);
 
-  if (services.length === 0) {
+  if (gigs.length === 0) {
     return (
       <p className="card p-6 text-sm text-muted">
-        This worker has no bookable services right now.
+        This worker has no bookable gigs right now. Gigs priced per job are
+        booked by requesting a quote from their profile.
       </p>
     );
   }
@@ -124,7 +119,7 @@ export default function BookingForm({
     setSubmitting(true);
     const res = await createBooking({
       workerId,
-      serviceTypeId,
+      gigId,
       date,
       startTime,
       durationMinutes: duration,
@@ -148,15 +143,15 @@ export default function BookingForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Service */}
+      {/* Gig */}
       <fieldset className="card p-5">
-        <legend className="label px-1">Service</legend>
+        <legend className="label px-1">Gig</legend>
         <div className="space-y-2">
-          {services.map((s) => (
+          {gigs.map((g) => (
             <label
-              key={s.serviceTypeId}
+              key={g.id}
               className={`flex cursor-pointer items-start justify-between gap-3 rounded-xl border p-4 transition-colors ${
-                serviceTypeId === s.serviceTypeId
+                gigId === g.id
                   ? "border-gold/60 bg-raised"
                   : "border-hairline hover:border-gold/30"
               }`}
@@ -164,27 +159,27 @@ export default function BookingForm({
               <span>
                 <input
                   type="radio"
-                  name="service"
+                  name="gig"
                   className="mr-2 accent-[var(--color-gold)]"
-                  checked={serviceTypeId === s.serviceTypeId}
+                  checked={gigId === g.id}
                   onChange={() => {
-                    setServiceTypeId(s.serviceTypeId);
+                    setGigId(g.id);
                     setAddonIds([]);
-                    setDuration(s.durationMinutes);
+                    setDuration(g.durationMinutes);
                   }}
                 />
-                <span className="text-sm font-medium text-ink">{s.name}</span>
+                <span className="text-sm font-medium text-ink">{g.title}</span>
                 <span className="ml-2 text-[11px] uppercase tracking-wider text-faint">
-                  {s.categoryName}
+                  {g.categoryName}
                 </span>
-                {s.description && (
+                {g.description && (
                   <span className="mt-1 block pl-6 text-xs leading-5 text-muted">
-                    {s.description}
+                    {g.description}
                   </span>
                 )}
               </span>
               <span className="shrink-0 text-sm text-gold">
-                {formatCents(s.priceCents)}
+                {formatCents(g.priceCents)}
               </span>
             </label>
           ))}
@@ -241,8 +236,8 @@ export default function BookingForm({
             value={duration}
             onChange={(e) => setDuration(Number(e.target.value))}
           >
-            {/* Standard durations plus this service's own duration */}
-            {[...new Set([selectedService?.durationMinutes ?? 60, ...BOOKING_DURATIONS_MINUTES])]
+            {/* Standard durations plus this gig's own duration */}
+            {[...new Set([selectedGig?.durationMinutes ?? 60, ...BOOKING_DURATIONS_MINUTES])]
               .sort((a, b) => a - b)
               .map((d) => (
                 <option key={d} value={d}>
@@ -299,9 +294,9 @@ export default function BookingForm({
         <h3 className="label">Summary</h3>
         <dl className="space-y-1 text-sm">
           <div className="flex justify-between">
-            <dt className="text-muted">{selectedService?.name}</dt>
+            <dt className="text-muted">{selectedGig?.title}</dt>
             <dd className="text-ink">
-              {formatCents(selectedService?.priceCents ?? 0)}
+              {formatCents(selectedGig?.priceCents ?? 0)}
             </dd>
           </div>
           {selectedAddons.map((a) => (

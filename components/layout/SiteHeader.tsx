@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { getUserRow } from "@/lib/auth";
-import { isDriver } from "@/lib/guards";
+import { isSafetyMonitor } from "@/lib/guards";
 import type { UserRow } from "@/types";
 
 function dashboardPath(user: UserRow): string {
   if (user.role === "worker") return "/worker";
+  if (user.role === "driver") return "/driver";
   if (user.role === "admin") return "/admin";
-  if (user.role === "support") return isDriver(user) ? "/driver" : "/admin";
+  if (user.role === "support") return isSafetyMonitor(user) ? "/safety" : "/admin";
   return "/dashboard";
 }
 
@@ -26,6 +27,10 @@ export default async function SiteHeader() {
         <nav className="flex min-w-0 items-center gap-1 text-sm" style={{ overflow: "auto" }}>
           <Link href="/browse" className="btn-ghost hidden sm:inline-flex">
             Browse
+          </Link>
+
+          <Link href="/drivers" className="btn-ghost hidden sm:inline-flex">
+            Drivers
           </Link>
 
           <Link href="/about" className="btn-ghost hidden md:inline-flex">

@@ -31,6 +31,7 @@ import {
   formatCents,
   formatTime12,
   safetyAlertLabel,
+  stripeConfigured,
   WELLNESS_CHECK_INTERVAL_MINUTES,
 } from "@/lib/constants";
 import { canSeePinInline } from "@/lib/guards";
@@ -345,8 +346,10 @@ export default async function BookingRoomPage(
             )}
 
             {/* Monitoring status — everyone in the room can see the session is
-                being watched and when the next deadline falls. */}
-            {session && session.state !== "ended" && (
+                being watched and when the next deadline falls. Only rendered
+                for monitored bookings: an unmonitored gig (booking.monitored
+                false) runs no check-in/heartbeat machinery to report on. */}
+            {booking.monitored && session && session.state !== "ended" && (
               <div
                 className={`rounded-xl border p-4 text-sm ${
                   displayHealth === "alarm" || displayHealth === "unresponsive"
@@ -383,6 +386,7 @@ export default async function BookingRoomPage(
               bookingId={booking.id}
               viewerRole={viewerRole}
               status={booking.status}
+              monitored={booking.monitored}
               sessionStarted={Boolean(session && session.state !== "ended")}
               // The duress PIN belongs to the assigned worker alone.
               duressPin={viewerRole === "worker" ? booking.duressPin : null}
@@ -390,10 +394,9 @@ export default async function BookingRoomPage(
 
             {viewerRole === "customer" && (
               <p className="text-xs text-faint">
-                Every Cheers booking is monitored: PIN-verified start, timed
-                check-ins, live location and a safety desk that is alerted
-                automatically if anything is missed. In an emergency, always
-                call 119.
+                {booking.monitored
+                  ? "Every monitored Cheers booking has a PIN-verified start, timed check-ins, live location and a safety desk that is alerted automatically if anything is missed. In an emergency, always call 119."
+                  : "This booking starts with a PIN check, and the SOS button and live location sharing are always available. In an emergency, always call 119."}
               </p>
             )}
 
@@ -417,6 +420,26 @@ export default async function BookingRoomPage(
           </div>
         )}
 
+        {/* Getting there: hand the pickup off to the driver marketplace with
+            the booking pre-linked. Customer and worker both travel; drivers
+            and staff don't need it. */}
+        {live && (viewerRole === "customer" || viewerRole === "worker") && (
+          <div className="card flex flex-wrap items-center justify-between gap-3 p-5">
+            <div>
+              <p className="text-sm text-ink">Need a lift to this booking?</p>
+              <p className="mt-0.5 text-xs text-muted">
+                Post a ride request and nearby drivers will offer you a fare.
+              </p>
+            </div>
+            <Link
+              href={`/rides/new?bookingId=${booking.id}`}
+              className="btn-outline shrink-0 py-2 text-xs"
+            >
+              Get a ride there →
+            </Link>
+          </div>
+        )}
+
         {/* Role actions */}
         {viewerRole === "customer" && (
           <BookingCustomerActions
@@ -426,7 +449,7 @@ export default async function BookingRoomPage(
             status={booking.status}
             canCancel={customerCanCancel(booking)}
             serviceTotalCents={total}
-            stripeConfigured={Boolean(process.env.STRIPE_SECRET_KEY)}
+            stripeConfigured={stripeConfigured()}
             cashPending={pendingCash !== null}
             committedTipCents={pendingCash?.tipCents ?? 0}
           />
@@ -517,6 +540,7 @@ export default async function BookingRoomPage(
           initial={safetyState}
           hasCancelPin={Boolean(workerRow?.cancelPinHash)}
           isWorker={viewerRole === "worker"}
+          monitored={booking.monitored}
         />
       )}
     </>

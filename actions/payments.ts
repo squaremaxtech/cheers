@@ -10,12 +10,10 @@ import { transitionBooking } from "@/lib/bookings";
 import { guardErrorMessage, requireAdmin, requireUser, requireWorker } from "@/lib/guards";
 import { notify, notifyAdmins } from "@/lib/notify";
 import {
-  appUrl,
-  gatewayConfigured,
-  initiateHostedPayment,
-  refundGatewayPayment,
-  storeRedirectPage,
-} from "@/lib/powertranz";
+  createBookingCheckoutSession,
+  refundStripePayment,
+  stripeConfigured,
+} from "@/lib/stripe";
 import { bookingEventNow, publishBooking } from "@/lib/realtime";
 import {
   adminPaymentStatusSchema,
@@ -40,7 +38,9 @@ function serviceTotalCents(booking: BookingRow): number {
   return booking.priceCents + booking.addonsCents;
 }
 
-// --- Card payment via the PowerTranz hosted page (customer, after acceptance) --
+// --- Card payment via Stripe Checkout (customer, after acceptance) -------------
+// Cash-first: until Stripe keys are configured this action politely refuses
+// and the UI never offers the card button in the first place.
 
 export async function createBookingCheckout(
   input: unknown
@@ -49,7 +49,7 @@ export async function createBookingCheckout(
     const user = await requireUser();
     const parsed = checkoutSchema.safeParse(input);
     if (!parsed.success) return err(ERR.badRequest);
-    if (!gatewayConfigured()) {
+    if (!stripeConfigured()) {
       return err(
         "Card payments are not set up yet — choose cash at the meeting instead."
       );
@@ -101,18 +101,18 @@ export async function createBookingCheckout(
       })
       .returning({ id: payments.id });
 
-    // PowerTranz hosted page: the customer enters their card on the
-    // gateway's page (card data never touches this app), completes 3DS, and
-    // the gateway posts the outcome to /api/pay/callback which finalizes.
-    const init = await initiateHostedPayment({
+    // Stripe Checkout: the customer pays on Stripe's page (card data never
+    // touches this app); the webhook at /api/stripe/webhook finalizes.
+    const url = await createBookingCheckoutSession({
       amountCents: serviceTotal + tipCents,
-      orderId: booking.code,
-      responseUrl: appUrl(
-        `/api/pay/callback?kind=booking&payment=${payment.id}&booking=${booking.id}`
-      ),
+      bookingCode: booking.code,
+      serviceName: booking.serviceName,
+      paymentId: payment.id,
+      bookingId: booking.id,
+      customerEmail: user.email,
     });
-    const token = storeRedirectPage(init.redirectData);
-    return ok({ url: appUrl(`/api/pay/session/${token}`) });
+    if (!url) return err(ERR.server);
+    return ok({ url });
   } catch (error) {
     return err(guardErrorMessage(error));
   }
@@ -346,10 +346,14 @@ export async function adminResolvePendingPayment(
       return err("This payment just changed state — reload and check again.");
     }
 
-    const [booking] = await db
-      .select()
-      .from(bookings)
-      .where(eq(bookings.id, payment.bookingId));
+    const booking = payment.bookingId
+      ? (
+          await db
+            .select()
+            .from(bookings)
+            .where(eq(bookings.id, payment.bookingId))
+        )[0]
+      : undefined;
 
     // Marking a cash payment collected confirms the booking the same way a
     // worker recording it would.
@@ -405,13 +409,13 @@ export async function refundPayment(input: unknown): Promise<ActionResult<undefi
     if (payment.status !== "succeeded") return err("Only succeeded payments can be refunded.");
 
     if (payment.method === "card" && payment.gatewayTransactionId) {
-      const refunded = await refundGatewayPayment(
+      const refunded = await refundStripePayment(
         payment.gatewayTransactionId,
         payment.amountCents
       );
       if (!refunded) {
         return err(
-          "The gateway declined the refund — process it from the PowerTranz portal, then mark it here."
+          "Stripe declined the refund — process it from the Stripe dashboard, then mark it here."
         );
       }
     }
@@ -424,10 +428,14 @@ export async function refundPayment(input: unknown): Promise<ActionResult<undefi
         and(eq(payments.id, payment.id), eq(payments.status, "succeeded"))
       );
 
-    const [booking] = await db
-      .select()
-      .from(bookings)
-      .where(eq(bookings.id, payment.bookingId));
+    const booking = payment.bookingId
+      ? (
+          await db
+            .select()
+            .from(bookings)
+            .where(eq(bookings.id, payment.bookingId))
+        )[0]
+      : undefined;
     if (
       booking &&
       booking.status !== "refunded" &&

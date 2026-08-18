@@ -5,17 +5,20 @@ import toast from "react-hot-toast";
 import {
   addWorkerMedia,
   deleteWorkerMedia,
-  setWorkerMediaCategory,
+  setWorkerMediaGig,
 } from "@/actions/worker";
 import FileUploadButton from "@/components/ui/FileUploadButton";
-import type { ServiceCategoryRow, WorkerMediaRow } from "@/types";
+import type { WorkerMediaRow } from "@/types";
+
+// Just enough gig to label the tag dropdown.
+type GigOption = { id: string; title: string };
 
 export default function MediaManager({
   media,
-  categories,
+  gigs,
 }: {
   media: WorkerMediaRow[];
-  categories: ServiceCategoryRow[];
+  gigs: GigOption[];
 }) {
   const router = useRouter();
 
@@ -40,13 +43,13 @@ export default function MediaManager({
     }
   }
 
-  async function handleCategory(mediaId: string, categoryId: string) {
-    const res = await setWorkerMediaCategory({
+  async function handleGig(mediaId: string, gigId: string) {
+    const res = await setWorkerMediaGig({
       mediaId,
-      categoryId: categoryId || null,
+      gigId: gigId || null,
     });
     if (res.ok) {
-      toast.success("Category updated");
+      toast.success(gigId ? "Tagged to gig" : "Shown on all gigs");
       router.refresh();
     } else {
       toast.error(res.error);
@@ -60,9 +63,9 @@ export default function MediaManager({
           <p className="text-sm text-ink">Photos & videos</p>
           <p className="mt-0.5 text-xs text-faint">
             JPG, PNG, WebP, GIF, MP4, WebM — up to 50 MB. Stored on this
-            server; the first photo becomes your cover. Tag each item with a
-            service category so it shows when customers view that category —
-            untagged media shows everywhere.
+            server; the first photo becomes your cover. Tag each item with one
+            of your gigs so it shows on that gig&apos;s gallery — untagged
+            media shows everywhere.
           </p>
         </div>
         <FileUploadButton
@@ -100,14 +103,14 @@ export default function MediaManager({
               )}
               <select
                 className="input mt-0 w-full rounded-none border-x-0 border-b-0 text-xs"
-                value={m.categoryId ?? ""}
-                onChange={(e) => handleCategory(m.id, e.target.value)}
-                aria-label="Media category"
+                value={m.gigId ?? ""}
+                onChange={(e) => handleGig(m.id, e.target.value)}
+                aria-label="Show on gig"
               >
-                <option value="">All categories</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
+                <option value="">Show on: all gigs</option>
+                {gigs.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    Show on: {g.title}
                   </option>
                 ))}
               </select>

@@ -1,7 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { chatRooms, users, workers } from "@/db/schema";
+import { bookings, chatRooms, users, workers } from "@/db/schema";
 import { isModeratingStaff } from "@/lib/guards";
+import { hasChatAccess } from "@/lib/membership";
 import type {
   ChatParticipantRole,
   ChatRoomRow,
@@ -77,4 +78,46 @@ export function chatSenderLabel(
 ): string {
   if (senderUserId === access.worker.userId) return access.worker.stageName;
   return access.customer.name?.split(" ")[0] ?? "Customer";
+}
+
+// --- The Chat Pass paywall -----------------------------------------------------
+
+// Coordination is never paywalled: a customer with a LIVE booking with this
+// worker may always message them — "here's my gate code, I'm running late"
+// cannot sit behind a subscription. The Chat Pass buys the rest: opening a
+// conversation with any worker before (or without) booking them.
+const LIVE_BOOKING_STATUSES = [
+  "pending",
+  "accepted",
+  "confirmed",
+  "in_progress",
+] as const;
+
+export async function hasLiveBookingWith(
+  customerId: string,
+  workerId: string
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: bookings.id })
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.customerId, customerId),
+        eq(bookings.workerId, workerId),
+        inArray(bookings.status, [...LIVE_BOOKING_STATUSES])
+      )
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+// May this customer SEND into this pair's room right now? (Workers always
+// may; staff never may — those rules live in the action.) Reading an
+// existing room stays open even when lapsed; only the composer locks.
+export async function customerCanSendChat(
+  customerId: string,
+  workerId: string
+): Promise<boolean> {
+  if (await hasChatAccess(customerId)) return true;
+  return hasLiveBookingWith(customerId, workerId);
 }

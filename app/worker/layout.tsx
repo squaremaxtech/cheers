@@ -7,11 +7,12 @@ import { getUserRow } from "@/lib/auth";
 const nav = [
   { href: "/worker", label: "Overview" },
   { href: "/worker/bookings", label: "Bookings" },
+  { href: "/worker/quotes", label: "Quotes" },
   { href: "/worker/safety", label: "Safety" },
   { href: "/chats", label: "Messages" },
   { href: "/worker/profile", label: "Profile" },
   { href: "/worker/media", label: "Media" },
-  { href: "/worker/services", label: "Services" },
+  { href: "/worker/gigs", label: "Gigs" },
   { href: "/worker/availability", label: "Availability" },
   { href: "/worker/earnings", label: "Earnings" },
 ];

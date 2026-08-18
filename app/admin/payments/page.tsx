@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, isNotNull } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { bookings, payments, payouts, workers } from "@/db/schema";
+import { bookings, payments, payouts, rides, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import PaymentAdminActions from "@/components/admin/PaymentAdminActions";
 import PayoutControls from "@/components/admin/PayoutControls";
@@ -12,10 +12,17 @@ export const metadata: Metadata = { title: "Payments — Admin" };
 
 export default async function AdminPaymentsPage() {
   const [paymentRows, payoutRows, uncovered] = await Promise.all([
+    // A payment belongs to a booking OR a ride (bookingId is nullable) —
+    // left-join both so ride card payments show up too once Stripe is live.
     db
-      .select({ payment: payments, code: bookings.code })
+      .select({
+        payment: payments,
+        bookingCode: bookings.code,
+        rideCode: rides.code,
+      })
       .from(payments)
-      .innerJoin(bookings, eq(payments.bookingId, bookings.id))
+      .leftJoin(bookings, eq(payments.bookingId, bookings.id))
+      .leftJoin(rides, eq(payments.rideId, rides.id))
       .orderBy(desc(payments.createdAt))
       .limit(100),
     db
@@ -80,6 +87,7 @@ export default async function AdminPaymentsPage() {
     { method: "card" | "cash"; tipCents: number }[]
   >();
   for (const r of paymentRowsForUncovered) {
+    if (!r.bookingId) continue; // ride payments carry rideId instead
     const list = paymentsByBooking.get(r.bookingId) ?? [];
     list.push({ method: r.method, tipCents: r.tipCents });
     paymentsByBooking.set(r.bookingId, list);
@@ -144,7 +152,7 @@ export default async function AdminPaymentsPage() {
           <table className="w-full min-w-[680px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-faint">
-                <th className="p-3">Booking</th>
+                <th className="p-3">Booking / Ride</th>
                 <th className="p-3">Amount</th>
                 <th className="p-3">Tip</th>
                 <th className="p-3">Fee</th>
@@ -154,9 +162,11 @@ export default async function AdminPaymentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-hairline">
-              {paymentRows.map(({ payment, code }) => (
+              {paymentRows.map(({ payment, bookingCode, rideCode }) => (
                 <tr key={payment.id}>
-                  <td className="p-3 text-faint">{code}</td>
+                  <td className="p-3 text-faint">
+                    {bookingCode ?? rideCode ?? "—"}
+                  </td>
                   <td className="p-3 text-ink">{formatCents(payment.amountCents)}</td>
                   <td className="p-3 text-muted">{formatCents(payment.tipCents)}</td>
                   <td className="p-3 text-muted">

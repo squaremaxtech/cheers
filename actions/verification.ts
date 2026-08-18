@@ -12,7 +12,6 @@ import {
   requireUser,
   requireVerificationReviewer,
 } from "@/lib/guards";
-import { freeAccessActive, hasMembershipAccess } from "@/lib/membership";
 import { notify, notifyVerificationTeam } from "@/lib/notify";
 import { removeStoredUpload } from "@/lib/uploads";
 import { getCustomerVerification } from "@/lib/verification";
@@ -105,12 +104,11 @@ export async function completeCustomerOnboarding(): Promise<
     if (user.role !== "customer") return err(ERR.forbidden);
     if (user.onboardedAt) return ok(undefined); // already done — idempotent
 
+    // Onboarding = profile + ID document only. No membership step: browsing
+    // and booking are free; the Chat Pass is sold where chat is, not here.
     const verification = await getCustomerVerification(user.id);
     if (!verification) {
       return err("Please submit your ID document first.");
-    }
-    if (!freeAccessActive() && !(await hasMembershipAccess(user.id))) {
-      return err("An active membership is required to continue.");
     }
 
     await db

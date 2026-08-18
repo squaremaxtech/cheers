@@ -54,6 +54,9 @@ export async function submitReview(input: unknown): Promise<ActionResult<undefin
       .where(eq(reviews.bookingId, booking.id));
     if (existing) return err("You already reviewed this booking.");
 
+    // Auto-publish: the review is live immediately (schema default
+    // 'approved') and the public rating updates in the same breath. Admin
+    // takedown (moderateReview below) is the counterweight.
     await db.insert(reviews).values({
       bookingId: booking.id,
       customerId: user.id,
@@ -62,21 +65,23 @@ export async function submitReview(input: unknown): Promise<ActionResult<undefin
       body: parsed.data.body,
       anonymous: parsed.data.anonymous,
     });
+    await refreshWorkerRating(booking.workerId);
 
     await notifyAdmins({
       type: "review_submitted",
-      title: "New review awaiting moderation",
-      body: `A ${parsed.data.rating}-star review for booking ${booking.code} needs approval.`,
+      title: "New review published",
+      body: `A ${parsed.data.rating}-star review for booking ${booking.code} is live. Take it down from Admin → Reviews if it breaks the rules.`,
     });
 
     revalidatePath("/bookings");
+    revalidatePath("/browse");
     return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));
   }
 }
 
-// Admin/support moderation. Approval updates the worker's public rating.
+// Admin/support takedown (or restore). Either way the rating cache follows.
 export async function moderateReview(input: unknown): Promise<ActionResult<undefined>> {
   try {
     const staff = await requireStaff();

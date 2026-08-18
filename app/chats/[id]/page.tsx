@@ -9,6 +9,7 @@ import { getUserRow } from "@/lib/auth";
 import {
   chatSenderLabel,
   chatSenderRole,
+  customerCanSendChat,
   loadChatAccess,
 } from "@/lib/chat-access";
 import { isOnline } from "@/lib/presence";
@@ -25,6 +26,15 @@ export default async function ChatRoomPage(props: PageProps<"/chats/[id]">) {
 
   const access = await loadChatAccess(user, id);
   if (!access) notFound();
+
+  // The Chat Pass paywall, decided server-side. Workers always send; staff
+  // never do (read-only, enforced in the action); a customer needs a live
+  // pass OR a live booking with this worker (coordination is never
+  // paywalled). Reading the thread stays open either way.
+  const canSend =
+    access.viewerRole === "customer"
+      ? await customerCanSendChat(user.id, access.worker.id)
+      : access.viewerRole === "worker";
 
   // Rooms are pruned to the message cap, so "all" is bounded (~1k rows).
   const rows = await db
@@ -93,6 +103,7 @@ export default async function ChatRoomPage(props: PageProps<"/chats/[id]">) {
         <ChatRoom
           roomId={access.room.id}
           viewerRole={access.viewerRole}
+          canSend={canSend}
           initialMessages={messages}
           counterpartLabel={counterpart}
           initialOnline={counterpartOnline}

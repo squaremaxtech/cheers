@@ -1,49 +1,37 @@
 "use server";
 
-import { db } from "@/db";
-import { membershipPayments } from "@/db/schema";
 import { err, ok } from "@/lib/action-result";
-import { membershipPriceCents } from "@/lib/constants";
 import { guardErrorMessage, requireUser } from "@/lib/guards";
 import {
-  appUrl,
-  gatewayConfigured,
-  initiateHostedPayment,
-  storeRedirectPage,
-} from "@/lib/powertranz";
+  createChatPassCheckoutSession,
+  stripeConfigured,
+} from "@/lib/stripe";
 import type { ActionResult } from "@/types";
 
-// Start a membership payment (join or renew) through the PowerTranz hosted
-// page. Memberships are prepaid fixed-term passes tracked locally: each
-// successful payment extends currentPeriodEnd by MEMBERSHIP_PERIOD_DAYS on
-// top of whatever time is left (see /api/pay/callback), so paying early
-// never loses days. returnTo picks where the gateway sends the customer
-// back — the membership page (default) or the first-login /welcome wizard.
-export async function createMembershipCheckout(
+// Start the $5/month Chat Pass subscription through Stripe Checkout. Status
+// and renewal are webhook-driven from then on (/api/stripe/webhook).
+//
+// Cash-first: while Stripe is not configured this refuses — and the launch
+// FREE_ACCESS_UNTIL flag keeps chat open for everyone in the meantime, so
+// nobody hits a wall they cannot pay through.
+export async function createChatPassCheckout(
   returnTo?: "membership" | "welcome"
 ): Promise<ActionResult<{ url: string }>> {
   try {
     const user = await requireUser();
-    if (!gatewayConfigured()) {
-      return err("Memberships are not configured yet.");
+    if (!stripeConfigured()) {
+      return err(
+        "Online payments are not live yet — the Chat Pass is free for now."
+      );
     }
 
-    const amountCents = membershipPriceCents();
-    const [row] = await db
-      .insert(membershipPayments)
-      .values({ userId: user.id, amountCents })
-      .returning({ id: membershipPayments.id });
-
-    const returnPath = returnTo === "welcome" ? "welcome" : "membership";
-    const init = await initiateHostedPayment({
-      amountCents,
-      orderId: `MEM-${row.id.slice(0, 8).toUpperCase()}`,
-      responseUrl: appUrl(
-        `/api/pay/callback?kind=membership&mp=${row.id}&return=${returnPath}`
-      ),
+    const url = await createChatPassCheckoutSession({
+      userId: user.id,
+      customerEmail: user.email,
+      returnPath: returnTo === "welcome" ? "/welcome" : "/membership",
     });
-    const token = storeRedirectPage(init.redirectData);
-    return ok({ url: appUrl(`/api/pay/session/${token}`) });
+    if (!url) return err("Could not start checkout. Please try again.");
+    return ok({ url });
   } catch (error) {
     return err(guardErrorMessage(error));
   }

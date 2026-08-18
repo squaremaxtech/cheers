@@ -5,6 +5,7 @@ import { db } from "@/db";
 import {
   bookings,
   customerVerifications,
+  driverVerifications,
   payments,
   safetyAlerts,
   safetySessions,
@@ -25,6 +26,7 @@ export default async function AdminDashboard() {
     [workerCount],
     [pendingVerifications],
     [pendingWorkers],
+    [pendingDrivers],
     recent,
     [openAlerts],
     [liveSessions],
@@ -44,6 +46,10 @@ export default async function AdminDashboard() {
       .select({ n: count() })
       .from(workers)
       .where(and(eq(workers.verified, false), eq(workers.suspended, false))),
+    db
+      .select({ n: count() })
+      .from(driverVerifications)
+      .where(eq(driverVerifications.status, "pending")),
     db
       .select()
       .from(bookings)
@@ -77,6 +83,7 @@ export default async function AdminDashboard() {
 
   const pendingCount = pendingVerifications?.n ?? 0;
   const pendingWorkerCount = pendingWorkers?.n ?? 0;
+  const pendingDriverCount = pendingDrivers?.n ?? 0;
   const alertCount = openAlerts?.n ?? 0;
   const liveCount = liveSessions?.n ?? 0;
 
@@ -144,6 +151,22 @@ export default async function AdminDashboard() {
             <span className="ml-3">
               worker profile{pendingWorkerCount === 1 ? "" : "s"} awaiting
               approval (hidden from the site until approved)
+            </span>
+          </p>
+          <span className="text-sm text-gold">Review →</span>
+        </Link>
+      )}
+
+      {pendingDriverCount > 0 && (
+        <Link
+          href="/admin/drivers"
+          className="card flex items-center justify-between gap-3 border-warn/40 p-4 hover:border-warn"
+        >
+          <p className="text-sm text-ink">
+            <Badge tone="warn">{pendingDriverCount}</Badge>
+            <span className="ml-3">
+              driver verification{pendingDriverCount === 1 ? "" : "s"} awaiting
+              review (profile goes live on approval)
             </span>
           </p>
           <span className="text-sm text-gold">Review →</span>

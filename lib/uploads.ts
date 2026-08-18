@@ -43,10 +43,20 @@ export const RECEIPTS_SUBDIR = "receipts";
 export const IDENTITY_SUBDIR = "identity";
 export const CHAT_SUBDIR = "chat";
 
-export type UploadKind = "media" | "receipt" | "identity" | "chat";
+// "driver" = a driver's PUBLIC profile photos (face, vehicle). Stored under
+// uploads/users/<userId>/ — the same folder and public /api/media/users/...
+// shape as worker profile media — but image-only and open to driver-marketplace
+// users rather than workers (authorization lives in app/api/uploads/route.ts).
+export type UploadKind = "media" | "receipt" | "identity" | "chat" | "driver";
 
 export function isUploadKind(v: unknown): v is UploadKind {
-  return v === "media" || v === "receipt" || v === "identity" || v === "chat";
+  return (
+    v === "media" ||
+    v === "receipt" ||
+    v === "identity" ||
+    v === "chat" ||
+    v === "driver"
+  );
 }
 
 // Identity documents and chat messages are image-only; profile media and
@@ -63,6 +73,11 @@ const KIND_RULES: Record<
   },
   chat: {
     extensions: ["jpg", "jpeg", "png", "webp", "gif"],
+    maxBytes: MAX_IMAGE_UPLOAD_BYTES,
+  },
+  // Driver face/vehicle photos are plain images — no videos, no gifs.
+  driver: {
+    extensions: ["jpg", "jpeg", "png", "webp"],
     maxBytes: MAX_IMAGE_UPLOAD_BYTES,
   },
 };

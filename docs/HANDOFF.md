@@ -4,11 +4,15 @@
 
 ## 1. Project Summary
 
-**Cheers** — a premium marketplace (Jamaica) where customers browse & book workers for events; workers manage profiles/availability/earnings; admin overrides everything.
+**Cheers** — Jamaica's open services marketplace (v2, 2026-08): workers publish
+gigs (any trade — entertainers, plumbers, DJs, engineers), customers browse
+free and book, drivers advertise transport and negotiate fares (inDrive
+model), a $5/month Chat Pass unlocks messaging, and admin oversees with
+takedowns rather than queues. Cash-first; Stripe is a dormant online layer.
 
-- Full original spec: see `docs/SPEC.md` (verbatim requirements from the owner).
-- Stack: Next.js 16.2.10 (App Router) · TypeScript · Tailwind v4 · PostgreSQL (VPS db name: `cheers`) · Drizzle ORM · Zod · Server Actions · NextAuth (magic link + Google) · Stripe (5% platform fee, tips 100% to worker) · Nodemailer · Google Maps API.
-- Roles: **4 user types** — `customer`, `worker`, `support`, `admin`. Support staff carry a sub-role in `users.supportRole`: `customer_support`, `supervisor`, `driver`, or `safety_monitor`.
+- Full original spec: see `docs/SPEC.md` (verbatim requirements from the owner — note the v2 reform supersedes its category/membership model; see the 2026-08-17 update below).
+- Stack: Next.js 16.2.10 (App Router) · TypeScript · Tailwind v4 · PostgreSQL (VPS db name: `cheers`) · Drizzle ORM · Zod · Server Actions · NextAuth (magic link + Google) · Stripe (dormant until keys; 5% platform fee, tips 100% to worker) · Nodemailer · Google Maps API.
+- Roles: **5 user types** — `customer`, `worker`, `driver`, `support`, `admin`. Support staff carry a sub-role in `users.supportRole`: `customer_support`, `supervisor`, or `safety_monitor` (`driver` sub-role retired → marketplace role).
 - `.env` already exists on the owner's machines (git-ignored, cannot be read by Claude due to permission settings). `.env.example` documents every variable the code expects — **owner must reconcile names with their real `.env`**.
 
 ## 2. Current Status
@@ -30,6 +34,109 @@
 | Admin dashboard | ✅ (overview metrics, workers w/ verify-hide-suspend, bookings w/ full override + reassign, payments + refunds + weekly payouts, reviews moderation, reports + CSV export, settings) + /driver transport view |
 | Seed script | ✅ (`npm run db:seed` — catalog seeded on VPS; admin stub created for owner email) |
 | Verify (typecheck, build, db push) | ✅ `tsc --noEmit` clean, `next build` succeeds, schema pushed to VPS db `cheers`, catalog + admin seeded (2026-07-05) |
+
+**2026-08-17 update — MARKETPLACE REFORM (v2): gigs, drivers, Chat Pass, Stripe-dormant.**
+The platform pivoted from a curated two-category booking site to **Jamaica's
+open services marketplace**, redesigned around LOW OWNER OPS: automation over
+queues, policy over judgment, cash-first with online payments as a dormant
+layer that lights up when Stripe credentials exist.
+
+- **Gigs replace the fixed catalog** (Fiverr model). `gigs` (worker-authored:
+  title, per-worker slug, category, tags[], description, `pricingMode
+  fixed|quote`, price, duration, per-gig `safetyMonitored`, active,
+  admin `suspended`), `gig_categories` (broad admin-editable browse taxonomy,
+  8 seeded), `gig_addons`. `worker_media.gig_id` replaces category tagging;
+  `bookings.gig_id` (+ `serviceName` snapshot) replaces `service_type_id`.
+  Browse is **gig-centric** (`lib/gigs.ts getGigCards`); profiles show a gig
+  list with per-gig galleries. `workers.baseRateCents` is now derived
+  (cheapest live gig, `syncWorkerBaseRate`). Old tables
+  (service_categories/types, worker_services, service_addons) are dropped by
+  the migration.
+- **Quote mode** for trades that can't publish one price (plumbers,
+  engineers): `quotes` table — customer describes the job → worker sends ONE
+  priced offer (`sendQuoteOffer`) → customer accepts
+  (`acceptQuoteOffer`, creates the booking already `accepted` via the shared
+  `claimBookingSlot` in lib/bookings.ts) or declines. Pages: `/quotes`
+  (customer), `/worker/quotes` (worker inbox).
+- **Worker signup is OPEN** — invite codes deleted (`worker_invites`
+  dropped); the admin-approval gate (`workers.verified`) still hides profiles
+  until approved. Gigs auto-publish for approved workers; admin takedown =
+  `gigs.suspended` (`adminSetGigSuspended`, audited).
+- **Reviews auto-publish** (default `approved`, rating cache updates on
+  submit); `/admin/reviews` is takedown/restore, not a pre-moderation queue.
+  Migration approves legacy pending rows and recomputes caches.
+- **Drivers are a first-class marketplace role** (inDrive model).
+  `users.role` gains `driver` (support sub-role migrated & retired).
+  `drivers` profile (face photo, vehicle + photo + plate, per-km/min fare,
+  verified/active/suspended, rating cache), `driver_verifications` (ID +
+  licence, staff-reviewed like customers; **approval also flips
+  drivers.verified — one step**), `rides` (rider names a price; ASAP or
+  scheduled; expiry), `ride_offers` (accept-as-is `driverAcceptRequest` or
+  counter `driverMakeOffer`; rider picks `riderAcceptOffer`; lifecycle
+  requested→accepted→arriving→picked_up→completed with CAS transitions in
+  lib/rides.ts), `ride_events`, `ride_reviews` (auto-publish + driver rating
+  cache). Riders are customers OR workers (optional `bookingId` link — "get
+  a ride to my gig"). Realtime: per-ride SSE channel + a global driver
+  request board channel (lib/realtime.ts). Cash fares at launch,
+  **platform fee on rides = 0 until online payments** (no chasing drivers
+  for cash pennies). Surfaces: `/drivers` directory, `/driver/*` dashboard
+  (onboarding, requests board, rides), `/rides/*` rider flow.
+  `booking_drivers` transport dispatch still exists and now draws from
+  marketplace drivers (`isDriver` = role check; assignment still scopes
+  booking-room access).
+- **Membership → Chat Pass ($5/month), chat is the paywall.**
+  Browsing free; **booking never requires a subscription** (env lever
+  `BOOKING_REQUIRES_SUBSCRIPTION=on` exists for after launch year);
+  `hasChatAccess` (lib/membership.ts) gates `openChatRoom`/`sendChatMessage`
+  for customers, with the **booked-pair exemption** (`customerCanSendChat` in
+  lib/chat-access.ts — a live booking always unlocks that pair's room;
+  coordination is never paywalled). Workers always reply free; lapsed pass =
+  composer locks, reading stays. `FREE_ACCESS_UNTIL` = launch flag keeping
+  chat free (this is the cash-era mode). The `/welcome` wizard dropped its
+  membership step (profile + ID only).
+- **PowerTranz removed; Stripe is the dormant online-payments layer.**
+  `lib/stripe.ts` (Checkout for bookings, Billing subscription for the Chat
+  Pass, refunds) + `app/api/stripe/webhook` (signature-verified, idempotent
+  CAS promotions; conflict auto-refund, cash→card switch, subscription
+  status/period sync ported from the old callback). `stripeConfigured()`
+  (STRIPE_SECRET_KEY present) gates every card/subscribe surface — **the app
+  is fully functional cash-only with no keys**. payments.booking_id is
+  nullable + payments.ride_id added. Dormant Connect columns:
+  users.stripe_customer_id, workers/drivers.stripe_account_id,
+  memberships.stripe_customer_id/subscription_id. NEXT PHASE once the
+  owner's US LLC + Stripe account exist: Connect recipient accounts +
+  transfers-on-completion (Jamaica is a supported cross-border payout
+  recipient), Stripe Identity replacing manual doc review, card-on-file
+  auto-billing of platform fees for cash jobs (replaces the negative-payout
+  ledger).
+- **Safety right-sized for an unstaffed platform.** The escalation ladder now
+  has two shapes (lib/constants.ts `escalationLadder()`): default UNSTAFFED —
+  trusted contacts first, owner/admins in the same breath, all staff later;
+  `SAFETY_STAFFED_DESK=on` restores the monitor-first ladder when real staff
+  exist. **Monitoring is per-gig opt-in** (`gigs.safetyMonitored` →
+  `bookings.monitored` snapshot): unmonitored bookings never open a safety
+  session (nothing for the scheduler to chase — no false pages), while SOS,
+  duress PIN, location sharing and the PIN meeting-start all still work.
+- **Migration:** `npm run db:migrate-v2` (idempotent, single transaction) —
+  rebuilds user_role with 'driver', creates all new tables/columns/enums,
+  seeds gig categories, converts worker_services→gigs (+addons, media tags,
+  booking links), drops the old catalog + worker_invites, approves pending
+  reviews + recomputes caches, moves staff drivers to the driver role. Run it
+  BEFORE `npm run db:push` on each database.
+- **Env:** new — `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+  `CHAT_PASS_PRICE_CENTS` (default 500), `BOOKING_REQUIRES_SUBSCRIPTION`
+  (default off), `SAFETY_STAFFED_DESK` (default off),
+  `RIDE_BASE_FARE_CENTS` (300) / `RIDE_PER_KM_CENTS` (150). Removed — all
+  `POWERTRANZ_*`. `FREE_ACCESS_UNTIL` now means "Chat Pass free until".
+  `MEMBERSHIP_PRICE_CENTS` still read as a fallback for the pass price.
+- **Stripe prerequisites for the owner** (when ready): US (or UK/EEA/CA/CH)
+  entity + Stripe account; confirm cross-border payouts to Jamaica (recently
+  added, jm_bank_account) on the account; webhook endpoint
+  `/api/stripe/webhook` with events `checkout.session.completed`,
+  `checkout.session.expired`, `invoice.paid`,
+  `customer.subscription.updated`, `customer.subscription.deleted`,
+  `charge.refunded`. Chargebacks land on the platform (merchant of record) —
+  owner accepted this trade.
 
 **2026-07-06 update:** multi-agent code review ran (8 angles, 47 candidates, all
 verified money/lifecycle findings CONFIRMED and fixed — see `docs/DEV-REVIEW.md`

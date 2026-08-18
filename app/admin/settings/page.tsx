@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import Badge from "@/components/ui/Badge";
-import { PLATFORM_FEE_PERCENT } from "@/lib/constants";
+import {
+  bookingRequiresChatPass,
+  chatPassPriceCents,
+  formatCents,
+  PLATFORM_FEE_PERCENT,
+  staffedSafetyDesk,
+  stripeConfigured,
+} from "@/lib/constants";
 import { freeAccessActive } from "@/lib/membership";
 
 export const metadata: Metadata = { title: "Settings — Admin" };
@@ -14,21 +21,42 @@ export default function AdminSettingsPage() {
       env: "PLATFORM_FEE_PERCENT",
     },
     {
-      label: "Free access period",
-      value: freeAccessActive()
-        ? `Active until ${process.env.FREE_ACCESS_UNTIL}`
-        : "Inactive — membership required",
-      env: "FREE_ACCESS_UNTIL",
-    },
-    {
-      label: "Membership price",
-      value: process.env.STRIPE_MEMBERSHIP_PRICE_ID ? "Configured" : "Not set",
-      env: "STRIPE_MEMBERSHIP_PRICE_ID",
+      label: "Online payments (Stripe)",
+      value: stripeConfigured()
+        ? "Live — card buttons and Chat Pass checkout shown"
+        : "Not set — dormant (cash-first, card UI hidden)",
+      env: "STRIPE_SECRET_KEY",
     },
     {
       label: "Stripe webhook",
       value: process.env.STRIPE_WEBHOOK_SECRET ? "Configured" : "Not set",
       env: "STRIPE_WEBHOOK_SECRET",
+    },
+    {
+      label: "Chat Pass price",
+      value: `${formatCents(chatPassPriceCents())}/month`,
+      env: "CHAT_PASS_PRICE_CENTS",
+    },
+    {
+      label: "Free chat period",
+      value: freeAccessActive()
+        ? `Active until ${process.env.FREE_ACCESS_UNTIL} — chat free for everyone`
+        : "Inactive — Chat Pass required to message",
+      env: "FREE_ACCESS_UNTIL",
+    },
+    {
+      label: "Booking requires Chat Pass",
+      value: bookingRequiresChatPass()
+        ? "On — bookings need an active pass"
+        : "Off — booking is subscription-free",
+      env: "BOOKING_REQUIRES_SUBSCRIPTION",
+    },
+    {
+      label: "Safety desk staffing",
+      value: staffedSafetyDesk()
+        ? "Staffed — monitors paged first"
+        : "Unstaffed — trusted contacts + owner paged first",
+      env: "SAFETY_STAFFED_DESK",
     },
     {
       label: "Google Maps",
