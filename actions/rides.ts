@@ -232,7 +232,9 @@ export async function driverMakeOffer(
 
     const isFirstOffer = !existing;
     if (existing) {
-      await db
+      // Never reprice an offer the rider has already accepted — a reprice
+      // racing the accept must lose, not silently reopen a locked fare.
+      const updated = await db
         .update(rideOffers)
         .set({
           priceCents: parsed.data.priceCents,
@@ -240,7 +242,13 @@ export async function driverMakeOffer(
           status: "open",
           updatedAt: new Date(),
         })
-        .where(eq(rideOffers.id, existing.id));
+        .where(
+          and(eq(rideOffers.id, existing.id), ne(rideOffers.status, "accepted"))
+        )
+        .returning({ id: rideOffers.id });
+      if (updated.length === 0) {
+        return err("The rider already accepted your offer — open the ride room.");
+      }
     } else {
       await db.insert(rideOffers).values({
         rideId: ride.id,
@@ -330,17 +338,41 @@ export async function riderAcceptOffer(
       .where(and(eq(drivers.id, offer.driverId), ...publicDriverConditions()));
     if (!driver) return err("That driver is no longer available.");
 
-    await transitionRide({
-      ride: ctx.ride,
-      to: "accepted",
-      actorUserId: user.id,
-      note: `accepted ${driver.displayName}'s offer ${formatCents(offer.priceCents)}`,
-      set: { driverId: driver.id, finalFareCents: offer.priceCents },
-    });
-    await db
+    // Lock the offer at the price the rider actually saw: CAS on status AND
+    // price. A driver repricing in the same instant loses — otherwise the
+    // ride could record one fare while the offer row shows another.
+    const locked = await db
       .update(rideOffers)
       .set({ status: "accepted", updatedAt: new Date() })
-      .where(eq(rideOffers.id, offer.id));
+      .where(
+        and(
+          eq(rideOffers.id, offer.id),
+          eq(rideOffers.status, "open"),
+          eq(rideOffers.priceCents, offer.priceCents)
+        )
+      )
+      .returning({ id: rideOffers.id });
+    if (locked.length === 0) {
+      return err("That offer just changed — check the new price and try again.");
+    }
+
+    try {
+      await transitionRide({
+        ride: ctx.ride,
+        to: "accepted",
+        actorUserId: user.id,
+        note: `accepted ${driver.displayName}'s offer ${formatCents(offer.priceCents)}`,
+        set: { driverId: driver.id, finalFareCents: offer.priceCents },
+      });
+    } catch (error) {
+      // Lost the ride-level race (another accept, a cancel, an expiry) —
+      // release the offer so it isn't stuck 'accepted' on a ride it never got.
+      await db
+        .update(rideOffers)
+        .set({ status: "open", updatedAt: new Date() })
+        .where(eq(rideOffers.id, offer.id));
+      throw error;
+    }
     await db
       .update(rideOffers)
       .set({ status: "rejected", updatedAt: new Date() })

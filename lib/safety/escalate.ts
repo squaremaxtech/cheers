@@ -106,7 +106,16 @@ export async function raiseAlert(opts: {
   }
 
   const now = new Date();
-  const nextStage = escalationLadder()[1];
+  const ladder = escalationLadder();
+  // Every leading rung with afterMinutes 0 fires NOW, in this call — not on
+  // the next scheduler tick. The unstaffed ladder pages contacts AND the
+  // owner at stages 0/1 both at zero minutes; if the owner's rung waited for
+  // the scheduler, a covert (duress) alert — which skips the contacts rung —
+  // would reach nobody until the clock ticked, or never with the scheduler
+  // off. Immediate rungs are immediate.
+  let lastImmediate = 0;
+  while (ladder[lastImmediate + 1]?.afterMinutes === 0) lastImmediate++;
+  const nextStage = ladder[lastImmediate + 1];
   const [alert] = await db
     .insert(safetyAlerts)
     .values({
@@ -116,7 +125,7 @@ export async function raiseAlert(opts: {
       message: opts.message ?? null,
       raisedByUserId: opts.raisedByUserId ?? null,
       covert: opts.covert ?? false,
-      stage: 0,
+      stage: lastImmediate,
       nextEscalationAt: nextStage
         ? new Date(now.getTime() + nextStage.afterMinutes * MINUTE_MS)
         : null,
@@ -135,7 +144,9 @@ export async function raiseAlert(opts: {
   // watching a screen waits on SMTP.
   publishBooking(opts.bookingId, bookingEventNow("alert"));
   publishSafetyDesk();
-  void fireStage(alert, 0);
+  for (let stage = 0; stage <= lastImmediate; stage++) {
+    void fireStage(alert, stage);
+  }
   void notifyOverdueContacts(alert);
   return alert;
 }

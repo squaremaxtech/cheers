@@ -62,17 +62,10 @@ export async function openChatRoom(
     if (!worker) return err(ERR.notFound);
     if (worker.userId === user.id) return err("You cannot message yourself.");
 
-    // The Chat Pass paywall: starting a conversation needs an active pass —
-    // unless this pair has a live booking (coordination is never paywalled).
-    if (!(await customerCanSendChat(user.id, worker.id))) {
-      return err(
-        "Messaging workers needs an active Chat Pass ($5/month). Get yours from the Membership page."
-      );
-    }
-
     // Existing conversations stay reachable even if the worker later hides
-    // their profile; only STARTING a new one requires a publicly visible
-    // worker (admin-approved + active + not suspended).
+    // their profile (or the customer's Chat Pass lapses — reading stays
+    // open; only the composer locks, see sendChatMessage). Only STARTING a
+    // new one requires a publicly visible worker and an active pass.
     const [existing] = await db
       .select({ id: chatRooms.id })
       .from(chatRooms)
@@ -85,6 +78,14 @@ export async function openChatRoom(
     if (existing) return ok({ roomId: existing.id });
     if (!worker.verified || !worker.active || worker.suspended) {
       return err("This worker is not available right now.");
+    }
+    // The Chat Pass paywall: starting a NEW conversation needs an active
+    // pass — unless this pair has a live booking (coordination is never
+    // paywalled).
+    if (!(await customerCanSendChat(user.id, worker.id))) {
+      return err(
+        "Messaging workers needs an active Chat Pass ($5/month). Get yours from the Membership page."
+      );
     }
     // Anti-spam: cap brand-new conversations, not returning to old ones.
     if (

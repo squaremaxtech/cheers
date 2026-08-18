@@ -295,6 +295,11 @@ export async function acceptQuoteOffer(
       .innerJoin(workers, eq(gigs.workerId, workers.id))
       .where(eq(gigs.id, quote.gigId));
     if (!row || row.worker.suspended) return err("This gig is no longer available.");
+    // A block placed after the offer went out still wins — same silence as
+    // createBooking (the customer just sees "unavailable").
+    if (await workerHasBlocked(row.worker.id, user.id)) {
+      return err("This offer is no longer available.");
+    }
 
     // Claim the quote FIRST (CAS offered -> accepted), then create the
     // booking. If the slot claim then fails, the quote reverts to offered —
