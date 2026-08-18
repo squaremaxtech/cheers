@@ -82,9 +82,11 @@ async function main(): Promise<void> {
     }
 
     // --- 3. Gig tables -------------------------------------------------------
+    // Inline UNIQUEs are named drizzle-style (<table>_<col>_unique) so a
+    // later `drizzle-kit push` sees no drift.
     await client.query(`CREATE TABLE IF NOT EXISTS gig_categories (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      slug text NOT NULL UNIQUE,
+      slug text NOT NULL CONSTRAINT gig_categories_slug_unique UNIQUE,
       name text NOT NULL,
       blurb text,
       sort_order integer NOT NULL DEFAULT 0,
@@ -132,7 +134,7 @@ async function main(): Promise<void> {
 
     await client.query(`CREATE TABLE IF NOT EXISTS quotes (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      code text NOT NULL UNIQUE,
+      code text NOT NULL CONSTRAINT quotes_code_unique UNIQUE,
       gig_id uuid NOT NULL REFERENCES gigs(id) ON DELETE CASCADE,
       customer_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       worker_id uuid NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
@@ -222,7 +224,7 @@ async function main(): Promise<void> {
 
     await client.query(`CREATE TABLE IF NOT EXISTS rides (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      code text NOT NULL UNIQUE,
+      code text NOT NULL CONSTRAINT rides_code_unique UNIQUE,
       rider_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       driver_id uuid REFERENCES drivers(id) ON DELETE SET NULL,
       booking_id uuid REFERENCES bookings(id) ON DELETE SET NULL,

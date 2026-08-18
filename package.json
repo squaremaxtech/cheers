@@ -11,6 +11,7 @@
     "db:studio": "drizzle-kit studio",
     "db:migrate": "tsx db/migrate-updates.ts",
     "db:migrate-v2": "tsx db/migrate-v2.ts",
+    "db:backup": "tsx db/backup.ts",
     "db:migrate-safety": "tsx db/migrate-safety.ts",
     "db:migrate-uploads": "tsx db/migrate-uploads.ts",
     "db:seed": "tsx db/seed.ts",

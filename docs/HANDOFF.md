@@ -123,6 +123,17 @@ layer that lights up when Stripe credentials exist.
   booking links), drops the old catalog + worker_invites, approves pending
   reviews + recomputes caches, moves staff drivers to the driver role. Run it
   BEFORE `npm run db:push` on each database.
+  **APPLIED TO THE PRODUCTION DB 2026-08-18** (the only database): backup
+  taken first with the new `npm run db:backup` (all tables → git-ignored
+  `backups/<timestamp>.json`), then migrate-v2 (4 services→gigs, 4 add-ons,
+  7 bookings linked, 1 staff driver → driver role, old tables dropped),
+  unique-constraint names aligned to drizzle's `<table>_<col>_unique`,
+  `drizzle-kit push` = "Changes applied" with no prompts, then
+  `db:seed` + `db:seed-accounts` (Maxx now has 6 gigs incl. one quote-mode
+  unmonitored; Devon is a live driver "PP 5432"). Verified: every booking
+  has a gig_id, all media tagged, reviews approved. Nothing lost.
+- **`.env.example` was regenerated** — see the repo-root `env.example`
+  (rename it to `.env.example`; Claude can't write dot-env paths).
 - **Env:** new — `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
   `CHAT_PASS_PRICE_CENTS` (default 500), `BOOKING_REQUIRES_SUBSCRIPTION`
   (default off), `SAFETY_STAFFED_DESK` (default off),

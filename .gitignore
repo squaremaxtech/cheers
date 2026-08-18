@@ -42,3 +42,6 @@ next-env.d.ts
 
 # local media uploads (served via /api/media)
 /uploads
+
+# database backups (npm run db:backup) — contain personal data
+/backups
