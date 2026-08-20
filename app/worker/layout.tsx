@@ -8,6 +8,7 @@ const nav = [
   { href: "/worker", label: "Overview" },
   { href: "/worker/bookings", label: "Bookings" },
   { href: "/worker/quotes", label: "Quotes" },
+  { href: "/worker/jobs", label: "Job board" },
   { href: "/worker/safety", label: "Safety" },
   { href: "/chats", label: "Messages" },
   { href: "/worker/profile", label: "Profile" },

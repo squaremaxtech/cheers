@@ -5,7 +5,10 @@ import { eq } from "drizzle-orm";
 import { db, pool } from "./index";
 import { gigCategories, users } from "./schema";
 
-// The 8 launch categories — same list as db/migrate-v2.ts GIG_CATEGORIES
+// The 6 launch categories — same list as db/migrate-v2.ts GIG_CATEGORIES
+// (Food & Catering and Cleaning & Errands were retired 2026-08-19: Cheers
+// does not host catering or cleaning businesses — db/migrate-v3.ts retires
+// them in existing databases).
 // (copied, not imported: importing that module would execute the migration).
 // Categories are a browse taxonomy, not a limit on what workers can offer;
 // admins curate them at /admin/gigs.
@@ -14,10 +17,8 @@ const GIG_CATEGORIES: { slug: string; name: string; blurb: string }[] = [
   { slug: "music-performance", name: "Music & Performance", blurb: "DJs, singers, bands, sound systems" },
   { slug: "beauty-wellness", name: "Beauty & Wellness", blurb: "Massage, hair, makeup, nails, spa" },
   { slug: "home-trade", name: "Home & Trade", blurb: "Electricians, plumbers, carpenters, repairs" },
-  { slug: "food-catering", name: "Food & Catering", blurb: "Chefs, bartenders, catering, cakes" },
   { slug: "photo-video", name: "Photo & Video", blurb: "Photographers, videographers, editing" },
   { slug: "tech-professional", name: "Tech & Professional", blurb: "IT, engineering, tutoring, design, admin" },
-  { slug: "cleaning-errands", name: "Cleaning & Errands", blurb: "Cleaning, laundry, shopping, personal errands" },
 ];
 
 async function seed(): Promise<void> {

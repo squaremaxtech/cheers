@@ -34,6 +34,7 @@ takedowns rather than queues. Cash-first; Stripe is a dormant online layer.
 | Admin dashboard | ✅ (overview metrics, workers w/ verify-hide-suspend, bookings w/ full override + reassign, payments + refunds + weekly payouts, reviews moderation, reports + CSV export, settings) + /driver transport view |
 | Seed script | ✅ (`npm run db:seed` — catalog seeded on VPS; admin stub created for owner email) |
 | Verify (typecheck, build, db push) | ✅ `tsc --noEmit` clean, `next build` succeeds, schema pushed to VPS db `cheers`, catalog + admin seeded (2026-07-05) |
+| Job requests (customer-posted, worker-filled; manual / instant / best-price matching) | ✅ code complete 2026-08-19 (`actions/jobs.ts`, `lib/jobs.ts`, `/requests/*`, `/worker/jobs`, `/admin/requests`) — **DB migration `npm run db:migrate-v3` still to run on the VPS** |
 
 **2026-08-17 update — MARKETPLACE REFORM (v2): gigs, drivers, Chat Pass, Stripe-dormant.**
 The platform pivoted from a curated two-category booking site to **Jamaica's
@@ -45,7 +46,7 @@ layer that lights up when Stripe credentials exist.
   title, per-worker slug, category, tags[], description, `pricingMode
   fixed|quote`, price, duration, per-gig `safetyMonitored`, active,
   admin `suspended`), `gig_categories` (broad admin-editable browse taxonomy,
-  8 seeded), `gig_addons`. `worker_media.gig_id` replaces category tagging;
+  8 seeded — 6 since 2026-08-19, see below), `gig_addons`. `worker_media.gig_id` replaces category tagging;
   `bookings.gig_id` (+ `serviceName` snapshot) replaces `service_type_id`.
   Browse is **gig-centric** (`lib/gigs.ts getGigCards`); profiles show a gig
   list with per-gig galleries. `workers.baseRateCents` is now derived
@@ -148,6 +149,75 @@ layer that lights up when Stripe credentials exist.
   `customer.subscription.updated`, `customer.subscription.deleted`,
   `charge.refunded`. Chargebacks land on the platform (merchant of record) —
   owner accepted this trade.
+
+**2026-08-19 update — JOB REQUESTS (customers advertise, workers fill) + catering/cleaning retired.**
+The reverse marketplace, inDrive-style: instead of finding a gig, a customer
+posts what they need and approved workers come to them.
+
+- **Data:** `job_requests` (customer-authored: code `JB-…`, `categoryId`
+  = the gig category it is tagged to, title, description → becomes the
+  booking's instructions, tags[], `parish` + `area` public on the board,
+  `address`/lat/lng PRIVATE until matched, date/startTime/duration,
+  `budgetCents` = the customer's price, `matchMode`, `autoBookAt` /
+  `autoSettledAt`, status `open|matched|cancelled|expired` (expired is
+  derived from `expiresAt` = job start, like rides), `workerId` +
+  `bookingId` set on match) and `job_offers` (one live offer per worker per
+  request, `gigId` = which of the worker's LIVE gigs in that category
+  fulfils it, price, duration, note, `open|accepted|rejected|withdrawn`).
+  Enums `job_match_mode`, `job_request_status`, `job_offer_status`.
+- **Three match modes** (`lib/constants.ts JOB_MATCH_MODES`): `manual`
+  ("I'll choose" — offers queue, customer picks), `first_accept`
+  ("Instant" — the first eligible worker to offer AT OR UNDER the budget is
+  booked on the spot), `lowest_price` ("Best price by a deadline" — at
+  `autoBookAt` the scheduler books the cheapest offer ≤ budget; if the
+  cheapest worker is no longer free the next is tried; with none eligible
+  the request stays open for a manual pick and the customer is told). The
+  customer can always pick manually in any mode.
+- **One match core:** `lib/jobs.ts matchJobOffer` — CAS-lock the offer at
+  the price that was read, CAS the request open→matched, THEN
+  `claimBookingSlot` (booking starts `accepted`, customer pays/cash exactly
+  like a quote), reverting on failure; siblings rejected; worker emailed,
+  customer emailed on automatic matches, losers in-app only. Used by the
+  customer's accept, the instant path and the scheduler.
+- **Worker eligibility rail:** a worker can respond only with a live gig in
+  the request's category (`eligibleGigs`); must be approved + visible; the
+  worker's own customer blocks hide those requests and silently refuse
+  offers; the worker's schedule is pre-checked on offer (`slotConflictError`)
+  and re-checked under the lock on match.
+- **Scheduler:** `settleDueJobRequests` rides on the safety tick
+  (`lib/safety/scheduler.ts runTick`, isolated try/catch, CAS on
+  `autoSettledAt`).
+- **Realtime:** global worker job-board channel (`/api/jobs/board/stream`)
+  + per-request channel for the customer's room (`/api/jobs/[id]/stream`);
+  new postings also fan out an in-app row + web push (no email) to workers
+  with a live gig in the category (`notifyWorkersOfNewJob`).
+- **Surfaces:** customer `/requests` (list), `/requests/new` (form: LocationPicker
+  address, parish, date/time/duration, budget, mode, auto-book deadline with
+  quick-fill), `/requests/[id]` (live room: offers with public worker card,
+  Book / Pass, withdraw); worker `/worker/jobs` (live board — accept at budget
+  in one tap or counter-offer with price/duration/note/gig picker, "Only my
+  categories" filter, own-offer history) + "Jobs on the board" stat on the
+  overview; admin `/admin/requests` (table + audited force-close,
+  `job_request.force_close`). Browse and home carry "post a request" CTAs.
+  Nav: customer "Requests", worker "Job board", admin "Requests".
+- **Actions:** `actions/jobs.ts` — `postJobRequest` (booking gates apply at
+  POST time: ID-verified customer, `BOOKING_REQUIRES_SUBSCRIPTION` lever,
+  10/day), `cancelJobRequest` (owner or admin), `acceptJobOffer`,
+  `declineJobOffer`, `sendJobOffer` (one action for Accept and Counter;
+  instant mode books inline), `withdrawJobOffer`. Schemas in
+  `schemas/job.ts`. `lib/notify.ts` emails now honour `meta.url` for the
+  deep-link button.
+- **Catering & cleaning retired:** Cheers does not host catering or cleaning
+  businesses. `Food & Catering` and `Cleaning & Errands` removed from the
+  seed lists (6 launch categories now); `db/migrate-v3.ts` deactivates them
+  (deletes outright when no gig references them; gigs still tagged keep
+  working and can be re-homed from /admin/gigs).
+- **Migration:** `npm run db:migrate-v3` (idempotent, one transaction:
+  enums + tables + indexes + category retirement), then `npm run db:push`
+  (should report no changes). NOT yet run against the production DB by this
+  session — owner to run on deploy (take `npm run db:backup` first).
+- No new env. Verified: `tsc --noEmit` clean, `next build` succeeds, eslint
+  clean on touched files.
 
 **2026-07-06 update:** multi-agent code review ran (8 angles, 47 candidates, all
 verified money/lifecycle findings CONFIRMED and fixed — see `docs/DEV-REVIEW.md`

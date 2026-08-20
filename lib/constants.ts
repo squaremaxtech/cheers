@@ -93,6 +93,56 @@ export const QUOTE_DESCRIPTION_MAX_CHARS = 2000;
 export const QUOTES_PER_DAY = 10;
 
 // ---------------------------------------------------------------------------
+// Job requests (customer-posted work, worker-filled)
+// ---------------------------------------------------------------------------
+
+export const JOB_TITLE_MAX_CHARS = 80;
+export const JOB_DESCRIPTION_MAX_CHARS = 2000;
+export const JOB_TAGS_MAX = 6;
+// The budget the customer names — same floor as ride offers.
+export const JOB_BUDGET_MIN_CENTS = 100;
+// A "best price" auto-book window must give workers at least this long.
+export const JOB_AUTO_BOOK_MIN_MINUTES = 30;
+// Anti-abuse: requests per customer per day; offer updates per worker/min.
+export const JOB_REQUESTS_PER_DAY = 10;
+export const JOB_OFFERS_PER_MINUTE = 10;
+
+// How the customer wants a worker chosen (db enum job_match_mode). Shown on
+// the post form and on every request card so both sides read the same rule.
+export const JOB_MATCH_MODES = [
+  {
+    value: "manual",
+    label: "I'll choose",
+    hint: "Offers collect on your request; you pick the worker you want.",
+  },
+  {
+    value: "first_accept",
+    label: "Instant — first to accept",
+    hint: "The first approved worker to accept your budget (or less) is booked on the spot.",
+  },
+  {
+    value: "lowest_price",
+    label: "Best price by a deadline",
+    hint: "At the time you set, the cheapest offer at or under your budget is booked automatically. You can still pick sooner.",
+  },
+] as const;
+
+export function jobMatchModeLabel(mode: string): string {
+  return JOB_MATCH_MODES.find((m) => m.value === mode)?.label ?? mode;
+}
+
+export const JOB_REQUEST_STATUS_LABELS: Record<string, string> = {
+  open: "Open for offers",
+  matched: "Booked",
+  cancelled: "Cancelled",
+  expired: "Expired",
+};
+
+export function jobRequestStatusLabel(status: string): string {
+  return JOB_REQUEST_STATUS_LABELS[status] ?? status;
+}
+
+// ---------------------------------------------------------------------------
 // Rides (driver marketplace)
 // ---------------------------------------------------------------------------
 

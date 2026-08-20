@@ -3,14 +3,24 @@ import { db } from "@/db";
 import { notifications, users } from "@/db/schema";
 import { emailLayout, sendEmail } from "@/lib/mailer";
 
-// Booking-related emails deep-link to the live booking room.
+// Emails deep-link to the thing they are about: an explicit in-app path in
+// meta.url (job requests, boards), else the live booking room for
+// booking-related mail.
 function emailBody(opts: { body: string; meta?: Record<string, string> }): string {
-  const base = process.env.NEXTAUTH_URL ?? "";
-  if (!opts.meta?.bookingId || !base) return `<p>${opts.body}</p>`;
-  const url = `${base.replace(/\/$/, "")}/bookings/${opts.meta.bookingId}`;
+  const base = (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "");
+  if (!base) return `<p>${opts.body}</p>`;
+  let url: string | null = null;
+  let label = "View";
+  if (opts.meta?.url && opts.meta.url.startsWith("/")) {
+    url = `${base}${opts.meta.url}`;
+  } else if (opts.meta?.bookingId) {
+    url = `${base}/bookings/${opts.meta.bookingId}`;
+    label = "View booking";
+  }
+  if (!url) return `<p>${opts.body}</p>`;
   return `<p>${opts.body}</p>
     <p style="margin-top:24px;">
-      <a href="${url}" style="background:#d6b25e;color:#0c0a09;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;">View booking</a>
+      <a href="${url}" style="background:#d6b25e;color:#0c0a09;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;">${label}</a>
     </p>`;
 }
 

@@ -7,6 +7,7 @@ import {
   CHECKIN_REMINDER_MINUTES,
   HEARTBEAT_GRACE_MINUTES,
 } from "@/lib/constants";
+import { settleDueJobRequests } from "@/lib/jobs";
 import { bookingEventNow, publishBooking, publishSafetyDesk } from "@/lib/realtime";
 import { advanceDueLadders, raiseAlert } from "@/lib/safety/escalate";
 import { sendPush } from "@/lib/safety/push";
@@ -84,6 +85,15 @@ export async function runTick(now: Date = new Date()): Promise<void> {
     await overruns(now);
     await getHomeOverdue(now);
     await advanceDueLadders(now);
+    // The marketplace clock rides on the same tick (one process, one lock):
+    // "best price" job requests whose offer deadline has passed get their
+    // cheapest eligible offer booked. Isolated so it can never delay safety.
+    await settleDueJobRequests(now).catch((error) =>
+      console.error(
+        "job settle tick failed:",
+        error instanceof Error ? error.message : error
+      )
+    );
   } finally {
     if (holdsLock) {
       await client

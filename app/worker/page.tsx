@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { and, count, eq, gt, sum } from "drizzle-orm";
+import { and, count, eq, gt, inArray, sum } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { bookings, payouts, quotes } from "@/db/schema";
+import { bookings, gigs, jobRequests, payouts, quotes } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import VisibilityToggle from "@/components/worker/VisibilityToggle";
 import { formatCents } from "@/lib/constants";
@@ -16,6 +16,7 @@ export default async function WorkerDashboard() {
   const [
     [pendingCount],
     [openQuoteCount],
+    [openJobCount],
     [upcomingCount],
     [completedStats],
     [pendingPayout],
@@ -36,6 +37,30 @@ export default async function WorkerDashboard() {
             eq(quotes.workerId, worker.id),
             eq(quotes.status, "open"),
             gt(quotes.expiresAt, new Date())
+          )
+        ),
+      // Open customer requests in the categories this worker has live gigs in
+      // — the job board's "for you" count.
+      db
+        .select({ n: count() })
+        .from(jobRequests)
+        .where(
+          and(
+            eq(jobRequests.status, "open"),
+            gt(jobRequests.expiresAt, new Date()),
+            inArray(
+              jobRequests.categoryId,
+              db
+                .select({ id: gigs.categoryId })
+                .from(gigs)
+                .where(
+                  and(
+                    eq(gigs.workerId, worker.id),
+                    eq(gigs.active, true),
+                    eq(gigs.suspended, false)
+                  )
+                )
+            )
           )
         ),
       db
@@ -65,6 +90,7 @@ export default async function WorkerDashboard() {
   const stats = [
     { label: "New requests", value: String(pendingCount?.n ?? 0), href: "/worker/bookings" },
     { label: "Open quote requests", value: String(openQuoteCount?.n ?? 0), href: "/worker/quotes" },
+    { label: "Jobs on the board", value: String(openJobCount?.n ?? 0), href: "/worker/jobs" },
     { label: "Upcoming", value: String(upcomingCount?.n ?? 0), href: "/worker/bookings" },
     { label: "Jobs completed", value: String(completedStats?.n ?? 0), href: "/worker/earnings" },
     {
@@ -107,7 +133,7 @@ export default async function WorkerDashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {stats.map((s) => (
           <Link key={s.label} href={s.href} className="card p-5 hover:border-gold/40">
             <p className="text-xs uppercase tracking-wider text-faint">{s.label}</p>

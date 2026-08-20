@@ -34,10 +34,8 @@ const GIG_CATEGORIES: { slug: string; name: string; blurb: string }[] = [
   { slug: "music-performance", name: "Music & Performance", blurb: "DJs, singers, bands, sound systems" },
   { slug: "beauty-wellness", name: "Beauty & Wellness", blurb: "Massage, hair, makeup, nails, spa" },
   { slug: "home-trade", name: "Home & Trade", blurb: "Electricians, plumbers, carpenters, repairs" },
-  { slug: "food-catering", name: "Food & Catering", blurb: "Chefs, bartenders, catering, cakes" },
   { slug: "photo-video", name: "Photo & Video", blurb: "Photographers, videographers, editing" },
   { slug: "tech-professional", name: "Tech & Professional", blurb: "IT, engineering, tutoring, design, admin" },
-  { slug: "cleaning-errands", name: "Cleaning & Errands", blurb: "Cleaning, laundry, shopping, personal errands" },
 ];
 
 async function main(): Promise<void> {

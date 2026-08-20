@@ -39,12 +39,17 @@ export default async function HomePage() {
               Become a worker — it&apos;s free
             </Link>
           </div>
-          <Link
-            href="/driver"
-            className="mt-5 text-sm text-muted transition-colors hover:text-gold-soft"
-          >
-            Drive with Cheers →
-          </Link>
+          <div className="mt-5 flex flex-col items-center gap-2 text-sm text-muted sm:flex-row sm:gap-6">
+            <Link
+              href="/requests/new"
+              className="transition-colors hover:text-gold-soft"
+            >
+              Or post a request and let workers come to you →
+            </Link>
+            <Link href="/driver" className="transition-colors hover:text-gold-soft">
+              Drive with Cheers →
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -112,8 +117,8 @@ export default async function HomePage() {
           {[
             {
               step: "01",
-              title: "Browse & choose",
-              body: "Filter gigs by category, parish, price, and rating. Every profile is reviewed by our team.",
+              title: "Browse & choose — or post a request",
+              body: "Filter gigs by category, parish, price, and rating — or describe what you need, name your price, and let approved workers send offers. Every profile is reviewed by our team.",
             },
             {
               step: "02",

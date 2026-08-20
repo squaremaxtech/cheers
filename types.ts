@@ -15,6 +15,8 @@ import type {
   gigAddons,
   gigCategories,
   gigs,
+  jobOffers,
+  jobRequests,
   locationPings,
   membershipPayments,
   memberships,
@@ -71,6 +73,12 @@ export type RideOfferRow = typeof rideOffers.$inferSelect;
 export type RideOfferStatus = RideOfferRow["status"];
 export type RideEventRow = typeof rideEvents.$inferSelect;
 export type RideReviewRow = typeof rideReviews.$inferSelect;
+
+export type JobRequestRow = typeof jobRequests.$inferSelect;
+export type JobRequestStatus = JobRequestRow["status"];
+export type JobMatchMode = JobRequestRow["matchMode"];
+export type JobOfferRow = typeof jobOffers.$inferSelect;
+export type JobOfferStatus = JobOfferRow["status"];
 
 export type BookingRow = typeof bookings.$inferSelect;
 export type BookingStatus = BookingRow["status"];
@@ -331,3 +339,42 @@ export type RideStreamEvent =
 
 // Driver request board stream: "an open request in your area changed".
 export type DriverBoardStreamEvent = { kind: "requests"; at: string };
+
+// --- Job requests (customer-posted work) -------------------------------------------
+
+// Worker job board stream: "an open request changed — re-read the board".
+export type JobBoardStreamEvent = { kind: "jobs"; at: string };
+
+// Per-request stream for the customer's request room: lifecycle or offers
+// changed — re-render server data.
+export type JobRequestStreamEvent = { kind: "status" | "offer"; at: string };
+
+// One open request as the worker board renders it. Deliberately carries no
+// customer identity and no street address — parish/area only until matched.
+export type JobBoardCard = {
+  id: string;
+  code: string;
+  title: string;
+  description: string;
+  tags: string[];
+  categoryId: string;
+  categoryName: string;
+  parish: string;
+  area: string | null;
+  date: string;
+  startTime: string;
+  durationMinutes: number;
+  budgetCents: number;
+  matchMode: JobMatchMode;
+  autoBookAt: string | null; // ISO
+  createdAt: string; // ISO
+  expiresAt: string; // ISO
+  offerCount: number;
+  // This worker's own live offer on it, if any.
+  myOffer: {
+    id: string;
+    priceCents: number;
+    durationMinutes: number;
+    status: JobOfferStatus;
+  } | null;
+};

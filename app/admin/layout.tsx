@@ -12,6 +12,7 @@ const nav = [
   { href: "/admin/gigs", label: "Gigs" },
   { href: "/admin/verifications", label: "Verifications" },
   { href: "/admin/bookings", label: "Bookings" },
+  { href: "/admin/requests", label: "Requests" },
   { href: "/admin/rides", label: "Rides" },
   { href: "/admin/payments", label: "Payments" },
   { href: "/admin/chats", label: "Chats" },

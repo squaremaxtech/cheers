@@ -84,6 +84,36 @@ export const rideOfferStatus = pgEnum("ride_offer_status", [
   "withdrawn",
 ]);
 
+// Customer-posted job requests (the reverse marketplace): how the customer
+// wants a worker chosen. manual = offers queue up and the customer picks;
+// first_accept = the first eligible worker to accept at (or under) the
+// budget is booked instantly; lowest_price = at autoBookAt the cheapest offer
+// at or under the budget is booked automatically (scheduler-driven).
+export const jobMatchMode = pgEnum("job_match_mode", [
+  "manual",
+  "first_accept",
+  "lowest_price",
+]);
+
+// Request lifecycle: open (collecting offers) -> matched (a booking exists)
+// | cancelled (customer/admin closed it) | expired (job start passed with no
+// match — reads derive this from expiresAt before the row is ever updated).
+export const jobRequestStatus = pgEnum("job_request_status", [
+  "open",
+  "matched",
+  "cancelled",
+  "expired",
+]);
+
+// One worker's offer on a request (mirrors ride_offers): open until the
+// request settles; accepting one rejects the siblings.
+export const jobOfferStatus = pgEnum("job_offer_status", [
+  "open",
+  "accepted",
+  "rejected",
+  "withdrawn",
+]);
+
 export const mediaType = pgEnum("media_type", ["photo", "video"]);
 
 // Lifecycle: pending -> accepted (awaiting payment) -> confirmed -> in_progress
@@ -766,6 +796,103 @@ export const favorites = pgTable(
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.customerId, t.workerId] })]
+);
+
+// ---------------------------------------------------------------------------
+// Job requests — customer-posted work, worker-filled (inDrive for gigs)
+// ---------------------------------------------------------------------------
+// The reverse of browse: instead of finding a gig, the customer advertises
+// what they need — tagged to a gig category, with a place, a time, a budget
+// and a matching rule — and workers with a live gig in that category accept
+// it or counter. Matching creates a normal booking (claimBookingSlot), so
+// everything downstream (payment, safety, reviews) is unchanged.
+
+export const jobRequests = pgTable(
+  "job_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Human reference, e.g. JB-4F7K2A
+    code: text("code").notNull().unique(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // "Tag it to a service": the browse category workers are matched on.
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => gigCategories.id, { onDelete: "restrict" }),
+    title: text("title").notNull(),
+    // The job in the customer's words — becomes the booking's instructions.
+    description: text("description").notNull(),
+    tags: text("tags").array().notNull().default([]),
+    // Public on the board: parish + rough area. The full address is PRIVATE
+    // until a worker is matched (it lands on the booking, like any booking).
+    parish: text("parish").notNull(),
+    area: text("area"),
+    address: text("address").notNull(),
+    lat: text("lat"),
+    lng: text("lng"),
+    date: date("date").notNull(),
+    startTime: time("start_time").notNull(),
+    durationMinutes: integer("duration_minutes").notNull().default(60),
+    // The customer's price — the inDrive move. Workers accept it as-is or
+    // counter through job_offers.
+    budgetCents: integer("budget_cents").notNull(),
+    matchMode: jobMatchMode("match_mode").notNull().default("manual"),
+    // lowest_price only: when the scheduler auto-books the cheapest offer at
+    // or under budget. autoSettledAt records that the pass ran (whether or
+    // not it found a winner) so it never runs twice.
+    autoBookAt: timestamp("auto_book_at", { mode: "date" }),
+    autoSettledAt: timestamp("auto_settled_at", { mode: "date" }),
+    status: jobRequestStatus("status").notNull().default("open"),
+    // Set on match.
+    workerId: uuid("worker_id").references(() => workers.id, {
+      onDelete: "set null",
+    }),
+    bookingId: uuid("booking_id").references(() => bookings.id, {
+      onDelete: "set null",
+    }),
+    cancellationReason: text("cancellation_reason"),
+    // = the job's start: a request nobody filled by then is dead.
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("job_requests_customer_idx").on(t.customerId),
+    index("job_requests_status_expires_idx").on(t.status, t.expiresAt),
+    index("job_requests_category_idx").on(t.categoryId),
+  ]
+);
+
+// A worker's offer on an open request: the customer's budget as-is, or a
+// counter price. One live offer per worker per request (update to re-price).
+// gigId = which of the worker's gigs fulfils it (it must be a live gig in the
+// request's category) — the booking snapshots its safety-monitoring flag.
+export const jobOffers = pgTable(
+  "job_offers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobRequestId: uuid("job_request_id")
+      .notNull()
+      .references(() => jobRequests.id, { onDelete: "cascade" }),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    gigId: uuid("gig_id")
+      .notNull()
+      .references(() => gigs.id, { onDelete: "cascade" }),
+    priceCents: integer("price_cents").notNull(),
+    // The worker's estimate; defaults to the request's duration.
+    durationMinutes: integer("duration_minutes").notNull(),
+    note: text("note"),
+    status: jobOfferStatus("status").notNull().default("open"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("job_offers_pair_idx").on(t.jobRequestId, t.workerId),
+    index("job_offers_worker_idx").on(t.workerId),
+  ]
 );
 
 // ---------------------------------------------------------------------------

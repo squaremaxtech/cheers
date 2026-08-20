@@ -107,6 +107,29 @@ start time; rescheduling picks a new open slot. Card payments on cancelled or
 conflicted bookings are refunded automatically (5–10 business days back to
 the card).
 
+### Posting a request (`/requests`) — workers come to them
+
+The reverse of browsing. From "Requests → Post a request" (also linked from
+Browse and the home page) the customer describes the job, tags it to a
+service category, gives the parish + area (shown to workers) and the full
+address (shared only with the worker they book), picks date / time /
+duration, names their **budget**, and chooses how the worker is picked:
+
+- **I'll choose** — offers collect on the request; they pick one.
+- **Instant — first to accept** — the first approved worker to accept their
+  budget (or offer less) is booked on the spot.
+- **Best price by a deadline** — at the time they set, the cheapest offer at
+  or under the budget is booked automatically; if none qualifies the request
+  stays open and they pick by hand.
+
+Only approved workers with a live gig in that category can respond. Their
+request page is live: offers appear as they land with the worker's public
+card, price, duration and note — **Book** turns one into a normal booking
+(then they choose cash or card exactly like any booking); **Pass** declines
+it; they can withdraw the request while it is open. A request closes by
+itself at the job time if nobody was booked. The same ID-verification gate as
+booking applies to posting.
+
 ### Their dashboard (`/dashboard`)
 
 Recent bookings, verification status card, profile editor, notifications
@@ -165,6 +188,21 @@ profile is approved — you're live."
   it in the app with a photo of proof. A booking can only be completed once
   a payment (card or recorded cash) exists.
 - Marking the job complete triggers the customer's review invitation.
+
+### Job board (`/worker/jobs`) — customer requests, live
+
+Customers post what they need with a budget; every open request in the
+worker's live-gig categories shows here the moment it is posted (plus an
+in-app notification and a push if they have enabled them). On each card:
+**Accept at $X** (the customer's budget, one tap) or **Counter-offer** (own
+price, duration, note — and which gig fulfils it when they have several in
+that category). Cards tagged **Instant** book the worker immediately when
+they accept at or under the budget; otherwise the customer picks between
+offers (or the app picks the best price at the customer's deadline). Sending
+again updates their existing offer; they can withdraw it. To respond they
+must be approved, switched on, have a live gig in the category, and be free
+at that time (their availability and bookings are checked). A matched
+request is a normal booking under Bookings.
 
 ### Messages (`/worker` → Messages)
 
@@ -234,6 +272,14 @@ Full lifecycle override: approve/decline on a worker's behalf, force-cancel
 (auto-refunds card payments), reassign to another worker, mark completed.
 Terminal bookings (completed/cancelled/refunded/declined) are locked against
 accidental re-opening — only completed → refunded remains possible.
+
+### Requests page
+
+Customer-posted job requests and how they settled (open / booked / cancelled
+/ expired), budget, matching mode, open-offer count and the booked worker.
+**Close** (admin only) force-closes an open request — offers are closed, the
+customer is notified with the reason, and the action is audited. Matched
+requests are ordinary bookings (see Bookings).
 
 ### Payments page — how the money actually works
 

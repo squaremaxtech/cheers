@@ -9,6 +9,7 @@ const nav = [
   { href: "/bookings", label: "Bookings" },
   { href: "/rides", label: "Rides" },
   { href: "/quotes", label: "Quotes" },
+  { href: "/requests", label: "Requests" },
   { href: "/chats", label: "Messages" },
   { href: "/favorites", label: "Favorites" },
   { href: "/membership", label: "Membership" },

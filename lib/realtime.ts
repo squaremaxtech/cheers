@@ -3,6 +3,8 @@ import type {
   ChatStreamEvent,
   DriverBoardStreamEvent,
   InboxStreamEvent,
+  JobBoardStreamEvent,
+  JobRequestStreamEvent,
   RideStreamEvent,
   SafetyDeskStreamEvent,
 } from "@/types";
@@ -17,6 +19,8 @@ type InboxListener = (event: InboxStreamEvent) => void;
 type SafetyDeskListener = (event: SafetyDeskStreamEvent) => void;
 type RideListener = (event: RideStreamEvent) => void;
 type DriverBoardListener = (event: DriverBoardStreamEvent) => void;
+type JobBoardListener = (event: JobBoardStreamEvent) => void;
+type JobRequestListener = (event: JobRequestStreamEvent) => void;
 
 // Stored on globalThis so dev-server hot reloads reuse one registry instead
 // of stranding subscribers in an old module copy. The cast is unavoidable —
@@ -29,6 +33,8 @@ const globalStore = globalThis as unknown as {
   __safetyDeskListeners?: Set<SafetyDeskListener>;
   __rideChannels?: Map<string, Set<RideListener>>;
   __driverBoardListeners?: Set<DriverBoardListener>;
+  __jobBoardListeners?: Set<JobBoardListener>;
+  __jobRequestChannels?: Map<string, Set<JobRequestListener>>;
 };
 const channels = (globalStore.__bookingChannels ??= new Map<
   string,
@@ -236,6 +242,70 @@ export function publishDriverBoard(): void {
       listener(event);
     } catch {
       driverBoardListeners.delete(listener);
+    }
+  }
+}
+
+// --- Worker job board (global channel, like the driver board) -----------------
+// Every worker with the board open watches the same pool of open requests;
+// any change re-reads it. Workers filter by category/parish client-side.
+
+const jobBoardListeners = (globalStore.__jobBoardListeners ??=
+  new Set<JobBoardListener>());
+
+export function subscribeJobBoard(listener: JobBoardListener): () => void {
+  jobBoardListeners.add(listener);
+  return () => {
+    jobBoardListeners.delete(listener);
+  };
+}
+
+export function publishJobBoard(): void {
+  const event: JobBoardStreamEvent = { kind: "jobs", at: new Date().toISOString() };
+  for (const listener of [...jobBoardListeners]) {
+    try {
+      listener(event);
+    } catch {
+      jobBoardListeners.delete(listener);
+    }
+  }
+}
+
+// --- Per-request channel (the customer's request room) -----------------------
+
+const jobRequestChannels = (globalStore.__jobRequestChannels ??= new Map<
+  string,
+  Set<JobRequestListener>
+>());
+
+export function subscribeJobRequest(
+  jobRequestId: string,
+  listener: JobRequestListener
+): () => void {
+  let set = jobRequestChannels.get(jobRequestId);
+  if (!set) {
+    set = new Set();
+    jobRequestChannels.set(jobRequestId, set);
+  }
+  set.add(listener);
+  return () => {
+    set.delete(listener);
+    if (set.size === 0) jobRequestChannels.delete(jobRequestId);
+  };
+}
+
+export function publishJobRequest(
+  jobRequestId: string,
+  kind: JobRequestStreamEvent["kind"]
+): void {
+  const set = jobRequestChannels.get(jobRequestId);
+  if (!set) return;
+  const event: JobRequestStreamEvent = { kind, at: new Date().toISOString() };
+  for (const listener of [...set]) {
+    try {
+      listener(event);
+    } catch {
+      set.delete(listener);
     }
   }
 }
