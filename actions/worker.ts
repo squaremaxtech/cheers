@@ -16,19 +16,22 @@ import { guardErrorMessage, requireUser, requireWorker } from "@/lib/guards";
 import { uniqueWorkerSlug } from "@/lib/slug";
 import { deleteUpload } from "@/lib/uploads";
 import type { ActionResult } from "@/types";
-import { notifyVerificationTeam } from "@/lib/notify";
+import { TERMS_VERSION } from "@/lib/constants";
+import { notifyAdmins } from "@/lib/notify";
 import {
   availabilityExceptionSchema,
+  createWorkerProfileSchema,
   mediaGigSchema,
   mediaSchema,
   weeklyAvailabilitySchema,
   workerProfileSchema,
 } from "@/schemas/worker";
 
-// --- Onboarding: open signup, approval-gated -----------------------------------
-// Anyone can become a worker (Jamaica's open marketplace) — but the created
-// profile stays OFF the site until an admin approves it (workers.verified —
-// see publicWorkerConditions). Gigs auto-publish once the worker is approved.
+// --- Onboarding: open signup, live immediately ---------------------------------
+// Anyone can offer their services (Jamaica's open marketplace) and the profile
+// is live the moment it is created — nothing on the platform waits on the
+// business owner (plan §2.1). Gigs publish immediately too. Admins keep the
+// moderation levers (hide / suspend / gig takedown).
 
 export async function createWorkerProfile(
   input: unknown
@@ -39,9 +42,9 @@ export async function createWorkerProfile(
     if (user.role === "driver") {
       return err("Driver accounts cannot open a worker profile. Use a separate account.");
     }
-    const parsed = workerProfileSchema.safeParse(input);
+    const parsed = createWorkerProfileSchema.safeParse(input);
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
-    const profile = parsed.data;
+    const { acceptTerms: _acceptTerms, ...profile } = parsed.data;
 
     const [existing] = await db
       .select({ id: workers.id })
@@ -53,34 +56,43 @@ export async function createWorkerProfile(
       .select({ id: workers.id })
       .from(workers)
       .where(eq(workers.stageName, profile.stageName));
-    if (taken) return err("That stage name is already taken.");
+    if (taken) return err("That display name is already taken.");
 
     const slug = await uniqueWorkerSlug(profile.stageName);
+    const acceptedAt = new Date();
     const result = await db.transaction(
       async (tx): Promise<{ workerId: string }> => {
         const [worker] = await tx
           .insert(workers)
           .values({ userId: user.id, slug, ...profile })
           .returning({ id: workers.id });
-        // Admins keep their role; everyone else becomes a worker.
-        if (user.role === "customer") {
-          await tx
-            .update(users)
-            .set({ role: "worker", updatedAt: new Date() })
-            .where(eq(users.id, user.id));
-        }
+        // Admins keep their role; everyone else becomes a worker. Legal
+        // acceptance is recorded in the same transaction as the profile.
+        await tx
+          .update(users)
+          .set({
+            ...(user.role === "customer" ? { role: "worker" as const } : {}),
+            termsAcceptedAt: acceptedAt,
+            termsVersion: TERMS_VERSION,
+            updatedAt: acceptedAt,
+          })
+          .where(eq(users.id, user.id));
         return { workerId: worker.id };
       }
     );
 
-    // New profiles await admin approval — tell the people who approve.
-    await notifyVerificationTeam({
-      type: "worker_pending_approval",
-      title: "New worker awaiting approval",
-      body: `${profile.stageName} completed worker onboarding. Their profile stays hidden until approved in Admin → Workers.`,
+    // In-app FYI only: nothing is waiting on the owner, so this must never
+    // land in their inbox (plan §2.1).
+    await notifyAdmins({
+      type: "worker_joined",
+      title: "New professional joined",
+      body: `${profile.stageName} published a profile on Cheers.`,
+      meta: { url: "/admin/workers" },
+      email: false,
     });
 
     revalidatePath("/worker");
+    revalidatePath("/browse");
     return ok({ workerId: result.workerId });
   } catch (error) {
     return err(guardErrorMessage(error));
@@ -106,7 +118,7 @@ export async function updateWorkerProfile(
         .select({ id: workers.id })
         .from(workers)
         .where(eq(workers.stageName, parsed.data.stageName));
-      if (taken) return err("That stage name is already taken.");
+      if (taken) return err("That display name is already taken.");
       slug = await uniqueWorkerSlug(parsed.data.stageName, worker.id);
     }
 

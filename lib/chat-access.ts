@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { bookings, chatRooms, users, workers } from "@/db/schema";
 import { isModeratingStaff } from "@/lib/guards";
-import { hasChatAccess } from "@/lib/membership";
+import { hasMemberAccess } from "@/lib/membership";
 import type {
   ChatParticipantRole,
   ChatRoomRow,
@@ -118,6 +118,6 @@ export async function customerCanSendChat(
   customerId: string,
   workerId: string
 ): Promise<boolean> {
-  if (await hasChatAccess(customerId)) return true;
+  if (await hasMemberAccess(customerId)) return true;
   return hasLiveBookingWith(customerId, workerId);
 }

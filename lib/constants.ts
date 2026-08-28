@@ -11,28 +11,28 @@ export const CURRENCY = "usd";
 
 // Stripe is the online-payments layer and it is OPTIONAL: the platform is
 // cash-first (Jamaica) and every flow works with no keys set. Card buttons,
-// the Chat Pass checkout and Connect payouts appear only once this is true.
+// the membership checkout and Connect payouts appear only once this is true.
 export function stripeConfigured(): boolean {
   return Boolean(process.env.STRIPE_SECRET_KEY);
 }
 
-// Chat Pass: the $5/month subscription that unlocks messaging any worker.
-// Browsing is free; booking never requires it (flag below); a booked
-// customer/worker pair can always chat regardless.
+// Cheers Membership: the monthly subscription that unlocks messaging AND
+// booking for customers. Browsing is always free; workers never need one; a
+// booked customer/worker pair can always chat regardless of membership.
 export const MEMBERSHIP_PERIOD_DAYS = 30;
 
-export function chatPassPriceCents(): number {
+// MEMBERSHIP_PRICE_CENTS is the current name; CHAT_PASS_PRICE_CENTS is
+// accepted as the legacy fallback so an existing .env keeps working.
+export function membershipPriceCents(): number {
   return Number(
-    process.env.CHAT_PASS_PRICE_CENTS ?? process.env.MEMBERSHIP_PRICE_CENTS ?? 500
+    process.env.MEMBERSHIP_PRICE_CENTS ?? process.env.CHAT_PASS_PRICE_CENTS ?? 500
   );
 }
 
-// Owner's lever for after the launch year: when "on", creating a booking
-// also requires an active Chat Pass. Default off — booking stays
-// subscription-free.
-export function bookingRequiresChatPass(): boolean {
-  return process.env.BOOKING_REQUIRES_SUBSCRIPTION === "on";
-}
+// The version of the legal documents a user must have accepted. Bumping this
+// re-prompts everyone (AcceptTermsBanner) — bump it whenever /terms,
+// /privacy or /guidelines change materially.
+export const TERMS_VERSION = "2026-08-27";
 
 // All booking dates/times are Jamaica wall-clock time (UTC-5, no DST).
 // Parsing must pin this offset — server timezone must never matter.
@@ -55,15 +55,6 @@ export const JAMAICA_PARISHES = [
   "St. Catherine",
 ] as const;
 
-export const BODY_TYPES = [
-  "Slim",
-  "Athletic",
-  "Average",
-  "Curvy",
-  "Muscular",
-  "Plus size",
-] as const;
-
 export const LANGUAGES = [
   "English",
   "Patois",
@@ -82,6 +73,11 @@ export const BOOKING_DURATIONS_MINUTES = [60, 90, 120, 180, 240, 360] as const;
 // account cannot flood browse.
 export const GIGS_PER_WORKER_MAX = 15;
 export const GIG_TAGS_MAX = 8;
+// Professional profile facts (plan §2.5).
+export const WORKER_HEADLINE_MAX_CHARS = 120;
+export const WORKER_SKILLS_MAX = 15;
+export const WORKER_SKILL_MAX_CHARS = 30;
+export const WORKER_YEARS_EXPERIENCE_MAX = 60;
 export const GIG_TITLE_MAX_CHARS = 80;
 export const GIG_DESCRIPTION_MAX_CHARS = 2000;
 

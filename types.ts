@@ -8,13 +8,13 @@ import type {
   bookings,
   chatMessages,
   chatRooms,
-  customerVerifications,
   driverVerifications,
   drivers,
   escalations,
   gigAddons,
   gigCategories,
   gigs,
+  identityVerifications,
   jobOffers,
   jobRequests,
   locationPings,
@@ -100,10 +100,10 @@ export type PayoutGeneration = {
 export type ReviewRow = typeof reviews.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
 
-export type CustomerVerificationRow =
-  typeof customerVerifications.$inferSelect;
-export type VerificationStatus = CustomerVerificationRow["status"];
-export type IdDocumentType = CustomerVerificationRow["documentType"];
+export type IdentityVerificationRow =
+  typeof identityVerifications.$inferSelect;
+export type VerificationStatus = IdentityVerificationRow["status"];
+export type IdDocumentType = IdentityVerificationRow["documentType"];
 
 export type ChatRoomRow = typeof chatRooms.$inferSelect;
 export type ChatMessageRow = typeof chatMessages.$inferSelect;
@@ -243,17 +243,25 @@ export type TimeSlot = {
 
 // --- Browse / search ---------------------------------------------------------------
 
-// Gig-centric browse. No "verified" filter: unapproved workers are never
-// publicly visible at all (admin approval gates the whole profile), so every
-// browsable gig belongs to a verified worker by construction.
+// Gig-centric browse. Professionals publish themselves — there is no approval
+// queue, so every live gig of an active, unsuspended worker is browsable.
+// `premium` is ignored server-side unless the viewer can see premium.
 export type BrowseFilters = {
-  q?: string; // matches gig title, tags and worker stage name
+  q?: string; // matches gig title, tags and worker display name
   category?: string; // gig category slug
   parish?: string;
   maxPriceCents?: number;
   minRatingX100?: number;
   language?: string;
+  premium?: boolean; // true = premium gigs only
 };
+
+// --- Premium tier ------------------------------------------------------------------
+
+// The one visibility fact every public gig query needs. Built by
+// lib/premium.ts viewerPremium(); when false, premium gigs, their media and
+// their prices must be completely unreachable — no badge, no trace.
+export type PremiumViewer = { canSeePremium: boolean };
 
 export type DriverBrowseFilters = {
   q?: string;
@@ -270,16 +278,20 @@ export type PublicWorker = Pick<
   | "stageName"
   | "slug"
   | "bio"
-  | "age"
-  | "heightCm"
-  | "bodyType"
+  | "headline"
+  | "skills"
+  | "yearsExperience"
   | "languages"
   | "parish"
   | "city"
   | "baseRateCents"
   | "avgRating"
   | "reviewCount"
->;
+> & {
+  // Denormalised from users.id_verified_at — the optional "Verified ID"
+  // badge. Never the user id itself.
+  idVerified: boolean;
+};
 
 export type PublicWorkerWithPhoto = PublicWorker & { photoUrl: string | null };
 
@@ -294,6 +306,7 @@ export type PublicGig = Pick<
   | "pricingMode"
   | "priceCents"
   | "durationMinutes"
+  | "premium"
 > & {
   categorySlug: string;
   categoryName: string;
@@ -304,7 +317,14 @@ export type GigCard = PublicGig & {
   photoUrl: string | null;
   worker: Pick<
     PublicWorker,
-    "id" | "stageName" | "slug" | "parish" | "city" | "avgRating" | "reviewCount"
+    | "id"
+    | "stageName"
+    | "slug"
+    | "parish"
+    | "city"
+    | "avgRating"
+    | "reviewCount"
+    | "idVerified"
   >;
 };
 
@@ -365,6 +385,7 @@ export type JobBoardCard = {
   startTime: string;
   durationMinutes: number;
   budgetCents: number;
+  premium: boolean;
   matchMode: JobMatchMode;
   autoBookAt: string | null; // ISO
   createdAt: string; // ISO

@@ -66,7 +66,13 @@ export async function notify(opts: {
 
 async function notifyMany(
   recipients: { id: string; email: string }[],
-  opts: { type: string; title: string; body: string; meta?: Record<string, string> }
+  opts: {
+    type: string;
+    title: string;
+    body: string;
+    meta?: Record<string, string>;
+    email?: boolean;
+  }
 ): Promise<void> {
   if (recipients.length === 0) return;
   await db.insert(notifications).values(
@@ -78,6 +84,7 @@ async function notifyMany(
       meta: opts.meta,
     }))
   );
+  if (opts.email === false) return;
   await Promise.all(
     recipients.map((a) =>
       sendEmail({
@@ -91,11 +98,14 @@ async function notifyMany(
 
 // Notify every admin (new bookings, payments, new users, reviews).
 // Batched: one select, one insert, parallel emails — not 2N+1 queries.
+// email: false records the in-app row only — for FYI notices (a new
+// professional joined) that must never fill the owner's inbox.
 export async function notifyAdmins(opts: {
   type: string;
   title: string;
   body: string;
   meta?: Record<string, string>;
+  email?: boolean;
 }): Promise<void> {
   try {
     const admins = await db
@@ -111,9 +121,9 @@ export async function notifyAdmins(opts: {
   }
 }
 
-// Customer identity verifications are reviewed by admins and supervisors —
-// the same set that may approve them (actions/verification.ts). Plain
-// customer support and drivers are not notified.
+// Identity verifications are reviewed by admins and supervisors — the same
+// set that may approve them (actions/verification.ts). Plain customer
+// support and drivers are not notified.
 export async function notifyVerificationTeam(opts: {
   type: string;
   title: string;

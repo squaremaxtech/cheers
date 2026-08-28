@@ -1,5 +1,7 @@
 # Cheers — Build Handoff & Progress
 
+> **2026-08-27 — v3 REFOCUS IN PROGRESS (session interrupted).** Read `docs/V3-SESSION-STATE.md` then `docs/REFACTOR-PLAN.md` before anything else; they supersede §1 below until the v3 update block is written.
+
 > **Purpose:** This doc lets any fresh Claude Code session (or developer) continue the build with zero context loss. Keep it updated as work progresses. Read `AGENTS.md` first — this repo runs a MODIFIED Next.js (16.2.10) whose conventions may differ from public Next.js; consult `node_modules/next/dist/docs/` before writing framework code.
 
 ## 1. Project Summary

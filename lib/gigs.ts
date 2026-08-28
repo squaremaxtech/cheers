@@ -12,22 +12,36 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { db } from "@/db";
-import { gigAddons, gigCategories, gigs, workerMedia, workers } from "@/db/schema";
-import { publicWorkerConditions } from "@/lib/workers";
+import {
+  gigAddons,
+  gigCategories,
+  gigs,
+  users,
+  workerMedia,
+  workers,
+} from "@/db/schema";
+import { publicWorkerConditions, publicWorkerUserJoin } from "@/lib/workers";
 import type {
   BrowseFilters,
   GigAddonRow,
   GigCard,
   GigCategoryRow,
+  PremiumViewer,
   PublicGig,
 } from "@/types";
 
 // A gig the public may see and book: switched on by its worker, not taken
-// down by an admin, and belonging to a publicly visible (approved) worker.
-// Every public-facing gig query must compose these WITH
-// publicWorkerConditions() on the joined worker.
-export function publicGigConditions(): SQL[] {
-  return [eq(gigs.active, true), eq(gigs.suspended, false)];
+// down by an admin, and belonging to a publicly visible worker. Every
+// public-facing gig query must compose these WITH publicWorkerConditions()
+// on the joined worker.
+//
+// Pass a PremiumViewer to also enforce the premium rail: a viewer who cannot
+// see premium gets `gigs.premium = false` appended, so premium listings,
+// their media and their prices are unreachable — not merely unbadged.
+export function publicGigConditions(viewer?: PremiumViewer): SQL[] {
+  const conditions: SQL[] = [eq(gigs.active, true), eq(gigs.suspended, false)];
+  if (viewer && !viewer.canSeePremium) conditions.push(eq(gigs.premium, false));
+  return conditions;
 }
 
 const publicGigColumns = {
@@ -39,6 +53,7 @@ const publicGigColumns = {
   pricingMode: gigs.pricingMode,
   priceCents: gigs.priceCents,
   durationMinutes: gigs.durationMinutes,
+  premium: gigs.premium,
   categorySlug: gigCategories.slug,
   categoryName: gigCategories.name,
 };
@@ -52,12 +67,20 @@ export async function getGigCategories(): Promise<GigCategoryRow[]> {
 }
 
 // The browse page: gig cards with just enough worker context to render.
-export async function getGigCards(filters: BrowseFilters): Promise<GigCard[]> {
+// The viewer decides whether premium gigs exist at all for this request —
+// the `premium` filter is ignored unless they can see them.
+export async function getGigCards(
+  filters: BrowseFilters,
+  viewer: PremiumViewer
+): Promise<GigCard[]> {
   const conditions: SQL[] = [
-    ...publicGigConditions(),
+    ...publicGigConditions(viewer),
     ...publicWorkerConditions(),
   ];
 
+  if (viewer.canSeePremium && filters.premium) {
+    conditions.push(eq(gigs.premium, true));
+  }
   if (filters.category) {
     conditions.push(eq(gigCategories.slug, filters.category));
   }
@@ -76,9 +99,7 @@ export async function getGigCards(filters: BrowseFilters): Promise<GigCard[]> {
     conditions.push(lte(gigs.priceCents, filters.maxPriceCents));
   }
   if (filters.minRatingX100) {
-    conditions.push(
-      sql`${workers.avgRating} >= ${filters.minRatingX100}`
-    );
+    conditions.push(sql`${workers.avgRating} >= ${filters.minRatingX100}`);
   }
 
   const rows = await db
@@ -92,9 +113,11 @@ export async function getGigCards(filters: BrowseFilters): Promise<GigCard[]> {
       avgRating: workers.avgRating,
       reviewCount: workers.reviewCount,
       languages: workers.languages,
+      idVerified: sql<boolean>`(${users.idVerifiedAt} IS NOT NULL)`,
     })
     .from(gigs)
     .innerJoin(workers, eq(gigs.workerId, workers.id))
+    .innerJoin(users, publicWorkerUserJoin)
     .innerJoin(gigCategories, eq(gigs.categoryId, gigCategories.id))
     .where(and(...conditions))
     .orderBy(desc(workers.avgRating), asc(gigs.title))
@@ -106,7 +129,8 @@ export async function getGigCards(filters: BrowseFilters): Promise<GigCard[]> {
     : rows;
 
   const photos = await gigPhotoMap(
-    filtered.map((r) => ({ gigId: r.id, workerId: r.workerId }))
+    filtered.map((r) => ({ gigId: r.id, workerId: r.workerId })),
+    viewer
   );
 
   return filtered.map((r) => ({
@@ -118,6 +142,7 @@ export async function getGigCards(filters: BrowseFilters): Promise<GigCard[]> {
     pricingMode: r.pricingMode,
     priceCents: r.priceCents,
     durationMinutes: r.durationMinutes,
+    premium: r.premium,
     categorySlug: r.categorySlug,
     categoryName: r.categoryName,
     photoUrl: photos.get(r.id) ?? null,
@@ -129,14 +154,18 @@ export async function getGigCards(filters: BrowseFilters): Promise<GigCard[]> {
       city: r.city,
       avgRating: r.avgRating,
       reviewCount: r.reviewCount,
+      idVerified: r.idVerified,
     },
   }));
 }
 
 // Cover photo per gig: the gig's own first tagged photo, else the worker's
 // first untagged photo (untagged media shows everywhere by design).
+// Media tagged to a gig this viewer may not see is skipped entirely, so a
+// premium cover can never leak onto a standard card.
 async function gigPhotoMap(
-  pairs: { gigId: string; workerId: string }[]
+  pairs: { gigId: string; workerId: string }[],
+  viewer: PremiumViewer
 ): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   if (pairs.length === 0) return result;
@@ -148,10 +177,16 @@ async function gigPhotoMap(
       url: workerMedia.url,
     })
     .from(workerMedia)
+    .leftJoin(gigs, eq(workerMedia.gigId, gigs.id))
     .where(
       and(
         inArray(workerMedia.workerId, workerIds),
-        eq(workerMedia.type, "photo")
+        eq(workerMedia.type, "photo"),
+        // Untagged media (gigId null) is always visible; tagged media
+        // inherits its gig's visibility.
+        ...(viewer.canSeePremium
+          ? []
+          : [or(isNull(workerMedia.gigId), eq(gigs.premium, false))])
       )
     )
     .orderBy(asc(workerMedia.sortOrder));
@@ -176,15 +211,17 @@ export type PublicGigWithAddons = PublicGig & {
   addons: Pick<GigAddonRow, "id" | "name" | "priceCents" | "description">[];
 };
 
-// A worker's live gigs for their public profile (with add-ons).
+// A worker's live gigs for their public profile (with add-ons), narrowed to
+// what this viewer may see.
 export async function getPublicWorkerGigs(
-  workerId: string
+  workerId: string,
+  viewer: PremiumViewer
 ): Promise<PublicGigWithAddons[]> {
   const rows = await db
     .select(publicGigColumns)
     .from(gigs)
     .innerJoin(gigCategories, eq(gigs.categoryId, gigCategories.id))
-    .where(and(eq(gigs.workerId, workerId), ...publicGigConditions()))
+    .where(and(eq(gigs.workerId, workerId), ...publicGigConditions(viewer)))
     .orderBy(asc(gigs.sortOrder), asc(gigs.createdAt));
   if (rows.length === 0) return [];
 
@@ -218,15 +255,23 @@ export async function getPublicWorkerGigs(
 }
 
 // The gallery for one gig: its tagged media plus the worker's untagged pool.
-export async function getGigMedia(workerId: string, gigId: string) {
-  return db
+// Media tagged to a gig the viewer cannot see is hidden with the gig;
+// untagged media is always visible.
+export async function getGigMedia(
+  workerId: string,
+  gigId: string,
+  viewer: PremiumViewer
+) {
+  const rows = await db
     .select({
       id: workerMedia.id,
       type: workerMedia.type,
       url: workerMedia.url,
       gigId: workerMedia.gigId,
+      premium: gigs.premium,
     })
     .from(workerMedia)
+    .leftJoin(gigs, eq(workerMedia.gigId, gigs.id))
     .where(
       and(
         eq(workerMedia.workerId, workerId),
@@ -234,16 +279,36 @@ export async function getGigMedia(workerId: string, gigId: string) {
       )
     )
     .orderBy(asc(workerMedia.sortOrder));
+  const visible = viewer.canSeePremium
+    ? rows
+    : rows.filter((r) => r.gigId === null || r.premium === false);
+  return visible.map((r) => ({
+    id: r.id,
+    type: r.type,
+    url: r.url,
+    gigId: r.gigId,
+  }));
 }
 
 // Keeps workers.baseRateCents (the browse "from" price) honest: the cheapest
 // live fixed-price gig, else the cheapest live gig of any kind, else 0.
 // Called by the gig actions after every change.
+//
+// PREMIUM gigs are excluded from the pool on purpose: the public "Starting
+// at" figure must never leak a premium price. A worker with only premium
+// gigs gets baseRate 0 and is hidden from the public worker lists entirely
+// (see getPublicWorkers).
 export async function syncWorkerBaseRate(workerId: string): Promise<void> {
   const rows = await db
     .select({ priceCents: gigs.priceCents, pricingMode: gigs.pricingMode })
     .from(gigs)
-    .where(and(eq(gigs.workerId, workerId), ...publicGigConditions()));
+    .where(
+      and(
+        eq(gigs.workerId, workerId),
+        eq(gigs.premium, false),
+        ...publicGigConditions()
+      )
+    );
   const priced = rows.filter(
     (r) => r.pricingMode === "fixed" && r.priceCents > 0
   );

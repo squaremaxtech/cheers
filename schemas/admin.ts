@@ -1,13 +1,26 @@
 import { z } from "zod";
 import { workerProfileSchema } from "@/schemas/worker";
 
-// Admin can edit any worker field plus platform-only flags.
+// Admin can edit any worker field plus platform-only flags. There is no
+// approval flag: professionals publish themselves (plan §2.1). Hide/suspend
+// remain the moderation levers.
 export const adminUpdateWorkerSchema = z.object({
   workerId: z.string().uuid(),
   profile: workerProfileSchema.partial(),
-  verified: z.boolean().optional(),
   active: z.boolean().optional(),
   suspended: z.boolean().optional(),
+});
+
+// The premium tier is admin-curated: grant/revoke customer access and
+// worker provider status from /admin/promote. Both are audited.
+export const setCustomerPremiumAccessSchema = z.object({
+  userId: z.string().uuid(),
+  enabled: z.boolean(),
+});
+
+export const setWorkerPremiumProviderSchema = z.object({
+  workerId: z.string().uuid(),
+  enabled: z.boolean(),
 });
 
 export const adminSuspendUserSchema = z.object({

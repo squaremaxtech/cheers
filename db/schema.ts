@@ -243,8 +243,20 @@ export const users = pgTable("users", {
   // Set iff role = 'support'; null for every other role.
   supportRole: supportRole("support_role"),
   // Stripe Customer id — set lazily the first time this user pays online
-  // (chat pass, card checkout, card-on-file). Null until Stripe is live.
+  // (membership, card checkout, card-on-file). Null until Stripe is live.
   stripeCustomerId: text("stripe_customer_id"),
+  // Admin-granted premium access: this customer can see, search and book
+  // premium gigs. Null = no. Set/cleared only by an audited admin action —
+  // there is no self-serve path, no payment path and no env lever.
+  premiumAccessAt: timestamp("premium_access_at", { mode: "date" }),
+  // Legal acceptance recorded per user at onboarding, and again whenever
+  // TERMS_VERSION moves on (see lib/constants.ts).
+  termsAcceptedAt: timestamp("terms_accepted_at", { mode: "date" }),
+  termsVersion: text("terms_version"),
+  // Denormalised "Verified ID" badge source: set when an identity_verifications
+  // row is approved, cleared on rejection or re-submission. It is a badge, not
+  // a gate — nothing on the platform waits on it.
+  idVerifiedAt: timestamp("id_verified_at", { mode: "date" }),
   suspended: boolean("suspended").notNull().default(false),
   // When the first-login customer setup (profile + ID document + membership)
   // was completed. Null = the /welcome wizard still gates the customer area.
@@ -309,9 +321,11 @@ export const workers = pgTable(
     slug: text("slug").notNull(),
     realName: text("real_name"),
     bio: text("bio"),
-    age: smallint("age"),
-    heightCm: smallint("height_cm"),
-    bodyType: text("body_type"),
+    // One-line professional summary, e.g. "Licensed electrician · Kingston".
+    headline: text("headline"),
+    // Free-form skill tags rendered as chips on the profile and cards.
+    skills: text("skills").array().notNull().default([]),
+    yearsExperience: smallint("years_experience"),
     languages: text("languages").array().notNull().default([]),
     // Jamaica: parish + area, plus optional precise coords for distance search
     parish: text("parish"),
@@ -321,7 +335,9 @@ export const workers = pgTable(
     // Displayed "from" price in cents — kept in sync with the cheapest
     // active gig by the gig actions; real prices live on gigs.
     baseRateCents: integer("base_rate_cents").notNull().default(0),
-    verified: boolean("verified").notNull().default(false),
+    // Admin-granted premium provider status: this worker may publish premium
+    // gigs. Null = no. Audited admin action only (see actions/admin.ts).
+    premiumProviderAt: timestamp("premium_provider_at", { mode: "date" }),
     // Worker's choice: let customers see when they're online in chat.
     showOnlineStatus: boolean("show_online_status").notNull().default(true),
     // Scrypt hash of the worker's personal 4-digit code for CANCELLING an
@@ -416,6 +432,10 @@ export const gigs = pgTable(
     // party wants it; an electrician quoting a job usually doesn't. SOS and
     // location tools stay available either way.
     safetyMonitored: boolean("safety_monitored").notNull().default(true),
+    // Premium gigs are invisible to everyone except premium customers and
+    // staff. Only a premium provider (workers.premium_provider_at) may set
+    // this — actions/gigs.ts forces it back to false for anyone else.
+    premium: boolean("premium").notNull().default(false),
     // active = worker's own toggle; suspended = admin takedown (audited).
     active: boolean("active").notNull().default(true),
     suspended: boolean("suspended").notNull().default(false),
@@ -718,15 +738,16 @@ export const membershipPayments = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Customer identity verification
+// Identity verification (optional "Verified ID" badge)
 // ---------------------------------------------------------------------------
 
-// One row per customer, created when they submit an ID document during the
-// first-login setup (or re-submit after a rejection). Customers can only
-// book once their row is 'approved'. The uploaded document is temporary:
-// its file is deleted and document_url cleared as soon as staff reviews it.
-export const customerVerifications = pgTable(
-  "customer_verifications",
+// One row per user — customers AND workers may submit. Approval stamps
+// users.id_verified_at, which is what the badge reads. Nothing is gated on
+// it: booking, posting and messaging all work without a badge. The uploaded
+// document is temporary: its file is deleted and document_url cleared as
+// soon as staff reviews it, either way.
+export const identityVerifications = pgTable(
+  "identity_verifications",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
@@ -748,8 +769,8 @@ export const customerVerifications = pgTable(
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("customer_verifications_user_idx").on(t.userId),
-    index("customer_verifications_status_idx").on(t.status),
+    uniqueIndex("identity_verifications_user_idx").on(t.userId),
+    index("identity_verifications_status_idx").on(t.status),
   ]
 );
 
@@ -837,6 +858,10 @@ export const jobRequests = pgTable(
     // The customer's price — the inDrive move. Workers accept it as-is or
     // counter through job_offers.
     budgetCents: integer("budget_cents").notNull(),
+    // A premium request is visible only to premium providers and is filled
+    // only by premium gigs; a standard request only by standard gigs. Only a
+    // premium customer (users.premium_access_at) may post one.
+    premium: boolean("premium").notNull().default(false),
     matchMode: jobMatchMode("match_mode").notNull().default("manual"),
     // lowest_price only: when the scheduler auto-books the cheapest offer at
     // or under budget. autoSettledAt records that the pass ran (whether or

@@ -2,7 +2,6 @@ import { and, count, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { db } from "@/db";
 import {
   bookings,
-  customerVerifications,
   safetyAlerts,
   users,
   workerCustomerBlocks,
@@ -32,22 +31,12 @@ export type CustomerRiskSummary = {
 export async function customerRiskSummary(
   customerId: string
 ): Promise<CustomerRiskSummary> {
-  const [
-    [userRow],
-    [verification],
-    [completed],
-    [cancelled],
-    [alerts],
-    [blocks],
-  ] = await Promise.all([
+  const [[userRow], [completed], [cancelled], [alerts], [blocks]] =
+    await Promise.all([
     db
-      .select({ createdAt: users.createdAt })
+      .select({ createdAt: users.createdAt, idVerifiedAt: users.idVerifiedAt })
       .from(users)
       .where(eq(users.id, customerId)),
-    db
-      .select({ status: customerVerifications.status })
-      .from(customerVerifications)
-      .where(eq(customerVerifications.userId, customerId)),
     db
       .select({ n: count() })
       .from(bookings)
@@ -115,7 +104,7 @@ export async function customerRiskSummary(
         : "new";
 
   return {
-    verified: verification?.status === "approved",
+    verified: userRow?.idVerifiedAt != null,
     accountAgeDays,
     completedBookings,
     cancelledBookings,

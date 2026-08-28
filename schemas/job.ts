@@ -55,6 +55,9 @@ export const postJobRequestSchema = z
     startTime: timeString,
     durationMinutes: z.coerce.number().int().min(15).max(720),
     budgetCents: money,
+    // Premium requests are seen and filled only by premium providers.
+    // postJobRequest forces this back to false for non-premium customers.
+    premium: z.boolean().default(false),
     matchMode: z.enum(["manual", "first_accept", "lowest_price"]),
     // Required for lowest_price (validated below), ignored otherwise.
     autoBookAt: localDateTime.optional(),

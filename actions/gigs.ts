@@ -8,13 +8,19 @@ import { err, ok, ERR } from "@/lib/action-result";
 import { GIGS_PER_WORKER_MAX } from "@/lib/constants";
 import { syncWorkerBaseRate } from "@/lib/gigs";
 import { guardErrorMessage, requireWorker } from "@/lib/guards";
+import { isPremiumProvider } from "@/lib/premium";
 import { uniqueGigSlug } from "@/lib/slug";
 import { gigAddonSchema, gigSchema, updateGigSchema } from "@/schemas/gig";
 import type { ActionResult } from "@/types";
 
-// Gigs auto-publish: an approved worker's new gig is live immediately
-// (workers.verified already gates the whole profile). Admin takedown is
-// gigs.suspended via actions/admin.ts.
+// Gigs auto-publish: a worker's new gig is live the moment they save it —
+// nothing waits on the business owner. Admin takedown is gigs.suspended via
+// actions/admin.ts.
+//
+// PREMIUM is the one field the worker does not fully own: only a worker the
+// admin has made a premium provider may publish premium services. The server
+// forces premium = false for everyone else, so a crafted request cannot slip
+// a listing onto the premium rail.
 
 function revalidateGigSurfaces(workerSlug: string): void {
   revalidatePath("/worker/gigs");
@@ -61,6 +67,7 @@ export async function createGig(
         priceCents: data.priceCents,
         durationMinutes: data.durationMinutes,
         safetyMonitored: data.safetyMonitored,
+        premium: isPremiumProvider(worker) ? data.premium : false,
         active: data.active,
         sortOrder: existing.length,
       })
@@ -107,9 +114,16 @@ export async function updateGig(input: unknown): Promise<ActionResult<undefined>
       slug = await uniqueGigSlug(worker.id, data.title, gig.id);
     }
 
+    // Non-providers can neither set premium nor keep it: if the grant was
+    // revoked, any edit lands the gig back on the standard rail.
+    const premium =
+      data.premium === undefined
+        ? isPremiumProvider(worker) && gig.premium
+        : isPremiumProvider(worker) && data.premium;
+
     await db
       .update(gigs)
-      .set({ ...data, slug, updatedAt: new Date() })
+      .set({ ...data, premium, slug, updatedAt: new Date() })
       .where(eq(gigs.id, gig.id));
 
     await syncWorkerBaseRate(worker.id);

@@ -30,7 +30,6 @@ import { notify } from "@/lib/notify";
 import { publishJobBoard, publishJobRequest } from "@/lib/realtime";
 import { sendPush } from "@/lib/safety/push";
 import { workerHasBlocked, workersBlockingCustomer } from "@/lib/safety/risk";
-import { isCustomerVerified } from "@/lib/verification";
 import { publicWorkerConditions } from "@/lib/workers";
 import type {
   JobBoardCard,
@@ -84,12 +83,17 @@ export type EligibleGig = {
 };
 
 // The gigs a worker may fulfil a request with: their own live gigs in the
-// request's category. Requiring a live gig in the category is the quality
-// rail that makes the auto-match modes safe — the customer can only ever be
-// matched with an approved worker who actually advertises that kind of work.
+// request's category, on the same premium rail as the request. Requiring a
+// live gig in the category is the quality rail that makes the auto-match
+// modes safe — the customer can only ever be matched with a live professional
+// who actually advertises that kind of work.
+//
+// The premium rail is exact, not "at least": a premium request is fulfilled
+// only by a premium gig, a standard request only by a standard gig.
 export async function eligibleGigs(
   workerId: string,
-  categoryId?: string
+  categoryId?: string,
+  premium = false
 ): Promise<EligibleGig[]> {
   return db
     .select({
@@ -103,6 +107,7 @@ export async function eligibleGigs(
     .where(
       and(
         eq(gigs.workerId, workerId),
+        eq(gigs.premium, premium),
         ...publicGigConditions(),
         ...(categoryId ? [eq(gigs.categoryId, categoryId)] : [])
       )
@@ -115,9 +120,13 @@ export async function eligibleGigs(
 // Open, unexpired requests for one worker's board. Hides requests from
 // customers this worker has blocked (the customer is never told) and the
 // worker's own postings. Carries NO customer identity and NO street address.
+//
+// Premium requests appear only for premium providers — everyone else sees no
+// trace of them.
 export async function getJobBoard(opts: {
   workerId: string;
   workerUserId: string;
+  premiumProvider: boolean;
 }): Promise<JobBoardCard[]> {
   const blocked = await db
     .select({ customerId: workerCustomerBlocks.customerId })
@@ -141,6 +150,7 @@ export async function getJobBoard(opts: {
         eq(jobRequests.status, "open"),
         gt(jobRequests.expiresAt, new Date()),
         ne(jobRequests.customerId, opts.workerUserId),
+        ...(opts.premiumProvider ? [] : [eq(jobRequests.premium, false)]),
         ...(blockedIds.length > 0
           ? [notInArray(jobRequests.customerId, blockedIds)]
           : [])
@@ -186,6 +196,7 @@ export async function getJobBoard(opts: {
       startTime: r.startTime,
       durationMinutes: r.durationMinutes,
       budgetCents: r.budgetCents,
+      premium: r.premium,
       matchMode: r.matchMode,
       autoBookAt: r.autoBookAt ? r.autoBookAt.toISOString() : null,
       createdAt: r.createdAt.toISOString(),
@@ -248,6 +259,7 @@ export async function matchJobOffer(opts: {
         eq(gigs.id, offer.gigId),
         eq(gigs.workerId, offer.workerId),
         eq(gigs.categoryId, request.categoryId),
+        eq(gigs.premium, request.premium),
         ...publicGigConditions(),
         ...publicWorkerConditions()
       )
@@ -262,22 +274,17 @@ export async function matchJobOffer(opts: {
   }
   const { worker, gig } = row;
 
-  // The customer must still be BOOKABLE. postJobRequest gates ID verification
-  // (worker safety) and account standing at post time, and the customer's own
-  // acceptJobOffer re-checks — but the instant (first_accept) and scheduler
-  // (lowest_price) paths reach here with nobody in the room. A customer who
-  // resubmitted their ID (verification → pending) or was suspended after
-  // posting must NOT be auto-matched onto a worker. This is the invariant the
-  // booking gate exists to protect, so it is re-checked at the point of match.
+  // The customer must still be BOOKABLE. postJobRequest gates account
+  // standing at post time and the customer's own acceptJobOffer re-checks —
+  // but the instant (first_accept) and scheduler (lowest_price) paths reach
+  // here with nobody in the room. A customer suspended after posting must NOT
+  // be auto-matched onto a worker, so standing is re-checked at the point of
+  // match.
   const [customer] = await db
     .select({ suspended: users.suspended })
     .from(users)
     .where(eq(users.id, request.customerId));
-  if (
-    !customer ||
-    customer.suspended ||
-    !(await isCustomerVerified(request.customerId))
-  ) {
+  if (!customer || customer.suspended) {
     // Not the worker's fault — leave their offer open and treat the request as
     // unavailable (the same neutral silence as a block). offerDead:false so
     // the scheduler stops scanning candidates: the whole request is unbookable
@@ -548,10 +555,11 @@ export async function settleDueJobRequests(now: Date = new Date()): Promise<void
 // --- Fan-out: tell the right workers a request exists --------------------------------
 
 // In-app row + web push (no email — a busy category would mean an email per
-// posting) to every approved, visible worker with a live gig in the request's
-// category, minus anyone who has blocked this customer. The live board is the
-// primary channel; this is the nudge for workers who aren't watching it.
-// Nothing sensitive travels: title, category, parish, date, budget.
+// posting) to every visible worker with a live gig in the request's category
+// ON THE SAME PREMIUM RAIL, minus anyone who has blocked this customer. The
+// live board is the primary channel; this is the nudge for workers who aren't
+// watching it. Nothing sensitive travels: title, category, parish, date,
+// budget.
 export async function notifyWorkersOfNewJob(
   request: JobRequestRow,
   categoryName: string
@@ -564,6 +572,7 @@ export async function notifyWorkersOfNewJob(
       .where(
         and(
           eq(gigs.categoryId, request.categoryId),
+          eq(gigs.premium, request.premium),
           ...publicGigConditions(),
           ...publicWorkerConditions(),
           ne(workers.userId, request.customerId)

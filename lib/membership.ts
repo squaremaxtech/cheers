@@ -3,8 +3,9 @@ import { db } from "@/db";
 import { memberships } from "@/db/schema";
 import type { MembershipRow } from "@/types";
 
-// Launch flag: Chat Pass free for everyone until this date (empty = off).
-// This is what keeps chat open while Stripe is not yet live — cash-first.
+// Launch flag: the membership is free for everyone until this date (empty =
+// off). This is what keeps messaging and booking open while Stripe is not yet
+// live — cash-first. It is the ONLY switch on the membership gate.
 export function freeAccessActive(): boolean {
   const until = process.env.FREE_ACCESS_UNTIL;
   if (!until) return false;
@@ -22,13 +23,13 @@ export async function getMembership(
   return row ?? null;
 }
 
-// Chat Pass access — the $5/month subscription that unlocks messaging any
-// worker. True when the launch free-access flag is live OR the user holds a
-// paid pass whose period hasn't lapsed. Booking does NOT require this (see
-// bookingRequiresChatPass in lib/constants.ts for the owner's later lever),
-// and a booked customer/worker pair can always chat regardless
-// (lib/chat-access.ts).
-export async function hasChatAccess(userId: string): Promise<boolean> {
+// Cheers Membership — the monthly subscription that unlocks messaging AND
+// booking for customers. True when the launch free-access window is open OR
+// the user holds a paid membership whose period hasn't lapsed.
+//
+// Workers never need one. A booked customer/worker pair can always chat
+// regardless (lib/chat-access.ts) — coordination is never paywalled.
+export async function hasMemberAccess(userId: string): Promise<boolean> {
   if (freeAccessActive()) return true;
   const membership = await getMembership(userId);
   if (!membership) return false;

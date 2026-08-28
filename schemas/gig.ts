@@ -33,6 +33,10 @@ export const gigSchema = z.object({
   priceCents: z.coerce.number().int().min(0).max(10_000_000),
   durationMinutes: z.coerce.number().int().min(15).max(720),
   safetyMonitored: z.boolean().default(true),
+  // Premium services are visible only to premium members. actions/gigs.ts
+  // forces this back to false unless the worker is a premium provider — the
+  // UI toggle is a convenience, the server rule is the boundary.
+  premium: z.boolean().default(false),
   active: z.boolean().default(true),
 });
 
