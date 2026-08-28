@@ -70,8 +70,8 @@ export function chatSenderRole(
   return senderUserId === access.worker.userId ? "worker" : "customer";
 }
 
-// Display name attached to each message: the worker's stage name (real name
-// stays private) or the customer's first name.
+// Display name attached to each message: the worker's display name (real
+// name stays private) or the customer's first name.
 export function chatSenderLabel(
   access: Pick<ChatAccess, "worker" | "customer">,
   senderUserId: string
@@ -80,12 +80,13 @@ export function chatSenderLabel(
   return access.customer.name?.split(" ")[0] ?? "Customer";
 }
 
-// --- The Chat Pass paywall -----------------------------------------------------
+// --- The membership paywall ----------------------------------------------------
 
 // Coordination is never paywalled: a customer with a LIVE booking with this
 // worker may always message them — "here's my gate code, I'm running late"
-// cannot sit behind a subscription. The Chat Pass buys the rest: opening a
-// conversation with any worker before (or without) booking them.
+// cannot sit behind a subscription. The Cheers Membership buys the rest:
+// opening a conversation with any professional before (or without)
+// booking them.
 const LIVE_BOOKING_STATUSES = [
   "pending",
   "accepted",

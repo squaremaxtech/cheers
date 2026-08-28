@@ -26,6 +26,7 @@ import {
 import { claimBookingSlot, parseBookingStart } from "@/lib/bookings";
 import { JAMAICA_UTC_OFFSET, formatCents, formatTime12 } from "@/lib/constants";
 import { publicGigConditions } from "@/lib/gigs";
+import { STAFF_VIEWER } from "@/lib/premium";
 import { notify } from "@/lib/notify";
 import { publishJobBoard, publishJobRequest } from "@/lib/realtime";
 import { sendPush } from "@/lib/safety/push";
@@ -108,7 +109,7 @@ export async function eligibleGigs(
       and(
         eq(gigs.workerId, workerId),
         eq(gigs.premium, premium),
-        ...publicGigConditions(),
+        ...publicGigConditions(STAFF_VIEWER),
         ...(categoryId ? [eq(gigs.categoryId, categoryId)] : [])
       )
     )
@@ -260,7 +261,7 @@ export async function matchJobOffer(opts: {
         eq(gigs.workerId, offer.workerId),
         eq(gigs.categoryId, request.categoryId),
         eq(gigs.premium, request.premium),
-        ...publicGigConditions(),
+        ...publicGigConditions(STAFF_VIEWER),
         ...publicWorkerConditions()
       )
     );
@@ -445,7 +446,7 @@ export async function matchJobOffer(opts: {
     );
   }
 
-  publishJobBoard();
+  publishJobBoard(request.premium);
   publishJobRequest(request.id, "status");
   return { ok: true, bookingId: booking.id, bookingCode: booking.code };
 }
@@ -573,7 +574,7 @@ export async function notifyWorkersOfNewJob(
         and(
           eq(gigs.categoryId, request.categoryId),
           eq(gigs.premium, request.premium),
-          ...publicGigConditions(),
+          ...publicGigConditions(STAFF_VIEWER),
           ...publicWorkerConditions(),
           ne(workers.userId, request.customerId)
         )

@@ -53,7 +53,6 @@ export async function openChatRoom(
       .select({
         id: workers.id,
         userId: workers.userId,
-        verified: workers.verified,
         active: workers.active,
         suspended: workers.suspended,
       })
@@ -63,9 +62,9 @@ export async function openChatRoom(
     if (worker.userId === user.id) return err("You cannot message yourself.");
 
     // Existing conversations stay reachable even if the worker later hides
-    // their profile (or the customer's Chat Pass lapses — reading stays
+    // their profile (or the customer's membership lapses — reading stays
     // open; only the composer locks, see sendChatMessage). Only STARTING a
-    // new one requires a publicly visible worker and an active pass.
+    // new one requires a publicly visible worker and an active membership.
     const [existing] = await db
       .select({ id: chatRooms.id })
       .from(chatRooms)
@@ -76,15 +75,17 @@ export async function openChatRoom(
         )
       );
     if (existing) return ok({ roomId: existing.id });
-    if (!worker.verified || !worker.active || worker.suspended) {
-      return err("This worker is not available right now.");
+    // Professionals publish themselves — visible means their own switch is
+    // on and no admin has suspended them (plan §2.1).
+    if (!worker.active || worker.suspended) {
+      return err("This professional is not available right now.");
     }
-    // The Chat Pass paywall: starting a NEW conversation needs an active
-    // pass — unless this pair has a live booking (coordination is never
-    // paywalled).
+    // The membership paywall: starting a NEW conversation needs an active
+    // membership — unless this pair has a live booking (coordination is
+    // never paywalled).
     if (!(await customerCanSendChat(user.id, worker.id))) {
       return err(
-        "Messaging workers needs an active Chat Pass ($5/month). Get yours from the Membership page."
+        "Messaging professionals needs an active Cheers Membership. Get yours from the Membership page."
       );
     }
     // Anti-spam: cap brand-new conversations, not returning to old ones.
@@ -133,15 +134,15 @@ export async function sendChatMessage(
     if (access.viewerRole === "staff") {
       return err("Support can read chats but not send messages.");
     }
-    // Customer side of the paywall: a lapsed pass locks the composer (reading
-    // stays open), unless this pair has a live booking. Workers always reply
-    // free — the gate is on the customer channel only.
+    // Customer side of the paywall: a lapsed membership locks the composer
+    // (reading stays open), unless this pair has a live booking. Workers
+    // always reply free — the gate is on the customer channel only.
     if (
       access.viewerRole === "customer" &&
       !(await customerCanSendChat(user.id, access.worker.id))
     ) {
       return err(
-        "Your Chat Pass has lapsed. Renew it from the Membership page to keep messaging workers."
+        "Your Cheers Membership has lapsed. Renew it from the Membership page to keep messaging professionals."
       );
     }
     // Flood control: generous for humans, a wall for scripts.

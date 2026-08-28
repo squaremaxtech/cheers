@@ -248,7 +248,7 @@ function OpenQuoteCard({ row, now }: { row: QuoteInboxRow; now: number }) {
             />
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button type="submit" className="btn-gold" disabled={busy}>
+            <button type="submit" className="btn-primary" disabled={busy}>
               Send offer
             </button>
             <button
@@ -289,7 +289,7 @@ function SettledQuoteCard({ row, now }: { row: QuoteInboxRow; now: number }) {
         </div>
         <div className="flex items-center gap-3">
           {quote.offerPriceCents !== null && (
-            <span className="text-sm text-gold">
+            <span className="text-sm text-gold-deep">
               {formatCents(quote.offerPriceCents)}
             </span>
           )}
@@ -310,7 +310,7 @@ function SettledQuoteCard({ row, now }: { row: QuoteInboxRow; now: number }) {
       {quote.status === "accepted" && quote.bookingId && (
         <Link
           href={`/bookings/${quote.bookingId}`}
-          className="mt-2 inline-block text-xs text-gold hover:text-gold-soft"
+          className="mt-2 inline-block text-xs text-brand hover:text-brand-soft"
         >
           Booking {row.bookingCode ?? ""} →
         </Link>

@@ -189,7 +189,7 @@ export default function GigCategoryManager({
             className="input"
           />
         </div>
-        <button type="submit" className="btn-gold py-2 text-xs" disabled={busy}>
+        <button type="submit" className="btn-primary py-2 text-xs" disabled={busy}>
           Add category
         </button>
       </form>

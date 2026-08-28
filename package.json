@@ -12,6 +12,7 @@
     "db:migrate": "tsx db/migrate-updates.ts",
     "db:migrate-v2": "tsx db/migrate-v2.ts",
     "db:migrate-v3": "tsx db/migrate-v3.ts",
+    "db:migrate-v4": "tsx db/migrate-v4.ts",
     "db:backup": "tsx db/backup.ts",
     "db:migrate-safety": "tsx db/migrate-safety.ts",
     "db:migrate-uploads": "tsx db/migrate-uploads.ts",

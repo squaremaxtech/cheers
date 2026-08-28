@@ -10,15 +10,15 @@ import type { MetadataRoute } from "next";
 // Worker onboarding therefore treats install as a step, not a suggestion.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Cheers",
+    name: "Cheers — Hire Professionals in Jamaica",
     short_name: "Cheers",
     description:
-      "Book and manage Cheers appointments — with live safety monitoring for workers.",
+      "Hire trusted professionals across Jamaica. Browse services, message, book, and manage your work — with safety check-ins for professionals on the job.",
     start_url: "/dashboard",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#0c0a09",
-    theme_color: "#0c0a09",
+    background_color: "#f7f6f2",
+    theme_color: "#0b6b4a",
     categories: ["business", "lifestyle"],
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },

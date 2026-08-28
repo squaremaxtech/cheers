@@ -71,7 +71,7 @@ export default function WorkerBookingActions({
           <>
             <button
               type="button"
-              className="btn-gold"
+              className="btn-primary"
               disabled={busy}
               onClick={() => run(() => acceptBooking({ bookingId }), "Booking accepted")}
             >
@@ -104,7 +104,7 @@ export default function WorkerBookingActions({
         {status === "in_progress" && (
           <button
             type="button"
-            className="btn-gold"
+            className="btn-primary"
             disabled={busy}
             onClick={() =>
               run(() => completeBooking({ bookingId }), "Marked completed — review requested")
@@ -164,7 +164,7 @@ export default function WorkerBookingActions({
               kind="receipt"
               onUploaded={(url) => setProofUrl(url)}
             />
-            <button type="submit" className="btn-gold" disabled={busy || !proofUrl}>
+            <button type="submit" className="btn-primary" disabled={busy || !proofUrl}>
               Record collection
             </button>
           </div>

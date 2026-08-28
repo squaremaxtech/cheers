@@ -13,7 +13,7 @@ const nav = [
   { href: "/chats", label: "Messages" },
   { href: "/favorites", label: "Favorites" },
   { href: "/membership", label: "Membership" },
-  { href: "/browse", label: "Browse workers" },
+  { href: "/browse", label: "Browse services" },
 ];
 
 export default async function CustomerLayout({
@@ -23,8 +23,10 @@ export default async function CustomerLayout({
 }) {
   const user = await getUserRow();
   if (!user || user.suspended) redirect("/login");
-  // First-time customers finish the /welcome setup (profile, ID document,
-  // membership) before using the account area.
+  // First-time customers finish the /welcome setup (profile + terms; the
+  // Verified ID step is optional) before using the account area. This keys
+  // on users.onboardedAt, which only completeCustomerOnboarding sets — so an
+  // older account that already has it is never dragged back into the wizard.
   if (user.role === "customer" && !user.onboardedAt) redirect("/welcome");
 
   return (

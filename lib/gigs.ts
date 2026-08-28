@@ -20,6 +20,7 @@ import {
   workerMedia,
   workers,
 } from "@/db/schema";
+import { PUBLIC_VIEWER } from "@/lib/premium";
 import { publicWorkerConditions, publicWorkerUserJoin } from "@/lib/workers";
 import type {
   BrowseFilters,
@@ -35,12 +36,17 @@ import type {
 // public-facing gig query must compose these WITH publicWorkerConditions()
 // on the joined worker.
 //
-// Pass a PremiumViewer to also enforce the premium rail: a viewer who cannot
-// see premium gets `gigs.premium = false` appended, so premium listings,
-// their media and their prices are unreachable — not merely unbadged.
-export function publicGigConditions(viewer?: PremiumViewer): SQL[] {
+// The PremiumViewer also enforces the premium rail: a viewer who cannot see
+// premium gets `gigs.premium = false` appended, so premium listings, their
+// media and their prices are unreachable — not merely unbadged.
+//
+// The viewer is REQUIRED so no caller can fall into a permissive default by
+// accident. Pass PUBLIC_VIEWER for anything public or derived from public
+// data; pass STAFF_VIEWER only where an explicit `gigs.premium = …` equality
+// follows (the job-request rail in lib/jobs.ts).
+export function publicGigConditions(viewer: PremiumViewer): SQL[] {
   const conditions: SQL[] = [eq(gigs.active, true), eq(gigs.suspended, false)];
-  if (viewer && !viewer.canSeePremium) conditions.push(eq(gigs.premium, false));
+  if (!viewer.canSeePremium) conditions.push(eq(gigs.premium, false));
   return conditions;
 }
 
@@ -305,8 +311,7 @@ export async function syncWorkerBaseRate(workerId: string): Promise<void> {
     .where(
       and(
         eq(gigs.workerId, workerId),
-        eq(gigs.premium, false),
-        ...publicGigConditions()
+        ...publicGigConditions(PUBLIC_VIEWER)
       )
     );
   const priced = rows.filter(

@@ -115,7 +115,7 @@ export default function RotaEditor({
               />
             </div>
           </div>
-          <button type="submit" className="btn-gold" disabled={busy || !userId}>
+          <button type="submit" className="btn-primary" disabled={busy || !userId}>
             Add shift
           </button>
         </form>

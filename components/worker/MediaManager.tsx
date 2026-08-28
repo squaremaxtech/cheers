@@ -70,7 +70,7 @@ export default function MediaManager({
         </div>
         <FileUploadButton
           label="Upload photo / video"
-          className="btn-gold"
+          className="btn-primary"
           onUploaded={handleUploaded}
         />
       </div>

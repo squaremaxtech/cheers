@@ -1,5 +1,86 @@
 # Cheers — Demo Walkthrough
 
+## v3 changes (2026-08-27) — read before following this script
+
+The script below was written before the **v3 refocus** and has not been
+rewritten. It is still broadly correct about the safety system, the money and
+the shape of the demo, but the following no longer match the app. Read this
+page, then run the script with these substitutions in your head.
+(`docs/REFACTOR-PLAN.md` is the v3 architecture; the v3 update block at the top
+of `docs/HANDOFF.md` §2 is the full change list.)
+
+- **Worker approval is gone.** There is no invite code, no "awaiting approval"
+  banner, no Approve button and no pending-worker card on `/admin`. A
+  professional signs up and **goes live the moment they publish a gig**. Any
+  demo beat built around approving Maxwell has to be cut or replaced — the
+  replacement beat is "watch a listing appear on Browse seconds after it is
+  published", which is a better story anyway. Admin oversight is now hide,
+  suspend and take down.
+- **"Chat Pass" is now "Cheers Membership", and it gates booking too.**
+  Messaging *and* booking need a membership; professionals never need one; a
+  pair with a live booking can always message each other. During the launch
+  free-access window (`FREE_ACCESS_UNTIL`) it is free for everyone, so nothing
+  in the demo is blocked. The `BOOKING_REQUIRES_SUBSCRIPTION` lever no longer
+  exists — do not look for it in `.env` or on `/admin/settings`.
+- **ID verification no longer blocks anything.** It is an **optional badge**
+  ("Verified ID"), open to customers **and** professionals, and it gates no
+  booking, quote, request or message. The `/admin/verifications` queue is
+  still there, now with a **Role** column and copy saying it is not urgent.
+  Professionals have their own page at **`/worker/verification`**. Any line in
+  the script about "she can't book until you approve her ID" is wrong —
+  the two things that gate a customer are a complete profile (name, phone,
+  accepted terms) and a membership.
+- **The demo professional moved: `/workers/maxx` → `/workers/maxx-events`.**
+  Maxx is now **"Maxx Events"**, headline "Event DJ & MC · Kingston", with
+  skills and years of experience. His gigs after `db:seed-accounts` are
+  *Wedding & Party DJ Set*, *MC / Host for corporate events*, *Sound system
+  rental & setup* (quote mode) and **Premium event package** (premium). The
+  four pre-v3 demo gigs are deactivated on a re-run, not deleted. Update any
+  bookmark, tab or typed URL in your pre-demo setup.
+- **Favour Customer has premium access — demo both sides of the tier.** Signed
+  in as Favour, `/browse` shows a **Premium only** chip and the *Premium event
+  package* with a gold **Premium** badge. Sign in as (or sign up) any other
+  customer and the same Browse page shows **no chip, no badge and no premium
+  gig at all** — typing `?premium=1` does nothing, and a professional with only
+  premium gigs 404s. That contrast is the demo: premium is invisible, not
+  locked. Grant and revoke it live from the admin **Promote** tab.
+- **New admin tab: Promote (`/admin/promote`)**, between Gigs and
+  Verifications, **admin only** (Tanya cannot see or reach it). Search a person,
+  press one button: grant a customer premium access, or enable a professional
+  to publish premium services. Disabling a provider **switches off their live
+  premium gigs** in the same breath, which is worth showing. `/admin/gigs` also
+  has a Premium column and a premium/standard filter.
+- **Categories changed** — there are now **15** (events & entertainment, music,
+  food & bartending, cleaning, home & trade, landscaping, beauty & wellness,
+  photo & video, creative, tech, tutoring, moving & labour, automotive, care &
+  childcare, security). Catering and cleaning are back; the old 6-category list
+  in the script is stale.
+- **The theme is light.** The dark velvet/suede look is gone: warm off-white
+  page, white cards, deep green primary buttons, gold reserved for premium and
+  ratings, Manrope headings. Screenshots and any "dark luxury" narration in the
+  script are out of date. The safety takeovers stay high-contrast red/amber by
+  design.
+- **Smaller renames you will see on screen:** admin nav "Workers" →
+  **"Professionals"**; customer nav "Browse workers" → "Browse services";
+  "Stage name" → **"Display name"** everywhere; professionals' profiles now
+  carry a headline, skills and years of experience instead of age, height and
+  body type; new customers walk a three-step `/welcome` (Profile → Terms →
+  Verified ID, skippable).
+- **Also pre-v3 stale, from the v2 reform:** payments run on **Stripe**, not
+  PowerTranz (`POWERTRANZ_*` in Appendix A no longer exists — the platform runs
+  cash-only with no keys); worker invite codes were deleted; **Devon is a
+  marketplace `driver`**, not a support sub-role; and the catalog of fixed
+  services is now worker-authored **gigs**. See the 2026-08-17 and 2026-08-19
+  update blocks in `docs/HANDOFF.md`.
+
+> **Before any demo:** the v3 database migration has **not been run**. On a
+> demo machine run `npm run db:backup` → `npm run db:migrate-v3` (if it has
+> never run there) → `npm run db:migrate-v4` → `npm run db:push` →
+> `npm run db:seed` → `npm run db:seed-accounts`, in that order. Do not run
+> `db:push` before `db:migrate-v4`. Appendix B's command list predates v4.
+
+---
+
 > **Reading order.** Part 1 is who the accounts are. Part 2 is what to do
 > before the client arrives. **Part 3 explains how the safety system works in
 > plain English — read it once.** Part 4 is the script, which you can read

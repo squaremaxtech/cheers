@@ -338,7 +338,7 @@ export default function DriverProfileForm({
         </p>
       </fieldset>
 
-      <button type="submit" className="btn-gold w-full" disabled={saving}>
+      <button type="submit" className="btn-primary w-full" disabled={saving}>
         {saving
           ? "Saving…"
           : mode === "create"

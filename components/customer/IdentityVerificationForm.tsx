@@ -109,7 +109,7 @@ export default function IdentityVerificationForm({
         </p>
       </div>
 
-      <button type="submit" className="btn-gold" disabled={saving}>
+      <button type="submit" className="btn-primary" disabled={saving}>
         {saving ? "Submitting…" : "Submit for verification"}
       </button>
     </form>

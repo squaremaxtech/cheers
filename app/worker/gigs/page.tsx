@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { gigAddons, gigs } from "@/db/schema";
 import GigsEditor from "@/components/worker/GigsEditor";
 import { getGigCategories } from "@/lib/gigs";
+import { isPremiumProvider } from "@/lib/premium";
 import { getWorkerContext } from "@/lib/worker-context";
 
 export const metadata: Metadata = { title: "Gigs" };
@@ -38,7 +39,12 @@ export default async function WorkerGigsPage() {
         the price.
       </p>
       <div className="mt-6">
-        <GigsEditor categories={categories} gigs={mine} addons={addons} />
+        <GigsEditor
+          categories={categories}
+          gigs={mine}
+          addons={addons}
+          premiumProvider={isPremiumProvider(worker)}
+        />
       </div>
     </div>
   );

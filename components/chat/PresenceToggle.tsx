@@ -26,7 +26,7 @@ export default function PresenceToggle({ show }: { show: boolean }) {
           if (res.ok) router.refresh();
           else toast.error(res.error);
         }}
-        className="h-4 w-4 accent-[var(--color-gold)]"
+        className="h-4 w-4 accent-[var(--color-brand)]"
       />
       Show customers when I&apos;m online
     </label>

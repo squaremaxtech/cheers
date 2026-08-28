@@ -1,17 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
-import { db } from "@/db";
-import { favorites, workers } from "@/db/schema";
 import EmptyState from "@/components/ui/EmptyState";
 import WorkerCard from "@/components/workers/WorkerCard";
 import { getUserRow } from "@/lib/auth";
-import {
-  attachPrimaryPhotos,
-  publicWorkerColumns,
-  publicWorkerConditions,
-} from "@/lib/workers";
+import { viewerPremium } from "@/lib/premium";
+import { getFavoriteWorkers } from "@/lib/workers";
 
 export const metadata: Metadata = { title: "Favorites" };
 
@@ -19,38 +13,22 @@ export default async function FavoritesPage() {
   const user = await getUserRow();
   if (!user) redirect("/login");
 
-  const saved = await db
-    .select({ workerId: favorites.workerId })
-    .from(favorites)
-    .where(eq(favorites.customerId, user.id))
-    .orderBy(desc(favorites.createdAt));
-
-  // Favorited workers who since lost public visibility (pending approval,
-  // hidden, suspended) drop off the list rather than dead-ending.
-  const rows =
-    saved.length > 0
-      ? await db
-          .select(publicWorkerColumns)
-          .from(workers)
-          .where(
-            and(
-              inArray(workers.id, saved.map((s) => s.workerId)),
-              ...publicWorkerConditions()
-            )
-          )
-      : [];
-  const withPhotos = await attachPrimaryPhotos(rows);
+  // getFavoriteWorkers does the visibility work: a saved professional who
+  // since went hidden or suspended drops off, and so does one whose live
+  // services are all premium when this viewer cannot see premium. Someone
+  // with no live services at all still shows — they are setting up.
+  const saved = await getFavoriteWorkers(user.id, viewerPremium(user));
 
   return (
     <div>
       <h1 className="font-display text-2xl text-ink">Favorites</h1>
-      {withPhotos.length === 0 ? (
+      {saved.length === 0 ? (
         <div className="mt-6">
           <EmptyState
             title="No favorites yet"
             hint="Tap the heart on any profile to save them here."
             action={
-              <Link href="/browse" className="btn-gold">
+              <Link href="/browse" className="btn-primary">
                 Browse gigs
               </Link>
             }
@@ -58,7 +36,7 @@ export default async function FavoritesPage() {
         </div>
       ) : (
         <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {withPhotos.map((w) => (
+          {saved.map((w) => (
             <WorkerCard key={w.id} worker={w} />
           ))}
         </div>

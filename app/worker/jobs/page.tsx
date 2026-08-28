@@ -12,6 +12,7 @@ import {
 } from "@/components/jobs/jobUi";
 import { formatCents, formatTime12 } from "@/lib/constants";
 import { eligibleGigs, getJobBoard } from "@/lib/jobs";
+import { isPremiumProvider } from "@/lib/premium";
 import { getWorkerContext } from "@/lib/worker-context";
 import type { JobOfferStatus } from "@/types";
 
@@ -21,11 +22,19 @@ export const metadata: Metadata = { title: "Job Board" };
 // worker can answer with, and their own offer history underneath.
 export default async function WorkerJobsPage() {
   const { user, worker } = await getWorkerContext();
-  const canRespond = worker.verified && worker.active && !worker.suspended;
+  // Professionals publish themselves — "can respond" is their own switch plus
+  // no admin suspension (plan §2.1). No approval step exists any more.
+  const canRespond = worker.active && !worker.suspended;
+  const premiumProvider = isPremiumProvider(worker);
 
-  const [cards, gigs, history] = await Promise.all([
-    getJobBoard({ workerId: worker.id, workerUserId: user.id }),
+  const [cards, gigs, premiumGigs, history] = await Promise.all([
+    getJobBoard({ workerId: worker.id, workerUserId: user.id, premiumProvider }),
     eligibleGigs(worker.id),
+    // The premium rail is exact: a premium request is answered only with a
+    // premium gig. Nobody else has one, so nobody else needs to ask.
+    premiumProvider
+      ? eligibleGigs(worker.id, undefined, true)
+      : Promise.resolve([]),
     db
       .select({
         offer: jobOffers,
@@ -54,6 +63,15 @@ export default async function WorkerJobsPage() {
       durationMinutes: g.durationMinutes,
     });
   }
+  const premiumGigsByCategory: Record<string, BoardGig[]> = {};
+  for (const g of premiumGigs) {
+    (premiumGigsByCategory[g.categoryId] ??= []).push({
+      id: g.id,
+      title: g.title,
+      durationMinutes: g.durationMinutes,
+    });
+  }
+  const hasLiveGigs = gigs.length + premiumGigs.length > 0;
 
   return (
     <div className="space-y-8">
@@ -67,39 +85,46 @@ export default async function WorkerJobsPage() {
         </p>
       </div>
 
-      {!worker.verified && (
-        <div className="card border-warn/40 p-5">
+      {worker.suspended && (
+        <div className="card border-danger/40 p-5">
           <p className="text-sm leading-6 text-muted">
-            <span className="font-medium text-warn">Awaiting approval.</span>{" "}
-            You can watch the board, but responding opens once our team approves
-            your profile.
+            <span className="font-medium text-danger">
+              Your profile is suspended.
+            </span>{" "}
+            You can watch the board, but you cannot respond until an admin
+            lifts the suspension.
           </p>
         </div>
       )}
-      {worker.verified && !worker.active && (
+      {!worker.suspended && !worker.active && (
         <div className="card border-warn/40 p-5">
           <p className="text-sm leading-6 text-muted">
             <span className="font-medium text-warn">You are switched off.</span>{" "}
             Turn your visibility back on from{" "}
-            <Link href="/worker" className="text-gold hover:text-gold-soft">
+            <Link href="/worker" className="text-brand hover:text-brand-soft">
               your overview
             </Link>{" "}
             to respond to requests.
           </p>
         </div>
       )}
-      {canRespond && gigs.length === 0 && (
+      {canRespond && !hasLiveGigs && (
         <div className="card border-gold/30 p-5">
           <p className="text-sm leading-6 text-muted">
             You have no live gigs yet, so you can&apos;t respond to requests.{" "}
-            <Link href="/worker/gigs" className="text-gold hover:text-gold-soft">
+            <Link href="/worker/gigs" className="text-brand hover:text-brand-soft">
               Publish a gig →
             </Link>
           </p>
         </div>
       )}
 
-      <JobBoard cards={cards} gigsByCategory={gigsByCategory} canRespond={canRespond} />
+      <JobBoard
+        cards={cards}
+        gigsByCategory={gigsByCategory}
+        premiumGigsByCategory={premiumGigsByCategory}
+        canRespond={canRespond}
+      />
 
       {history.length > 0 && (
         <section>
@@ -129,7 +154,7 @@ export default async function WorkerJobsPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-gold">
+                    <span className="text-sm text-gold-deep">
                       {formatCents(h.offer.priceCents)}
                     </span>
                     {status === "expired" ? (
@@ -142,7 +167,7 @@ export default async function WorkerJobsPage() {
                     {h.offer.status === "accepted" && h.requestBookingId && (
                       <Link
                         href={`/bookings/${h.requestBookingId}`}
-                        className="text-xs text-gold hover:text-gold-soft"
+                        className="text-xs text-brand hover:text-brand-soft"
                       >
                         Booking {h.bookingCode ?? ""} →
                       </Link>

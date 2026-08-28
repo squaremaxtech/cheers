@@ -57,15 +57,15 @@ export default async function QuotesPage() {
       <h1 className="font-display text-2xl text-ink">My quotes</h1>
       <p className="mt-1 text-sm text-muted">
         Requests you&apos;ve sent on priced-per-job gigs. Accepting an offer
-        books the worker at that price.
+        books the professional at that price.
       </p>
       {items.length === 0 ? (
         <div className="mt-6">
           <EmptyState
             title="No quote requests yet"
-            hint="Gigs marked “priced per job” let you describe the work and get a price from the worker."
+            hint="Gigs marked “priced per job” let you describe the work and get a price from the professional."
             action={
-              <Link href="/browse" className="btn-gold">
+              <Link href="/browse" className="btn-primary">
                 Browse gigs
               </Link>
             }

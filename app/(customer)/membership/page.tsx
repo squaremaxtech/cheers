@@ -7,28 +7,29 @@ import Badge from "@/components/ui/Badge";
 import MembershipActions from "@/components/customer/MembershipActions";
 import { getUserRow } from "@/lib/auth";
 import {
-  chatPassPriceCents,
   formatCents,
+  membershipPriceCents,
   stripeConfigured,
 } from "@/lib/constants";
 import {
   freeAccessActive,
   getMembership,
-  hasChatAccess,
+  hasMemberAccess,
 } from "@/lib/membership";
 
-export const metadata: Metadata = { title: "Chat Pass" };
+export const metadata: Metadata = { title: "Cheers Membership" };
 
-// The Chat Pass page: the $5/month subscription that unlocks messaging any
-// worker. Browsing is always free, booking never requires it, and a booked
-// customer/worker pair can always chat regardless.
+// The Cheers Membership page: the monthly subscription that unlocks BOTH
+// messaging any professional and booking them (plan §2.3). Browsing is
+// always free, professionals never need one, and a customer/professional
+// pair with a live booking can always chat regardless.
 export default async function MembershipPage() {
   const user = await getUserRow();
   if (!user) redirect("/login");
 
   const [membership, access, paymentHistory] = await Promise.all([
     getMembership(user.id),
-    hasChatAccess(user.id),
+    hasMemberAccess(user.id),
     db
       .select()
       .from(membershipPayments)
@@ -39,7 +40,7 @@ export default async function MembershipPage() {
 
   const freeAccess = freeAccessActive();
   const stripeLive = stripeConfigured();
-  // Paid pass specifically (freeAccess makes access true for everyone).
+  // Paid membership specifically (freeAccess makes access true for everyone).
   const paidActive =
     membership?.status === "active" &&
     membership.currentPeriodEnd !== null &&
@@ -50,67 +51,68 @@ export default async function MembershipPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <h1 className="font-display text-2xl text-ink">Chat Pass</h1>
+      <h1 className="font-display text-2xl text-ink">Cheers Membership</h1>
 
-      <div className="card velvet p-8">
-        <div className="flex items-center justify-between">
+      <div className="card panel-brand p-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-xl text-ink">
-            The {formatCents(chatPassPriceCents())}/month Chat Pass
+            {formatCents(membershipPriceCents())}/month
           </h2>
           <Badge tone={access ? "gold" : "neutral"}>
             {freeAccess ? "Free for everyone" : paidActive ? "Active" : "Inactive"}
           </Badge>
         </div>
         <p className="mt-4 text-sm leading-6 text-muted">
-          One small subscription unlocks messaging <em>any</em> worker on
-          Cheers — ask questions, compare, and plan before you ever book.
+          One small subscription unlocks both halves of hiring on Cheers:
+          messaging <em>any</em> professional, and booking them.
         </p>
         <ul className="mt-4 space-y-2 text-sm text-muted">
-          <li>✦ Message any worker, any time</li>
-          <li>✦ Browsing every profile is always free — no pass needed</li>
-          <li>✦ Booking never requires it</li>
+          <li>✦ Message any professional, any time</li>
+          <li>✦ Book any professional, any service</li>
+          <li>✦ Post a job request and let professionals come to you</li>
+          <li>✦ Browsing every profile is always free — no membership needed</li>
           <li>
-            ✦ Once you have a booking with a worker, chat with them is always
-            free — coordination is never paywalled
+            ✦ Once you have a booking with a professional, chat with them is
+            always free — coordination is never paywalled
           </li>
         </ul>
 
         {freeAccess ? (
           <div className="mt-6 rounded-xl border border-gold/40 bg-gold/10 px-4 py-3">
-            <p className="text-sm text-gold-soft">
-              🎉 Launch special: chat is free for everyone
-              {freeUntil ? ` until ${freeUntil.toDateString()}` : ""} — no pass,
-              no payment, just say hello.
+            <p className="text-sm text-gold-deep">
+              Launch window: membership is free for everyone
+              {freeUntil ? ` until ${freeUntil.toDateString()}` : ""} —
+              messaging and booking are open with no payment at all.
             </p>
           </div>
         ) : stripeLive ? (
           <div className="mt-6 space-y-3">
             {paidActive && membership?.currentPeriodEnd && (
-              <p className="text-sm text-gold-soft">
-                Your Chat Pass is active until{" "}
+              <p className="text-sm text-gold-deep">
+                Your membership is active until{" "}
                 {membership.currentPeriodEnd.toDateString()} and renews
                 monthly.
               </p>
             )}
             {!paidActive && membership?.currentPeriodEnd && (
               <p className="text-sm text-muted">
-                Your Chat Pass lapsed on{" "}
+                Your membership lapsed on{" "}
                 {membership.currentPeriodEnd.toDateString()} — you can rejoin
                 any time. Your conversations are right where you left them.
               </p>
             )}
             <MembershipActions
               active={paidActive}
-              priceCents={chatPassPriceCents()}
+              priceCents={membershipPriceCents()}
             />
           </div>
         ) : (
           <div className="mt-6 rounded-xl border border-hairline bg-raised px-4 py-3">
             <p className="text-sm text-muted">
-              Online payments are coming soon — the Chat Pass can&apos;t be
-              purchased just yet. In the meantime chat stays open where it
-              matters: any worker you have a live booking with can always be
-              messaged, and browsing and booking are free as ever.
+              Online payments are coming soon, so a membership can&apos;t be
+              bought just yet. In the meantime chat stays open where it
+              matters: any professional you have a live booking with can
+              always be messaged, and browsing is free as ever.
             </p>
           </div>
         )}
@@ -118,7 +120,7 @@ export default async function MembershipPage() {
 
       <section className="card p-6">
         <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
-          Chat Pass payments
+          Membership payments
         </h2>
         {paymentHistory.length === 0 ? (
           <p className="mt-3 text-sm text-faint">No payments yet.</p>

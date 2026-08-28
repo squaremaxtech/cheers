@@ -27,10 +27,10 @@ export default async function ChatRoomPage(props: PageProps<"/chats/[id]">) {
   const access = await loadChatAccess(user, id);
   if (!access) notFound();
 
-  // The Chat Pass paywall, decided server-side. Workers always send; staff
-  // never do (read-only, enforced in the action); a customer needs a live
-  // pass OR a live booking with this worker (coordination is never
-  // paywalled). Reading the thread stays open either way.
+  // The membership paywall, decided server-side. Professionals always send;
+  // staff never do (read-only, enforced in the action); a customer needs a
+  // live membership OR a live booking with this professional (coordination is
+  // never paywalled). Reading the thread stays open either way.
   const canSend =
     access.viewerRole === "customer"
       ? await customerCanSendChat(user.id, access.worker.id)
@@ -76,7 +76,7 @@ export default async function ChatRoomPage(props: PageProps<"/chats/[id]">) {
         <div>
           <Link
             href={access.viewerRole === "staff" ? "/admin/chats" : "/chats"}
-            className="text-xs text-faint hover:text-gold"
+            className="text-xs text-faint hover:text-brand"
           >
             ← All messages
           </Link>

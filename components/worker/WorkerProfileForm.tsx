@@ -1,18 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { createWorkerProfile, updateWorkerProfile } from "@/actions/worker";
-import { BODY_TYPES, JAMAICA_PARISHES, LANGUAGES } from "@/lib/constants";
+import {
+  JAMAICA_PARISHES,
+  LANGUAGES,
+  WORKER_HEADLINE_MAX_CHARS,
+  WORKER_SKILLS_MAX,
+  WORKER_YEARS_EXPERIENCE_MAX,
+} from "@/lib/constants";
 
 type ProfileValues = {
   stageName: string;
   realName: string;
   bio: string;
-  age: number | null;
-  heightCm: number | null;
-  bodyType: string;
+  headline: string;
+  skills: string[];
+  yearsExperience: number | null;
   languages: string[];
   parish: string;
   city: string;
@@ -30,19 +37,23 @@ export default function WorkerProfileForm({
   const [languages, setLanguages] = useState<string[]>(
     initial?.languages ?? ["English"]
   );
+  // Creating a profile also records legal acceptance (plan §2.4). The schema
+  // only parses a ticked box, so the button stays disabled until it is ticked.
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
     // Empty strings are sent as-is: the schema treats "" as "clear this field".
+    // Skills go over as one comma-separated string — the schema splits it.
     const payload = {
       stageName: form.get("stageName"),
       realName: form.get("realName"),
       bio: form.get("bio"),
-      age: form.get("age"),
-      heightCm: form.get("heightCm"),
-      bodyType: form.get("bodyType"),
+      headline: form.get("headline"),
+      skills: form.get("skills"),
+      yearsExperience: form.get("yearsExperience"),
       languages,
       parish: form.get("parish"),
       city: form.get("city"),
@@ -51,7 +62,7 @@ export default function WorkerProfileForm({
     setBusy(true);
     const res =
       mode === "create"
-        ? await createWorkerProfile(payload)
+        ? await createWorkerProfile({ ...payload, acceptTerms })
         : await updateWorkerProfile(payload);
     setBusy(false);
     if (res.ok) {
@@ -68,7 +79,7 @@ export default function WorkerProfileForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="w-stageName">
-            Stage name (public)
+            Display name (public)
           </label>
           <input
             id="w-stageName"
@@ -77,10 +88,14 @@ export default function WorkerProfileForm({
             defaultValue={initial?.stageName}
             className="input"
           />
+          <p className="mt-1.5 text-xs leading-5 text-faint">
+            This is what customers see. Your legal name stays private and is
+            only used if you verify your ID.
+          </p>
         </div>
         <div>
           <label className="label" htmlFor="w-realName">
-            Real name (private — never shown)
+            Legal name (private — never shown)
           </label>
           <input
             id="w-realName"
@@ -88,6 +103,40 @@ export default function WorkerProfileForm({
             defaultValue={initial?.realName}
             className="input"
           />
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor="w-headline">
+            Headline
+          </label>
+          <input
+            id="w-headline"
+            name="headline"
+            maxLength={WORKER_HEADLINE_MAX_CHARS}
+            defaultValue={initial?.headline}
+            className="input"
+            placeholder="Licensed electrician · Kingston & St Andrew"
+          />
+          <p className="mt-1.5 text-xs leading-5 text-faint">
+            One line under your name — what you do and where you work.
+          </p>
+        </div>
+        <div>
+          <label className="label" htmlFor="w-yearsExperience">
+            Years of experience
+          </label>
+          <input
+            id="w-yearsExperience"
+            name="yearsExperience"
+            type="number"
+            min={0}
+            max={WORKER_YEARS_EXPERIENCE_MAX}
+            defaultValue={initial?.yearsExperience ?? undefined}
+            className="input"
+          />
+          <p className="mt-1.5 text-xs leading-5 text-faint">Optional.</p>
         </div>
       </div>
 
@@ -101,58 +150,25 @@ export default function WorkerProfileForm({
           rows={4}
           defaultValue={initial?.bio}
           className="input"
-          placeholder="Tell customers what makes your experience special…"
+          placeholder="Tell customers what you do, how you work, and what they can expect…"
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div>
-          <label className="label" htmlFor="w-age">
-            Age
-          </label>
-          <input
-            id="w-age"
-            name="age"
-            type="number"
-            min={18}
-            max={99}
-            required
-            defaultValue={initial?.age ?? undefined}
-            className="input"
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor="w-height">
-            Height (cm)
-          </label>
-          <input
-            id="w-height"
-            name="heightCm"
-            type="number"
-            min={120}
-            max={230}
-            defaultValue={initial?.heightCm ?? undefined}
-            className="input"
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor="w-bodyType">
-            Body type
-          </label>
-          <select
-            id="w-bodyType"
-            name="bodyType"
-            defaultValue={initial?.bodyType ?? ""}
-            className="input"
-          >
-            <option value="">—</option>
-            {BODY_TYPES.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label className="label" htmlFor="w-skills">
+          Skills (comma-separated)
+        </label>
+        <input
+          id="w-skills"
+          name="skills"
+          defaultValue={initial?.skills.join(", ")}
+          className="input"
+          placeholder="wiring, panel upgrades, generator install"
+        />
+        <p className="mt-1.5 text-xs leading-5 text-faint">
+          Up to {WORKER_SKILLS_MAX}, e.g. wiring, panel upgrades, generator
+          install
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -222,7 +238,7 @@ export default function WorkerProfileForm({
                   )
                 }
                 className={`btn px-4 py-1.5 text-xs ${
-                  on ? "bg-gold text-base" : "border border-hairline text-muted"
+                  on ? "bg-brand text-white" : "border border-hairline text-muted"
                 }`}
               >
                 {lang}
@@ -232,7 +248,47 @@ export default function WorkerProfileForm({
         </div>
       </div>
 
-      <button type="submit" className="btn-gold" disabled={busy}>
+      {mode === "create" && (
+        <label className="flex items-start gap-3 rounded-xl border border-hairline px-4 py-3">
+          <input
+            type="checkbox"
+            name="acceptTerms"
+            required
+            checked={acceptTerms}
+            onChange={(e) => setAcceptTerms(e.target.checked)}
+            className="mt-1"
+          />
+          <span className="text-sm leading-6 text-muted">
+            I agree to the{" "}
+            <Link href="/terms" className="underline" target="_blank">
+              Terms of Service
+            </Link>{" "}
+            and the{" "}
+            <Link
+              href="/terms#professional-agreement"
+              className="underline"
+              target="_blank"
+            >
+              Independent Professional Agreement
+            </Link>
+            . I have also read the{" "}
+            <Link href="/privacy" className="underline" target="_blank">
+              Privacy Policy
+            </Link>{" "}
+            and the{" "}
+            <Link href="/guidelines" className="underline" target="_blank">
+              Community Guidelines
+            </Link>
+            .
+          </span>
+        </label>
+      )}
+
+      <button
+        type="submit"
+        className="btn-primary"
+        disabled={busy || (mode === "create" && !acceptTerms)}
+      >
         {busy
           ? "Saving…"
           : mode === "create"

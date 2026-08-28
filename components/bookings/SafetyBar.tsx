@@ -237,7 +237,7 @@ export default function SafetyBar({
       <div className="safety-bar">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <p className="text-xs text-faint">
-            In danger? Call <a href="tel:119" className="text-gold underline">119</a> first.
+            In danger? Call <a href="tel:119" className="text-brand underline">119</a> first.
           </p>
           <SosButton
             bookingId={bookingId}
@@ -264,7 +264,7 @@ export default function SafetyBar({
   // nothing. Nobody should have to guess whether help is already coming.
   if (overdue) {
     return (
-      <div className="fixed inset-0 z-40 flex flex-col justify-end bg-warn/10 backdrop-blur-sm">
+      <div className="fixed inset-0 z-40 flex flex-col justify-end bg-ink/40 backdrop-blur-sm">
         <div className="mx-auto w-full max-w-md space-y-4 p-5 pb-8">
           <div className="rounded-2xl border border-warn bg-surface p-6 text-center shadow-2xl">
             <p className="text-sm font-medium uppercase tracking-wider text-warn">
@@ -278,7 +278,7 @@ export default function SafetyBar({
             </p>
             <button
               type="button"
-              className="btn-gold mt-5 w-full py-5 text-lg"
+              className="btn-primary mt-5 w-full py-5 text-lg"
               style={{ minHeight: 72 }}
               disabled={busy}
               onClick={() => void answer("ok")}
@@ -330,7 +330,7 @@ export default function SafetyBar({
           {due ? (
             <button
               type="button"
-              className="btn-gold flex-1 text-lg"
+              className="btn-primary flex-1 text-lg"
               style={{ minHeight: 64 }}
               disabled={busy}
               onClick={() => void answer("ok")}

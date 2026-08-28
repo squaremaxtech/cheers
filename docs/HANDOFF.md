@@ -1,21 +1,29 @@
 # Cheers — Build Handoff & Progress
 
-> **2026-08-27 — v3 REFOCUS IN PROGRESS (session interrupted).** Read `docs/V3-SESSION-STATE.md` then `docs/REFACTOR-PLAN.md` before anything else; they supersede §1 below until the v3 update block is written.
+> **2026-08-27 — v3 REFOCUS: code complete, not yet migrated, not yet committed.** Start with the **2026-08-27 v3 update block** at the top of §2 below, then `docs/REFACTOR-PLAN.md` (the authoritative v3 architecture), `docs/V3-SESSION-STATE.md` and `docs/v3-progress/*.md`. §1 below has been rewritten for v3; the older dated blocks in §2 are history, not current behaviour.
 
 > **Purpose:** This doc lets any fresh Claude Code session (or developer) continue the build with zero context loss. Keep it updated as work progresses. Read `AGENTS.md` first — this repo runs a MODIFIED Next.js (16.2.10) whose conventions may differ from public Next.js; consult `node_modules/next/dist/docs/` before writing framework code.
 
 ## 1. Project Summary
 
-**Cheers** — Jamaica's open services marketplace (v2, 2026-08): workers publish
-gigs (any trade — entertainers, plumbers, DJs, engineers), customers browse
-free and book, drivers advertise transport and negotiate fares (inDrive
-model), a $5/month Chat Pass unlocks messaging, and admin oversees with
-takedowns rather than queues. Cash-first; Stripe is a dormant online layer.
+**Cheers** — Jamaica's premium freelance platform (v3, 2026-08-27).
+Independent professionals ("workers" in code, **professionals** in copy)
+publish **gigs** for any lawful service — cleaning, bartending, DJing,
+electrical, carpentry, photography, tutoring, tech, events — each with its own
+description, pricing and images. Customers search by category or keyword,
+compare professionals, and — with a **Cheers Membership** — message them and
+book. Drivers advertise transport and negotiate fares (inDrive model). An
+admin-curated **premium tier** hides selected gigs from everyone except the
+customers who have been granted access. Admin oversees by takedown, not by
+queue: **nothing on the platform waits on the business owner** — driver
+approval is the one deliberate exception. Cash-first; Stripe is a dormant
+online layer that lights up when credentials exist.
 
-- Full original spec: see `docs/SPEC.md` (verbatim requirements from the owner — note the v2 reform supersedes its category/membership model; see the 2026-08-17 update below).
-- Stack: Next.js 16.2.10 (App Router) · TypeScript · Tailwind v4 · PostgreSQL (VPS db name: `cheers`) · Drizzle ORM · Zod · Server Actions · NextAuth (magic link + Google) · Stripe (dormant until keys; 5% platform fee, tips 100% to worker) · Nodemailer · Google Maps API.
+- **v3 architecture: `docs/REFACTOR-PLAN.md`** — authoritative. Where it and an older doc disagree, it wins. The file-by-file build record, with every deviation from it, is `docs/v3-progress/*.md`.
+- Full original spec: `docs/SPEC.md` (verbatim requirements from the owner — its catalog, membership and approval model is superseded by the v2 and v3 reforms recorded in §2).
+- Stack: Next.js 16.2.10 (App Router) · TypeScript · Tailwind v4 · PostgreSQL (VPS db name: `cheers`) · Drizzle ORM · Zod · Server Actions · NextAuth (magic link + Google) · Stripe (dormant until keys; 5% platform fee on card **and** cash, tips 100% to the professional) · Nodemailer · Google Maps API.
 - Roles: **5 user types** — `customer`, `worker`, `driver`, `support`, `admin`. Support staff carry a sub-role in `users.supportRole`: `customer_support`, `supervisor`, or `safety_monitor` (`driver` sub-role retired → marketplace role).
-- `.env` already exists on the owner's machines (git-ignored, cannot be read by Claude due to permission settings). `.env.example` documents every variable the code expects — **owner must reconcile names with their real `.env`**.
+- `.env` already exists on the owner's machines (git-ignored, cannot be read by Claude due to permission settings). `env.example` documents every variable the code expects — **owner must reconcile names with their real `.env`**.
 
 ## 2. Current Status
 
@@ -29,14 +37,311 @@ takedowns rather than queues. Cash-first; Stripe is a dormant online layer.
 | Auth (NextAuth magic link + Google, RBAC) | ✅ (`lib/auth.ts`, `lib/guards.ts`, login/verify pages) |
 | Zod schemas + server actions | ✅ (`schemas/*`, `actions/*` — worker, bookings, payments, memberships, reviews, favorites, notifications, account, admin) |
 | Stripe + Nodemailer | ✅ (checkout + subscription + webhook `app/api/stripe/webhook`, `lib/mailer.ts`, `lib/notify.ts`) |
-| UI components / design system | ✅ (globals.css velvet/suede theme, ui primitives, SiteHeader/Footer, DashboardShell) |
-| Public pages | ✅ (home, browse grid/list/swipe + filters, worker profile, about/contact/faq/privacy/terms) |
+| UI components / design system | ✅ ui primitives, SiteHeader/Footer, DashboardShell. **v3: `app/globals.css` becomes a single light professional theme (plan §5) and every `btn-gold` becomes `btn-primary`** |
+| Public pages | ✅ (home, browse grid/list/swipe + filters, worker profile, about/contact/faq) + **v3 legal set: rewritten `/terms` and `/privacy`, new `/guidelines`** |
 | Customer area | ✅ (dashboard, book/[workerId] w/ maps autocomplete, bookings + detail w/ pay/tip/cancel/reschedule/review/PIN, favorites, membership) |
 | Worker dashboard | ✅ (onboarding, overview + visibility toggle, profile, media, services+add-ons, availability, bookings w/ accept/decline/complete/cash, earnings) |
-| Admin dashboard | ✅ (overview metrics, workers w/ verify-hide-suspend, bookings w/ full override + reassign, payments + refunds + weekly payouts, reviews moderation, reports + CSV export, settings) + /driver transport view |
+| Admin dashboard | ✅ (overview metrics, bookings w/ full override + reassign, payments + refunds + weekly payouts, reviews moderation, reports + CSV export, settings) + /driver transport view. **v3: no worker-approval step — oversight is hide/suspend/takedown; new Promote tab** |
 | Seed script | ✅ (`npm run db:seed` — catalog seeded on VPS; admin stub created for owner email) |
 | Verify (typecheck, build, db push) | ✅ `tsc --noEmit` clean, `next build` succeeds, schema pushed to VPS db `cheers`, catalog + admin seeded (2026-07-05) |
 | Job requests (customer-posted, worker-filled; manual / instant / best-price matching) | ✅ code complete 2026-08-19 (`actions/jobs.ts`, `lib/jobs.ts`, `/requests/*`, `/worker/jobs`, `/admin/requests`) — **DB migration `npm run db:migrate-v3` still to run on the VPS** |
+| **v3 premium tier** (premium access, premium providers, premium gigs + job requests, `/admin/promote`, `?premium=1`) | ✅ code complete 2026-08-27 (`lib/premium.ts` is the one predicate; see the v3 block below) |
+| **v3 autonomy** (`workers.verified` dropped, professionals go live on publish, ID verification is an optional badge for customers AND professionals) | ✅ code complete 2026-08-27 |
+| **v3 Cheers Membership** (renamed from Chat Pass; gates chat AND booking; `BOOKING_REQUIRES_SUBSCRIPTION` deleted, `FREE_ACCESS_UNTIL` is the only switch) | ✅ code complete 2026-08-27 |
+| **v3 terms acceptance** (`terms_accepted_at` / `terms_version`, `TERMS_VERSION`, 3-step `/welcome`, `AcceptTermsBanner`, worker onboarding checkbox) | ✅ code complete 2026-08-27 |
+| **v3 theme & copy pass** (light professional theme, v3 brand voice) | ✅ code complete 2026-08-28 (plan §5/§6; `docs/v3-progress/agent-b1.md`, `agent-b2.md`) — not yet visually checked against a running app |
+| **v3 DB migration `npm run db:migrate-v4`** | Code complete 2026-08-27 — **NOT RUN against any database.** Order: `db:backup` → `db:migrate-v3` (if not yet run there) → `db:migrate-v4` → `db:push` (must report no changes) → `db:seed` → `db:seed-accounts` |
+
+**2026-08-27 update — v3 REFOCUS: premium tier, full autonomy, Cheers Membership, light theme.**
+Cheers is repositioned as **Jamaica's premium freelance platform**. Independent
+professionals publish gigs for any lawful service and run themselves
+end-to-end: **nothing on the platform waits on the business owner** any more
+(driver approval is the one deliberate exception). On top of that sits an
+**admin-curated premium tier** that is invisible to everyone who has not been
+granted it. The authoritative architecture is `docs/REFACTOR-PLAN.md`; the
+file-by-file build record, including every deviation from it, is in
+`docs/v3-progress/*.md` (agent-a, a1, a2, a3, a4, mig, c1, c2).
+
+**Status: code complete. NOTHING has been run against any database, and
+nothing has been committed.** The theme + copy pass (§5/§6 of the plan) was
+still landing when this block was written — check `git status` and
+`app/globals.css` before assuming it is in.
+
+- **Premium tier — the biggest functional change.** Four columns carry it:
+  `users.premium_access_at` (a customer may see/search/book premium gigs),
+  `workers.premium_provider_at` (a professional may publish them),
+  `gigs.premium`, `job_requests.premium`. Both `*_at` columns are written
+  **only** by audited admin actions — no self-serve path, no payment path, no
+  env lever. `lib/premium.ts` is the single source of truth:
+  `canSeePremium(user)` (true iff the user holds premium access, is an admin,
+  or is desk support — staff moderate premium content; signed-out visitors
+  never), `viewerPremium(user) → PremiumViewer`, `PUBLIC_VIEWER`,
+  `STAFF_VIEWER`, `isPremiumProvider(worker)`, `hasPremiumAccess(user)`.
+- **Where the rail is enforced** (plan §1.3 — this list *is* the security
+  boundary of the tier): `lib/gigs.ts` `publicGigConditions(viewer)` /
+  `getGigCards` / `getPublicWorkerGigs` / `getGigMedia` / `gigPhotoMap`;
+  `syncWorkerBaseRate` derives "Starting at" from **non-premium** gigs only so
+  a premium price can never leak through a public base rate; `lib/workers.ts
+  getPublicWorkers` requires a live non-premium gig; `/workers/[slug]` returns
+  `notFound()` when the viewer can see none of a professional's live gigs (a
+  premium-only professional does not exist for a standard viewer) and filters
+  gig-tagged media the same way; `/book/[slug]` mirrors both rules;
+  `createBooking`, `requestQuote` and `acceptQuoteOffer` fail a premium gig
+  with the **same generic message as a missing one**; `postJobRequest` forces
+  `premium: false` for a non-premium customer; `getJobBoard` hides premium
+  requests from non-providers; `eligibleGigs(workerId, categoryId, premium)`
+  matches `gigs.premium = request.premium` exactly, and `sendJobOffer`,
+  `matchJobOffer` and `notifyWorkersOfNewJob` ride the same rail; the job-board
+  SSE stream only wakes providers for a premium posting; `/favorites` uses
+  `getFavoriteWorkers(customerId, viewer)`; `BrowseFilters.premium` is ignored
+  server-side unless the viewer is premium, so a hand-typed `?premium=1` does
+  nothing for a standard visitor.
+- **Premium UI.** Premium viewers get a **Premium only** chip on `/browse`
+  (`?premium=1`) and a gold **Premium** badge on cards; non-premium viewers get
+  no chip, no badge, no trace. The customer dashboard shows a "Premium access"
+  card linking `/browse?premium=1`. Professionals who are providers get a
+  "Premium provider" card on `/worker` and a **Premium service** toggle in the
+  gigs editor; `actions/gigs.ts` forces `premium = false` server-side for
+  anyone else, so the toggle is convenience, never the gate.
+- **Admin Promote tab — `/admin/promote`** (nav label **Promote**, between Gigs
+  and Verifications, **admin only**: filtered out of the nav for support,
+  redirected at the page, and `requireAdmin()` in both actions). Search by name
+  / email / display name (min 2 chars, max 25 rows) then one button per row;
+  below it, live lists of premium customers and premium providers with grant
+  dates and revoke buttons. Actions in `actions/admin.ts`:
+  `setCustomerPremiumAccess({ userId, enabled })` and
+  `setWorkerPremiumProvider({ workerId, enabled })` — audited
+  (`user.premium_access_grant|revoke`, `worker.premium_provider_grant|revoke`)
+  and notified in-app + email (`premium_access_granted|revoked`,
+  `premium_provider_granted|revoked`). **Revoking provider status deactivates
+  that professional's live premium gigs in the same transaction** (one
+  `gig.premium_deactivate` audit row each; the worker is told how many);
+  re-granting does not bring them back. `/admin/gigs` gained a Premium column
+  and a `?premium=1` / `?premium=0` filter; `/admin` gained an admin-only
+  "Premium accounts" card.
+- **Autonomy: `workers.verified` is DROPPED.** `publicWorkerConditions()` is
+  now `active && !suspended`. Professionals go live the moment they publish —
+  no approval step exists anywhere: the Approve / Revoke approval buttons, the
+  "awaiting approval" banner, the pending-worker alert card on `/admin` and the
+  "new worker awaiting approval" notification are gone (replaced by an
+  in-app-only admin FYI `worker_joined`). Every former "approved" check —
+  `sendJobOffer`, `matchJobOffer`, `openChatRoom`, `createBooking`, the
+  job-board stream — now means `active && !suspended`. Oversight is by
+  takedown: hide, suspend, `gigs.suspended`.
+- **Identity verification → an optional badge for everyone.**
+  `customer_verifications` is renamed **`identity_verifications`** and
+  `submitIdentityVerification` is open to **any** signed-in user, customer or
+  professional. `users.id_verified_at` is the denormalised badge source (set on
+  approval, cleared on rejection or re-submission) and drives the "Verified ID"
+  badge on `GigCard`, `WorkerCard`, profiles and job offers. **No booking,
+  posting, quote or chat gate reads a verification row any more** — the checks
+  were removed from `createBooking`, `acceptQuoteOffer`, `postJobRequest`,
+  `acceptJobOffer` and `matchJobOffer`. Professionals get their own page
+  **`/worker/verification`** ("Verified ID" in the nav, after Profile) reusing
+  the customer form. `/admin/verifications` is still the review queue but is
+  explicitly **non-urgent** — it gained a **Role** column, and the `/admin`
+  stat is styled as information rather than a warning. Documents are still
+  deleted at review time either way. Driver approval is untouched and remains
+  staff-gated and document-based.
+- **"Chat Pass" → "Cheers Membership", and it now gates chat AND booking.**
+  `lib/membership.ts hasChatAccess` → **`hasMemberAccess`** (no alias). The
+  gate order in `createBooking` / `requestQuote` / `acceptQuoteOffer` /
+  `postJobRequest` / `acceptJobOffer` is **signed in → onboarded (name + phone
+  + terms) → membership → the domain rules**, with one shared message each
+  (`MEMBERSHIP_REQUIRED` from `lib/membership.ts`, `ONBOARDING_REQUIRED` from
+  `lib/onboarding.ts`) so a page can route the user to `/membership` or
+  `/welcome`. **`BOOKING_REQUIRES_SUBSCRIPTION` / `bookingRequiresChatPass()`
+  are deleted** — membership is the rule and **`FREE_ACCESS_UNTIL` is the only
+  switch** (while that date is in the future, membership is free for everyone:
+  launch mode, which is how the platform ships). The booked-pair chat exemption
+  is unchanged (coordination is never paywalled) and professionals never need a
+  membership. Price: `MEMBERSHIP_PRICE_CENTS` with `CHAT_PASS_PRICE_CENTS` kept
+  as a legacy fallback (default 500); Stripe metadata `kind: "membership"`,
+  with the webhook still accepting legacy `"chat_pass"`.
+- **Legal acceptance is recorded per user.** `users.terms_accepted_at` +
+  `users.terms_version`, against `lib/constants.ts TERMS_VERSION = "2026-08-27"`.
+  The customer `/welcome` wizard is now three steps — **Profile → Terms →
+  Verified ID (optional, skippable)** — and `completeCustomerOnboarding(input)`
+  writes name + phone + acceptance + `onboardedAt` in one atomic call, so an
+  account can never be marked onboarded without all three. Worker onboarding
+  carries a required checkbox for the Terms **and** the Independent
+  Professional Agreement, recorded in the same transaction as the profile.
+  Anyone whose acceptance is missing or stale sees `AcceptTermsBanner`
+  (`components/ui/AcceptTermsBanner.tsx`) on their dashboard; bumping
+  `TERMS_VERSION` re-prompts everyone without locking anyone out.
+- **Professional profile fields.** Dropped `workers.age`, `height_cm`,
+  `body_type` and `BODY_TYPES` — they belonged to the old positioning. Added
+  `headline` (≤120 chars), `skills text[]` (≤15 tags, ≤30 chars each) and
+  `years_experience` (0–60). "Stage name" is **"Display name"** in every copy
+  string (the column stays `stageName`; `realName` stays private and is used
+  only for ID review). The public profile shows headline as a subtitle, skills
+  chips, experience, languages, location, the Verified ID badge and member
+  since.
+- **Categories: 15 slugs** (`db/seed.ts`, upserted by slug; admin-added rows
+  are left alone): `events-entertainment`, `music-performance`,
+  `food-catering`, `cleaning`, `home-trade`, `landscaping-outdoor`,
+  `beauty-wellness`, `photo-video`, `creative-design`, `tech-professional`,
+  `tutoring-education`, `moving-labour`, `automotive`, `care-childcare`,
+  `security`. This **reverses migrate-v3's retirement** of catering and
+  cleaning; `cleaning-errands`, if still present, becomes `cleaning` (its slug
+  is renamed so gigs keep pointing at it, or, if both rows exist, gigs and job
+  requests are re-pointed at `cleaning` and the duplicate row is deleted).
+- **Migration `db/migrate-v4.ts` (`npm run db:migrate-v4`)** — idempotent, one
+  transaction, guarded throughout, one log line per step. Adds the four `users`
+  columns, adds the four new `workers` columns and drops `age` / `height_cm` /
+  `body_type` / `verified` (logging how many professionals become publicly
+  visible), adds the two `premium` booleans, renames `customer_verifications` →
+  `identity_verifications` **including its constraints and indexes** so
+  `db:push` reports no drift, backfills `users.id_verified_at` from approved
+  rows, and upserts the 15 categories.
+  **Run order, one database at a time:**
+  `npm run db:backup` → `npm run db:migrate-v3` (only if it has not run on that
+  database yet — it has never been run on production) → `npm run db:migrate-v4`
+  → `npm run db:push` (must report **no changes**) → `npm run db:seed` →
+  `npm run db:seed-accounts`.
+  **Do not run `db:push` before `db:migrate-v4`**: push would create an empty
+  `identity_verifications` beside the real `customer_verifications`, and v4
+  then refuses to touch either and asks you to merge by hand. Take the backup
+  first — the four dropped columns are gone for good, and professionals hidden
+  by `verified = false` go live the moment v4 runs (the migration prints the
+  count; suspend from `/admin/workers` if any should not be public).
+  **None of this has been run yet, on any database.**
+- **Seeds (`db/seed-accounts.ts`).** The demo professional "Maxx" becomes
+  **"Maxx Events"**, slug **`maxx-events`** — `/workers/maxx` stops resolving —
+  with headline "Event DJ & MC · Kingston", 8 skills, 8 years of experience,
+  and four gigs: *Wedding & Party DJ Set*, *MC / Host for corporate events*,
+  *Sound system rental & setup* (quote mode) and ***Premium event package***
+  (premium), with `premium_provider_at` set so the premium gig is legal to
+  publish. **Favour Customer gets `premium_access_at`** so the demo can show
+  both sides of the tier. The customer and the professional both get an
+  approved identity verification (badge only — it gates nothing). Every seeded
+  account gets the current `TERMS_VERSION`. A re-run **refreshes** the demo
+  profile and gigs (an older database would otherwise keep the old positioning
+  for ever) and **deactivates** the four pre-v3 demo gigs rather than deleting
+  them, since bookings and reviews may reference them.
+- **Theme — single light professional theme** (`app/globals.css`, plan §5).
+  The semantic token *names* are unchanged so the 100+ files using them keep
+  working; only the values move: `--color-base #f7f6f2`, `--color-surface
+  #ffffff`, `--color-raised #f1efe9`, `--color-hairline #e5e2da`, `--color-ink
+  #16140f`, `--color-muted #5b564d`, `--color-faint #9c968b`, `--color-brand
+  #0b6b4a` (deep Jamaican green), `--color-brand-soft #118a61`, `--color-gold
+  #b8912a` (which now reads as *premium / accent*), `--color-gold-soft
+  #d6b45c`, plus a `--color-gold-deep #7a5e15` added during the build for gold
+  *text* on a light surface. `wine`, `velvet`, the `.velvet` utility, the suede grain and the
+  burgundy radial are removed; `.panel-brand` replaces the three `.velvet`
+  panels. **`btn-gold` is replaced everywhere by `.btn-primary`** and
+  `.btn-gold` is deleted. The display font moves from Playfair Display to
+  **Manrope**; body stays Geist. The SafetyBar / SOS takeovers stay
+  high-contrast red/amber by design. Badge tones settled by the UI agents:
+  **`tone="gold"` = Premium**, **`tone="success"` = Verified ID**.
+- **Copy (plan §6).** Voice is professional, confident, plain: *professional(s)*,
+  *services*, *hire*, *book*, *freelance*. These words must not appear anywhere
+  in UI, emails, push, seeds or metadata: **seductive, discreet, private
+  parties, night/nightlife, VIP table, club appearance, talent, 18+ only,
+  companion, escort, indulge, relaxation massage** (the age rule lives in the
+  Terms and on the login page as "You must be 18 or older to use Cheers").
+  Contact addresses live in `lib/constants.ts CONTACT_EMAILS` —
+  `hello@cheersja.com`, `support@cheersja.com`, `safety@cheersja.com`.
+- **Legal.** `/terms` and `/privacy` were rewritten and **`/guidelines` is a
+  new public page**. `/terms` carries the Terms of Service (24 sections) plus,
+  as full documents on the same page, the **Independent Professional
+  Agreement** (`/terms#professional-agreement`), the **Cancellation & Refund
+  Policy** (`/terms#cancellation`) and the **Safety Policy** (`/terms#safety`).
+  All three pages render `TERMS_VERSION` and read `CANCEL_MIN_HOURS`,
+  `PLATFORM_FEE_PERCENT`, `CONTACT_EMAILS` and `membershipPriceCents()` from
+  `lib/constants.ts`, so the published copy cannot drift from the code.
+  `docs/LEGAL-POLICY.md` is the master drafting aid (Parts A–H); it states
+  plainly that it is not legal advice and must be reviewed by Jamaican counsel,
+  and four blanks (registered legal name, company number, registered office,
+  the minimum liability floor) are still unfilled — they render as visible gaps
+  in `/terms` §24.
+- **Renamed server actions** (every call site updated):
+  `reviewCustomerVerification` → **`reviewIdentityVerification`**,
+  `createChatPassCheckout` → **`createMembershipCheckout`**,
+  `createChatPassCheckoutSession` → **`createMembershipCheckoutSession`**, and
+  `completeCustomerOnboarding()` → **`completeCustomerOnboarding(input)`**
+  (`{ name, phone, acceptTerms: true }`). New: `acceptTerms`,
+  `setCustomerPremiumAccess`, `setWorkerPremiumProvider`. New lib modules:
+  `lib/premium.ts`, `lib/onboarding.ts`, `lib/admin-promote.ts`.
+- **New routes / nav:** `/admin/promote` (Promote), `/worker/verification`
+  (Verified ID), `/guidelines`, `/browse?premium=1`, `/admin/gigs?premium=1|0`.
+  Admin nav "Workers" is now **"Professionals"** (route, table and metadata key
+  stay `workers`); customer nav "Browse workers" is now "Browse services".
+- **Env:** `MEMBERSHIP_PRICE_CENTS` added (legacy `CHAT_PASS_PRICE_CENTS` still
+  read as a fallback, so an existing `.env` keeps working);
+  **`BOOKING_REQUIRES_SUBSCRIPTION` removed**; `FREE_ACCESS_UNTIL` now means
+  "Cheers Membership — chat AND booking — is free for everyone until this
+  date". `env.example` is current. `/admin/settings` reflects all of this and
+  no longer shows a "Booking requires Chat Pass" row.
+
+**Deviations from `docs/REFACTOR-PLAN.md` — read these before assuming the plan
+text is what shipped.** Each is recorded with its reasoning in the progress
+file named.
+
+- *(a1)* **The membership gate applies to the caller regardless of role** — a
+  professional booking someone else needs a membership too. `FREE_ACCESS_UNTIL`
+  makes this a no-op at launch. **Owner decision** if professionals should be
+  exempt.
+- *(a1)* **`requestQuote` requires a membership.** Plan §2.3 lists only
+  booking / quote-accept / job-post / job-accept, so this is one gate stricter
+  than the plan read literally.
+- *(a2)* **The profile's "Request a quote" button is NOT pre-gated** — a
+  customer without a membership opens the form and gets the paywall message as
+  a toast when they submit. Worth a follow-up if the paywall should be shown
+  before the form opens.
+- *(a2)* **`/book/[slug]` mirrors the profile's 404 rule** for a premium-only
+  professional. Plan §1.3 spells that rule out only for `/workers/[slug]`, but
+  a deep link to `/book` would otherwise bypass it. One `if`, easy to drop.
+- *(a1)* **`acceptQuoteOffer` re-checks premium**, so revoked premium access
+  cannot be spent on a quote that is already pending.
+- *(a1)* **"Onboarded" is derived from columns** (name + phone + terms, in
+  `lib/onboarding.ts`), not from `users.onboardedAt`. The `(customer)` layout's
+  `/welcome` redirect still keys off `onboardedAt`; `/welcome` therefore
+  redirects out only when both agree, which makes a redirect loop unreachable.
+- *(a3)* **The job board uses TWO gig maps.** A premium provider sees premium
+  requests, and `sendJobOffer` enforces `gigs.premium = request.premium`
+  exactly, so `/worker/jobs` calls `eligibleGigs(worker.id)` **and**
+  `eligibleGigs(worker.id, undefined, true)` and picks the map by the card's
+  rail. With one map a provider would be shown a request they could not answer.
+- *(a3)* **The "Jobs on the board" stat was leaking premium requests** — a
+  count-shaped trace of premium content that also disagreed with the board it
+  links to. Rewritten onto the same rails, but **not yet run against a
+  database; worth an eyeball on the first `/worker` page load.**
+- *(a3)* The premium control is a `ToggleRow` (matching the Safety monitoring
+  and Active controls beside it), not a literal checkbox; the hard-coded
+  "Verified account" badge was removed from job cards (it asserted something no
+  longer true); suspended professionals get their own notice on the job board.
+- *(a4)* **There is no admin worker edit form.** `adminUpdateWorker` is only
+  ever called with `profile: {}`, so there was nothing to update for the new
+  profile fields — `adminUpdateWorkerSchema.profile` is currently unused by the
+  UI. Building one is new work, not an edit.
+- *(a4)* **`/admin/promote` is guarded three times** (nav filter, page redirect
+  for non-admin staff, `requireAdmin()` in both actions), because there was no
+  existing "admin-only page" pattern — every other admin page renders for desk
+  support and gates the buttons instead.
+- *(a4)* **Admin nav "Workers" → "Professionals"** to match the page heading.
+  `ROLE_LABELS` is now duplicated in `/admin/promote` and
+  `/admin/verifications` and belongs in `lib/` if anyone touches it again.
+- *(a1)* `setWorkerPremiumProvider` revoke writes **one audit row per
+  deactivated gig** rather than a summary, so each takedown is individually
+  answerable. The job-board SSE carries the premium flag only to decide *who*
+  is woken — it never reaches a client, so a premium posting has no timing
+  side-channel on a standard board.
+- *(mig)* The migration's index/constraint rename is **discovery-based** (it
+  reads `pg_constraint` / `pg_class` for the old prefix) rather than a
+  hard-coded list. If **both** `customer_verifications` and
+  `identity_verifications` exist it touches neither and asks for a manual
+  merge — identity documents are deleted after review, so an unattended merge
+  would be unrecoverable.
+- *(mig)* **`db:seed` now updates existing category rows** (name, blurb, sort
+  order, `active = true`). Hand edits to the 15 seeded categories will be
+  overwritten; admin-added categories are untouched.
+- *(mig)* **The demo slug changed: `/workers/maxx` → `/workers/maxx-events`.**
+  `docs/DEMO-WALKTHROUGH.md` now opens with a preface listing this and every
+  other place the demo script no longer matches the app.
+- *(c1)* The master legal document and the built pages disagreed on four
+  points; the code won each time — see the reconciliation note at the head of
+  `docs/LEGAL-POLICY.md` Part A.
 
 **2026-08-17 update — MARKETPLACE REFORM (v2): gigs, drivers, Chat Pass, Stripe-dormant.**
 The platform pivoted from a curated two-category booking site to **Jamaica's

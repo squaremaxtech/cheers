@@ -1,7 +1,11 @@
 import { and, asc, desc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { gigs, users, workerMedia, workers } from "@/db/schema";
-import type { PublicWorker, PublicWorkerWithPhoto } from "@/types";
+import { favorites, gigs, users, workerMedia, workers } from "@/db/schema";
+import type {
+  PremiumViewer,
+  PublicWorker,
+  PublicWorkerWithPhoto,
+} from "@/types";
 
 // The ONLY columns public queries may select. realName/userId stay private.
 // idVerified is joined from users.id_verified_at — the badge, never the id.
@@ -68,6 +72,60 @@ export async function getPublicWorkers(opts?: {
     .orderBy(desc(workers.avgRating), asc(workers.stageName))
     .limit(opts?.limit ?? 60);
   return attachPrimaryPhotos(rows);
+}
+
+// One customer's saved professionals (/favorites). Favourites are saved at
+// WORKER level, so the premium rail is applied the same way the public
+// profile applies it (plan §1.3): a professional whose live gigs are ALL
+// premium does not exist for a viewer who cannot see premium and drops off
+// the list; one with no live gigs at all still shows (they are setting up),
+// exactly as their profile page still renders.
+export async function getFavoriteWorkers(
+  customerId: string,
+  viewer: PremiumViewer
+): Promise<PublicWorkerWithPhoto[]> {
+  const rows = await db
+    .select(publicWorkerColumns)
+    .from(favorites)
+    .innerJoin(workers, eq(favorites.workerId, workers.id))
+    .innerJoin(users, publicWorkerUserJoin)
+    .where(
+      and(eq(favorites.customerId, customerId), ...publicWorkerConditions())
+    )
+    .orderBy(desc(favorites.createdAt));
+  if (rows.length === 0 || viewer.canSeePremium) {
+    return attachPrimaryPhotos(rows);
+  }
+
+  // Live vs viewer-visible gig counts per saved worker. The gig conditions
+  // are inlined (= publicGigConditions() in lib/gigs.ts) to keep this
+  // module free of a circular import.
+  const counts = await db
+    .select({
+      workerId: gigs.workerId,
+      live: sql<number>`count(*)::int`,
+      visible: sql<number>`(count(*) FILTER (WHERE ${gigs.premium} = false))::int`,
+    })
+    .from(gigs)
+    .where(
+      and(
+        inArray(
+          gigs.workerId,
+          rows.map((r) => r.id)
+        ),
+        eq(gigs.active, true),
+        eq(gigs.suspended, false)
+      )
+    )
+    .groupBy(gigs.workerId);
+  const byWorker = new Map(counts.map((c) => [c.workerId, c]));
+
+  const visible = rows.filter((r) => {
+    const count = byWorker.get(r.id);
+    if (!count || Number(count.live) === 0) return true; // still setting up
+    return Number(count.visible) > 0;
+  });
+  return attachPrimaryPhotos(visible);
 }
 
 export async function attachPrimaryPhotos(

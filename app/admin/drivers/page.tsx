@@ -138,7 +138,7 @@ export default async function AdminDriversPage() {
                             href={verification.documentUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-gold hover:text-gold-soft"
+                            className="text-brand hover:text-brand-soft"
                           >
                             View ID document →
                           </a>
@@ -148,7 +148,7 @@ export default async function AdminDriversPage() {
                             href={verification.licenseUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-gold hover:text-gold-soft"
+                            className="text-brand hover:text-brand-soft"
                           >
                             View driver&apos;s licence →
                           </a>
@@ -158,7 +158,7 @@ export default async function AdminDriversPage() {
                             href={driver.facePhotoUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-gold hover:text-gold-soft"
+                            className="text-brand hover:text-brand-soft"
                           >
                             Face photo →
                           </a>
@@ -168,7 +168,7 @@ export default async function AdminDriversPage() {
                             href={driver.vehiclePhotoUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-gold hover:text-gold-soft"
+                            className="text-brand hover:text-brand-soft"
                           >
                             Vehicle photo →
                           </a>

@@ -64,7 +64,7 @@ export default async function SafetyDeskPage() {
             No safety monitor is on duty. Escalations will page the whole desk
             instead of a named responder.
           </p>
-          <span className="shrink-0 text-sm text-gold">Set the rota →</span>
+          <span className="shrink-0 text-sm text-brand">Set the rota →</span>
         </Link>
       )}
 
@@ -96,7 +96,7 @@ export default async function SafetyDeskPage() {
                   </p>
                   <p className="mt-1 text-xs text-muted">
                     {o.stageName} ·{" "}
-                    <Link href={`/bookings/${o.alert.bookingId}`} className="text-gold">
+                    <Link href={`/bookings/${o.alert.bookingId}`} className="text-brand hover:text-brand-soft">
                       {o.code}
                     </Link>{" "}
                     · {o.alert.createdAt.toLocaleString()}

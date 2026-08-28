@@ -26,11 +26,11 @@ export default function DriverOnboarding({ userName }: { userName: string }) {
 
       {/* Step rail */}
       <ol className="flex items-center gap-3 text-xs uppercase tracking-wider">
-        <li className={step === "profile" ? "text-gold" : "text-success"}>
+        <li className={step === "profile" ? "text-brand" : "text-success"}>
           1. You &amp; your vehicle
         </li>
         <li className="text-hairline">—</li>
-        <li className={step === "docs" ? "text-gold" : "text-faint"}>
+        <li className={step === "docs" ? "text-brand" : "text-faint"}>
           2. ID &amp; licence
         </li>
       </ol>

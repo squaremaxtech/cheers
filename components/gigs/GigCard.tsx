@@ -5,8 +5,12 @@ import { formatCents } from "@/lib/constants";
 import type { GigCard as GigCardData } from "@/types";
 
 // One browse-page card: the gig front and center, with just enough of its
-// worker (stage name, rating, parish) to build trust. Links to the worker's
+// professional (display name, rating, parish) to build trust. Links to the
 // profile with the gig preselected.
+//
+// A "Premium" badge appears only on premium gigs — and a viewer who cannot
+// see premium never receives such a card (lib/gigs.ts applies the rail), so
+// the badge is safe to key off the card itself.
 export default function GigCard({ gig }: { gig: GigCardData }) {
   const location = [gig.worker.city, gig.worker.parish]
     .filter(Boolean)
@@ -21,7 +25,7 @@ export default function GigCard({ gig }: { gig: GigCardData }) {
   return (
     <Link
       href={`/workers/${gig.worker.slug}?gig=${gig.slug}`}
-      className="card group block overflow-hidden transition-colors hover:border-gold/40"
+      className="card group block overflow-hidden transition-colors hover:border-brand/40"
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-raised">
         {gig.photoUrl ? (
@@ -38,8 +42,10 @@ export default function GigCard({ gig }: { gig: GigCardData }) {
         )}
       </div>
       <div className="flex flex-1 flex-col gap-2 p-4">
-        <div>
-          <Badge tone="gold">{gig.categoryName}</Badge>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge>{gig.categoryName}</Badge>
+          {gig.premium && <Badge tone="gold">Premium</Badge>}
+          {gig.worker.idVerified && <Badge tone="success">Verified ID</Badge>}
         </div>
         <h3 className="font-display text-lg leading-snug text-ink">
           {gig.title}
@@ -52,7 +58,7 @@ export default function GigCard({ gig }: { gig: GigCardData }) {
           />
         </div>
         {location && <p className="text-xs text-muted">{location}</p>}
-        <p className="mt-auto pt-1 text-sm text-gold">{priceLabel}</p>
+        <p className="mt-auto pt-1 text-sm text-gold-deep">{priceLabel}</p>
       </div>
     </Link>
   );

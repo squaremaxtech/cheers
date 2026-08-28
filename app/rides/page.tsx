@@ -40,7 +40,7 @@ export default async function MyRidesPage() {
             Name your price, pick your driver, pay cash in the car.
           </p>
         </div>
-        <Link href="/rides/new" className="btn-gold">
+        <Link href="/rides/new" className="btn-primary">
           Request a ride
         </Link>
       </div>
@@ -51,7 +51,7 @@ export default async function MyRidesPage() {
             title="No rides yet"
             hint="Post your route and your price — nearby drivers accept it or counter with their own."
             action={
-              <Link href="/rides/new" className="btn-gold">
+              <Link href="/rides/new" className="btn-primary">
                 Request your first ride
               </Link>
             }
@@ -66,7 +66,7 @@ export default async function MyRidesPage() {
               <Link
                 key={ride.id}
                 href={`/rides/${ride.id}`}
-                className="card block p-5 transition-colors hover:border-gold/40"
+                className="card block p-5 transition-colors hover:border-brand/40"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-medium text-ink">
@@ -80,7 +80,7 @@ export default async function MyRidesPage() {
                 </div>
                 <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
                   <span className="text-faint">{ride.code}</span>
-                  <span className="text-gold">
+                  <span className="text-gold-deep">
                     {formatCents(fare)}
                     {ride.finalFareCents === null && " offered"}
                   </span>

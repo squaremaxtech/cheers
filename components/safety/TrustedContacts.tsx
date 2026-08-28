@@ -218,7 +218,7 @@ export default function TrustedContacts({
           <div className="flex gap-2">
             <button
               type="submit"
-              className="btn-gold"
+              className="btn-primary"
               disabled={busy || !name || notifyOn.length === 0}
             >
               Add contact

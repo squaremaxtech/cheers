@@ -44,10 +44,12 @@ export default function BookingCalendar({
   const [openByMonth, setOpenByMonth] = useState<Map<string, string[]>>(
     new Map()
   );
-  const [loading, setLoading] = useState(false);
 
   const month = monthKey(year, monthIndex);
   const cacheKey = `${month}|${durationMinutes}`;
+  // "checking…" is derived, not set: the cache has no entry for this month
+  // yet (the effect below fills it, with [] on failure so it always settles).
+  const loading = !openByMonth.has(cacheKey);
   const openDates = useMemo(
     () => new Set(openByMonth.get(cacheKey) ?? []),
     [openByMonth, cacheKey]
@@ -56,7 +58,6 @@ export default function BookingCalendar({
   useEffect(() => {
     if (openByMonth.has(cacheKey)) return;
     let cancelled = false;
-    setLoading(true);
     getBookingDates({ workerId, month, durationMinutes, excludeBookingId })
       .then((res) => {
         if (cancelled) return;
@@ -67,8 +68,10 @@ export default function BookingCalendar({
           setOpenByMonth((m) => new Map(m).set(cacheKey, []));
         }
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+      .catch(() => {
+        // A thrown action (network) must still settle the month, or the
+        // "checking…" indicator would never clear.
+        if (!cancelled) setOpenByMonth((m) => new Map(m).set(cacheKey, []));
       });
     return () => {
       cancelled = true;
@@ -150,7 +153,7 @@ export default function BookingCalendar({
               onClick={() => onSelect(date)}
               className={`rounded-lg py-2 text-sm transition-colors ${
                 selected
-                  ? "bg-gold font-medium text-base"
+                  ? "bg-brand font-medium text-white"
                   : "text-ink hover:bg-raised"
               }`}
             >

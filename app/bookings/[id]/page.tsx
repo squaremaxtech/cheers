@@ -194,7 +194,7 @@ export default async function BookingRoomPage(
             </h1>
             <p className="mt-1 text-sm text-muted">
               with{" "}
-              <Link href={`/workers/${worker.slug}`} className="text-gold">
+              <Link href={`/workers/${worker.slug}`} className="text-brand hover:text-brand-soft">
                 {worker.stageName}
               </Link>{" "}
               · {booking.code} ·{" "}
@@ -288,9 +288,9 @@ export default async function BookingRoomPage(
                   </span>
                 </div>
               )}
-              <div className="mt-2 flex justify-between text-base">
+              <div className="mt-2 flex justify-between text-[1rem]">
                 <span className="text-ink">Total</span>
-                <span className="font-medium text-gold">
+                <span className="font-medium text-gold-deep">
                   {formatCents(total + booking.tipCents)}
                 </span>
               </div>
@@ -318,7 +318,7 @@ export default async function BookingRoomPage(
         {/* Safety */}
         {live && viewerRole !== "driver" && (
           <div className="card space-y-4 border-gold/30 p-6">
-            <h2 className="text-sm font-medium uppercase tracking-wider text-gold">
+            <h2 className="text-sm font-medium uppercase tracking-wider text-gold-deep">
               Safety
             </h2>
 
@@ -361,7 +361,7 @@ export default async function BookingRoomPage(
               >
                 <span className="font-medium">
                   {displayHealth === "unresponsive"
-                    ? "No signal from the worker's phone"
+                    ? "No signal from the professional's phone"
                     : displayHealth === "overdue"
                       ? "Check-in overdue"
                       : displayHealth === "alarm"
@@ -375,9 +375,11 @@ export default async function BookingRoomPage(
                   </span>
                 )}
                 <span className="mt-1 block text-xs text-faint">
-                  Workers check in every {WELLNESS_CHECK_INTERVAL_MINUTES}{" "}
-                  minutes, and their phone signals us every minute in between.
-                  If either stops, our safety team is alerted automatically.
+                  Professionals check in every{" "}
+                  {WELLNESS_CHECK_INTERVAL_MINUTES} minutes, and their phone
+                  signals us every minute in between. If either stops, the
+                  escalation ladder starts on its own — trusted contacts and the
+                  Cheers team are alerted without anyone having to notice.
                 </span>
               </div>
             )}
@@ -471,7 +473,7 @@ export default async function BookingRoomPage(
         {viewerRole === "staff" && (
           <p className="text-xs text-faint">
             Need to override this booking?{" "}
-            <Link href="/admin/bookings" className="text-gold">
+            <Link href="/admin/bookings" className="text-brand hover:text-brand-soft">
               Open it in admin bookings
             </Link>
             .

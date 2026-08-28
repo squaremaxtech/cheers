@@ -5,26 +5,36 @@ import { eq } from "drizzle-orm";
 import { db, pool } from "./index";
 import { gigCategories, users } from "./schema";
 
-// The 6 launch categories — same list as db/migrate-v2.ts GIG_CATEGORIES
-// (Food & Catering and Cleaning & Errands were retired 2026-08-19: Cheers
-// does not host catering or cleaning businesses — db/migrate-v3.ts retires
-// them in existing databases).
-// (copied, not imported: importing that module would execute the migration).
-// Categories are a browse taxonomy, not a limit on what workers can offer;
-// admins curate them at /admin/gigs.
+// The 15 browse categories of docs/REFACTOR-PLAN.md §3 — the same list as
+// db/migrate-v4.ts GIG_CATEGORIES (copied, not imported: importing that module
+// would execute the migration). Slugs are stable keys; names and blurbs are
+// copy. Cheers hosts any lawful service, so the taxonomy is deliberately wide.
+// Categories are a browse taxonomy, not a limit on what professionals can
+// offer; admins curate them at /admin/gigs.
 const GIG_CATEGORIES: { slug: string; name: string; blurb: string }[] = [
-  { slug: "events-entertainment", name: "Events & Entertainment", blurb: "Dancers, hosts, party staff, VIP experiences" },
-  { slug: "music-performance", name: "Music & Performance", blurb: "DJs, singers, bands, sound systems" },
-  { slug: "beauty-wellness", name: "Beauty & Wellness", blurb: "Massage, hair, makeup, nails, spa" },
-  { slug: "home-trade", name: "Home & Trade", blurb: "Electricians, plumbers, carpenters, repairs" },
-  { slug: "photo-video", name: "Photo & Video", blurb: "Photographers, videographers, editing" },
-  { slug: "tech-professional", name: "Tech & Professional", blurb: "IT, engineering, tutoring, design, admin" },
+  { slug: "events-entertainment", name: "Events & Entertainment", blurb: "DJs, MCs & hosts, dancers, performers, event staff" },
+  { slug: "music-performance", name: "Music & Performance", blurb: "Bands, musicians, singers, sound engineers" },
+  { slug: "food-catering", name: "Food, Drinks & Bartending", blurb: "Chefs, caterers, bartenders, mixologists" },
+  { slug: "cleaning", name: "Cleaning & Housekeeping", blurb: "Home & office cleaning, laundry, deep cleans" },
+  { slug: "home-trade", name: "Home & Trade", blurb: "Electrical, plumbing, carpentry, masonry, welding, AC" },
+  { slug: "landscaping-outdoor", name: "Landscaping & Outdoor", blurb: "Gardening, yard work, pool care, tree work" },
+  { slug: "beauty-wellness", name: "Beauty & Wellness", blurb: "Hair, makeup, nails, barbers, massage therapy, fitness" },
+  { slug: "photo-video", name: "Photo & Video", blurb: "Photographers, videographers, editors, drone" },
+  { slug: "creative-design", name: "Creative & Design", blurb: "Graphic design, branding, writing, content" },
+  { slug: "tech-professional", name: "Tech & Professional", blurb: "IT support, web & apps, admin, bookkeeping, legal support" },
+  { slug: "tutoring-education", name: "Tutoring & Education", blurb: "Academic tutoring, exam prep, music lessons, coaching" },
+  { slug: "moving-labour", name: "Moving & Labour", blurb: "Movers, delivery helpers, general labour" },
+  { slug: "automotive", name: "Automotive", blurb: "Mechanics, detailing, tyres, roadside help" },
+  { slug: "care-childcare", name: "Care & Childcare", blurb: "Nannies, babysitters, elder care, pet care" },
+  { slug: "security", name: "Security", blurb: "Security guards, door staff, event security" },
 ];
 
 async function seed(): Promise<void> {
+  // Upsert by slug: insert if missing, refresh the copy and reactivate if
+  // present. Categories the admin added are left alone.
   for (const [i, category] of GIG_CATEGORIES.entries()) {
     const [existing] = await db
-      .select({ id: gigCategories.id })
+      .select({ id: gigCategories.id, active: gigCategories.active })
       .from(gigCategories)
       .where(eq(gigCategories.slug, category.slug));
     if (!existing) {
@@ -35,6 +45,19 @@ async function seed(): Promise<void> {
         sortOrder: i,
       });
       console.log(`created gig category: ${category.name}`);
+      continue;
+    }
+    await db
+      .update(gigCategories)
+      .set({
+        name: category.name,
+        blurb: category.blurb,
+        sortOrder: i,
+        active: true,
+      })
+      .where(eq(gigCategories.id, existing.id));
+    if (!existing.active) {
+      console.log(`reactivated gig category: ${category.name}`);
     }
   }
 

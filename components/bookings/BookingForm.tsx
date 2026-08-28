@@ -44,8 +44,19 @@ export default function BookingForm({
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [duration, setDuration] = useState(initialGig?.durationMinutes ?? 60);
-  const [slots, setSlots] = useState<TimeSlot[] | null>(null);
-  const [slotsLoading, setSlotsLoading] = useState(false);
+  // Bumped to force a slot refetch after losing a booking race.
+  const [slotsVersion, setSlotsVersion] = useState(0);
+  // The slot board is keyed by what it was fetched for; `slots` and the
+  // loading flag are derived from whether the stored result matches the
+  // current key, so nothing is set synchronously inside the effect.
+  const slotsKey = date ? `${date}|${duration}|${slotsVersion}` : null;
+  const [slotsResult, setSlotsResult] = useState<{
+    key: string;
+    slots: TimeSlot[];
+  } | null>(null);
+  const slots =
+    slotsKey !== null && slotsResult?.key === slotsKey ? slotsResult.slots : null;
+  const slotsLoading = slotsKey !== null && slots === null;
   const [address, setAddress] = useState("");
   const [coords, setCoords] = useState<{ lat?: string; lng?: string }>({});
   const [instructions, setInstructions] = useState("");
@@ -71,41 +82,34 @@ export default function BookingForm({
     []
   );
 
-  const refreshSlots = useCallback(async () => {
-    if (!date) {
-      setSlots(null);
-      return;
-    }
-    setSlotsLoading(true);
-    const res = await getBookingSlots({
-      workerId,
-      date,
-      durationMinutes: duration,
-    });
-    setSlotsLoading(false);
-    if (res.ok) {
-      setSlots(res.data.slots);
-      // Drop a selection that is no longer offered/available.
-      setStartTime((t) =>
-        res.data.slots.some((s) => s.time === t && s.state === "available")
-          ? t
-          : ""
-      );
-    } else {
-      setSlots([]);
-      toast.error(res.error);
-    }
-  }, [workerId, date, duration]);
-
   useEffect(() => {
-    void refreshSlots();
-  }, [refreshSlots]);
+    if (slotsKey === null) return;
+    let stale = false;
+    getBookingSlots({ workerId, date, durationMinutes: duration }).then((res) => {
+      if (stale) return;
+      if (res.ok) {
+        setSlotsResult({ key: slotsKey, slots: res.data.slots });
+        // Drop a selection that is no longer offered/available.
+        setStartTime((t) =>
+          res.data.slots.some((s) => s.time === t && s.state === "available")
+            ? t
+            : ""
+        );
+      } else {
+        setSlotsResult({ key: slotsKey, slots: [] });
+        toast.error(res.error);
+      }
+    });
+    return () => {
+      stale = true;
+    };
+  }, [slotsKey, workerId, date, duration]);
 
   if (gigs.length === 0) {
     return (
       <p className="card p-6 text-sm text-muted">
-        This worker has no bookable gigs right now. Gigs priced per job are
-        booked by requesting a quote from their profile.
+        This professional has no bookable gigs right now. Gigs priced per job
+        are booked by requesting a quote from their profile.
       </p>
     );
   }
@@ -137,7 +141,7 @@ export default function BookingForm({
       toast.error(res.error);
       // The server re-checks the slot on submit — if we lost the race, show
       // the fresh board so the customer picks another time.
-      void refreshSlots();
+      setSlotsVersion((v) => v + 1);
     }
   }
 
@@ -153,14 +157,14 @@ export default function BookingForm({
               className={`flex cursor-pointer items-start justify-between gap-3 rounded-xl border p-4 transition-colors ${
                 gigId === g.id
                   ? "border-gold/60 bg-raised"
-                  : "border-hairline hover:border-gold/30"
+                  : "border-hairline hover:border-brand/30"
               }`}
             >
               <span>
                 <input
                   type="radio"
                   name="gig"
-                  className="mr-2 accent-[var(--color-gold)]"
+                  className="mr-2 accent-[var(--color-brand)]"
                   checked={gigId === g.id}
                   onChange={() => {
                     setGigId(g.id);
@@ -178,7 +182,7 @@ export default function BookingForm({
                   </span>
                 )}
               </span>
-              <span className="shrink-0 text-sm text-gold">
+              <span className="shrink-0 text-sm text-gold-deep">
                 {formatCents(g.priceCents)}
               </span>
             </label>
@@ -194,12 +198,12 @@ export default function BookingForm({
             {availableAddons.map((a) => (
               <label
                 key={a.id}
-                className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-hairline p-3 text-sm hover:border-gold/30"
+                className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-hairline p-3 text-sm hover:border-brand/30"
               >
                 <span>
                   <input
                     type="checkbox"
-                    className="mr-2 accent-[var(--color-gold)]"
+                    className="mr-2 accent-[var(--color-brand)]"
                     checked={addonIds.some((id) => id === a.id)}
                     onChange={(e) =>
                       setAddonIds((ids) =>
@@ -216,7 +220,7 @@ export default function BookingForm({
                     </span>
                   )}
                 </span>
-                <span className="text-gold">+{formatCents(a.priceCents)}</span>
+                <span className="text-gold-deep">+{formatCents(a.priceCents)}</span>
               </label>
             ))}
           </div>
@@ -305,9 +309,9 @@ export default function BookingForm({
               <dd className="text-ink">{formatCents(a.priceCents)}</dd>
             </div>
           ))}
-          <div className="hairline-top mt-2 flex justify-between pt-2 text-base">
+          <div className="hairline-top mt-2 flex justify-between pt-2 text-[1rem]">
             <dt className="text-ink">Total</dt>
-            <dd className="font-medium text-gold">{formatCents(total)}</dd>
+            <dd className="font-medium text-gold-deep">{formatCents(total)}</dd>
           </div>
         </dl>
         <p className="mt-3 text-xs text-faint">
@@ -316,7 +320,7 @@ export default function BookingForm({
         </p>
       </div>
 
-      <button type="submit" className="btn-gold w-full" disabled={submitting}>
+      <button type="submit" className="btn-primary w-full" disabled={submitting}>
         {submitting ? "Sending request…" : "Send booking request"}
       </button>
     </form>

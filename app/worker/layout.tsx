@@ -12,6 +12,7 @@ const nav = [
   { href: "/worker/safety", label: "Safety" },
   { href: "/chats", label: "Messages" },
   { href: "/worker/profile", label: "Profile" },
+  { href: "/worker/verification", label: "Verified ID" },
   { href: "/worker/media", label: "Media" },
   { href: "/worker/gigs", label: "Gigs" },
   { href: "/worker/availability", label: "Availability" },
@@ -30,7 +31,7 @@ export default async function WorkerLayout({
     <>
       <SiteHeader />
       <main className="flex-1">
-        <DashboardShell title="Worker studio" nav={nav}>
+        <DashboardShell title="Professional studio" nav={nav}>
           {children}
         </DashboardShell>
       </main>

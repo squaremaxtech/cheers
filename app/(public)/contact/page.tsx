@@ -1,32 +1,91 @@
+import Link from "next/link";
 import type { Metadata } from "next";
+import { CONTACT_EMAILS } from "@/lib/constants";
 
-export const metadata: Metadata = { title: "Contact" };
+export const metadata: Metadata = {
+  title: "Contact",
+  description:
+    "How to reach Cheers — general enquiries, account and booking support, and safety reports.",
+};
+
+const inboxes = [
+  {
+    title: "General enquiries",
+    email: CONTACT_EMAILS.hello,
+    body: "Partnerships, press, premium access requests and anything else that is not about a specific booking.",
+  },
+  {
+    title: "Support",
+    email: CONTACT_EMAILS.support,
+    body: "Accounts, bookings, payments, membership, refunds, and privacy or data requests.",
+  },
+  {
+    title: "Safety",
+    email: CONTACT_EMAILS.safety,
+    body: "Report conduct, a safety concern or anything that breaks the Community Guidelines.",
+  },
+];
 
 export default function ContactPage() {
   return (
     <div className="mx-auto max-w-3xl px-5 py-16">
-      <h1 className="font-display text-3xl text-ink">Contact</h1>
+      <h1 className="font-display text-3xl tracking-tight text-ink">Contact</h1>
       <p className="mt-4 text-sm leading-7 text-muted">
-        Questions, feedback, or support — we respond within 24 hours.
+        Questions, feedback or a problem with a booking — email the right inbox
+        below and we will come back to you. In an emergency, call 119 (police)
+        or 110 (fire and ambulance) first; email is not monitored around the
+        clock.
       </p>
+
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        {inboxes.map((i) => (
+          <div key={i.email} className="card p-6">
+            <h2 className="text-sm font-medium text-ink">{i.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">{i.body}</p>
+            <a
+              href={`mailto:${i.email}`}
+              className="mt-3 inline-block text-sm text-brand hover:underline"
+            >
+              {i.email}
+            </a>
+          </div>
+        ))}
+
         <div className="card p-6">
-          <h2 className="text-sm font-medium text-ink">General support</h2>
-          <p className="mt-2 text-sm text-gold">support@cheers.example</p>
-        </div>
-        <div className="card p-6">
-          <h2 className="text-sm font-medium text-ink">Worker onboarding</h2>
-          <p className="mt-2 text-sm text-gold">talent@cheers.example</p>
-        </div>
-        <div className="card p-6">
-          <h2 className="text-sm font-medium text-ink">Safety (24/7)</h2>
-          <p className="mt-2 text-sm text-gold">safety@cheers.example</p>
-        </div>
-        <div className="card p-6">
-          <h2 className="text-sm font-medium text-ink">Business</h2>
-          <p className="mt-2 text-sm text-gold">partners@cheers.example</p>
+          <h2 className="text-sm font-medium text-ink">
+            Want to offer your services?
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Signup is open — there is no invitation and no approval step. Create
+            your profile, publish your services and prices, and you are live.
+          </p>
+          <Link
+            href="/worker/onboarding"
+            className="mt-3 inline-block text-sm text-brand hover:underline"
+          >
+            Offer your services on Cheers →
+          </Link>
         </div>
       </div>
+
+      <p className="mt-10 text-sm leading-7 text-muted">
+        See also{" "}
+        <Link href="/faq" className="text-brand hover:underline">
+          FAQ
+        </Link>{" "}
+        ·{" "}
+        <Link href="/terms" className="text-brand hover:underline">
+          Terms
+        </Link>{" "}
+        ·{" "}
+        <Link href="/privacy" className="text-brand hover:underline">
+          Privacy
+        </Link>{" "}
+        ·{" "}
+        <Link href="/guidelines" className="text-brand hover:underline">
+          Community Guidelines
+        </Link>
+      </p>
     </div>
   );
 }

@@ -6,12 +6,12 @@ import { workers } from "@/db/schema";
 import WorkerProfileForm from "@/components/worker/WorkerProfileForm";
 import { getUserRow } from "@/lib/auth";
 
-export const metadata: Metadata = { title: "Become a Worker" };
+export const metadata: Metadata = { title: "Offer your services" };
 
-// Open signup: anyone signed in can create a worker profile. The profile
-// stays hidden from customers until an admin approves it
-// (workers.verified — see publicWorkerConditions), so the roster stays
-// curated without invite codes.
+// Open signup: anyone signed in can create a worker profile, and the profile
+// is live the moment they publish a gig — nothing here waits on the business
+// owner (plan §2.1). The form records legal acceptance in the same call
+// (plan §2.4); admins keep the moderation levers (hide / suspend / takedown).
 export default async function WorkerOnboardingPage() {
   const user = await getUserRow();
   if (!user) redirect("/login");
@@ -23,12 +23,14 @@ export default async function WorkerOnboardingPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="font-display text-2xl text-ink">Join Cheers as talent</h1>
+      <h1 className="font-display text-2xl text-ink">
+        Offer your services on Cheers
+      </h1>
       <p className="mt-2 text-sm leading-6 text-muted">
-        Your stage name is all customers ever see — your real name stays
-        private with us. Publish your gigs and prices next; you stay in full
-        control of your schedule. Your profile goes live once our team
-        approves it.
+        Your display name is what customers see; your legal name stays private
+        and is only used if you verify your ID. Publish your gigs and prices
+        next — your profile goes live as soon as you publish a gig, and you
+        stay in full control of your schedule and your prices.
       </p>
       <div className="card mt-8 p-6">
         <WorkerProfileForm mode="create" />

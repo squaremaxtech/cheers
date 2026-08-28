@@ -53,7 +53,7 @@ export default function DriverVerificationActions({
     <div className="flex gap-2">
       <button
         type="button"
-        className="btn-gold py-1.5 text-xs"
+        className="btn-primary py-1.5 text-xs"
         disabled={busy}
         onClick={() => decide("approved")}
       >

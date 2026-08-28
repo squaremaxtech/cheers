@@ -5,10 +5,16 @@ import { JAMAICA_PARISHES, LANGUAGES } from "@/lib/constants";
 
 // The browse filter bar — reads and writes the URL so results are shareable
 // and the server component re-queries on every change.
+//
+// canSeePremium comes from the server (lib/premium.ts). When it is false the
+// Premium chip is not rendered at all: a standard viewer must see no trace
+// that the tier exists, and lib/gigs.ts ignores ?premium=1 for them anyway.
 export default function GigFilters({
   categories,
+  canSeePremium = false,
 }: {
   categories: { slug: string; name: string }[];
+  canSeePremium?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -22,6 +28,7 @@ export default function GigFilters({
   }
 
   const get = (key: string) => searchParams.get(key) ?? "";
+  const premiumOnly = get("premium") === "1";
 
   return (
     <div className="card flex flex-wrap items-end gap-3 p-4">
@@ -32,7 +39,7 @@ export default function GigFilters({
         <input
           id="f-q"
           className="input"
-          placeholder="Gig, tag, or stage name…"
+          placeholder="Service, tag, or display name…"
           defaultValue={get("q")}
           onBlur={(e) => setParam("q", e.target.value)}
           onKeyDown={(e) => {
@@ -125,6 +132,23 @@ export default function GigFilters({
           ))}
         </select>
       </div>
+      {canSeePremium && (
+        <div>
+          <span className="label block">Tier</span>
+          <button
+            type="button"
+            aria-pressed={premiumOnly}
+            onClick={() => setParam("premium", premiumOnly ? "" : "1")}
+            className={`rounded-full border px-4 py-2 text-sm transition-colors ${
+              premiumOnly
+                ? "border-gold bg-gold/10 text-gold-deep"
+                : "border-hairline text-muted hover:border-brand/40"
+            }`}
+          >
+            Premium only
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -137,7 +137,7 @@ function BoardCard({
               }`}
             />
             <span className="font-medium text-ink">{entry.workerName}</span>
-            <Link href={`/bookings/${entry.bookingId}`} className="text-xs text-gold">
+            <Link href={`/bookings/${entry.bookingId}`} className="text-xs text-brand hover:text-brand-soft">
               {entry.bookingCode}
             </Link>
             <span className="text-xs uppercase tracking-wider text-faint">
@@ -210,7 +210,7 @@ function BoardCard({
                   {!alert.acknowledgedAt && (
                     <button
                       type="button"
-                      className="btn-gold text-xs"
+                      className="btn-primary text-xs"
                       disabled={busy}
                       onClick={() =>
                         run(

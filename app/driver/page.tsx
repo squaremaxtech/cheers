@@ -116,7 +116,7 @@ export default async function DriverDashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Link
           href="/driver/requests"
-          className="card block p-6 transition-colors hover:border-gold/40"
+          className="card block p-6 transition-colors hover:border-brand/40"
         >
           <h2 className="font-display text-lg text-ink">Request board</h2>
           <p className="mt-1 text-sm text-muted">
@@ -126,7 +126,7 @@ export default async function DriverDashboardPage() {
         </Link>
         <Link
           href="/driver/rides"
-          className="card block p-6 transition-colors hover:border-gold/40"
+          className="card block p-6 transition-colors hover:border-brand/40"
         >
           <h2 className="font-display text-lg text-ink">My rides</h2>
           <p className="mt-1 text-sm text-muted">

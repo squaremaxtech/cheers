@@ -9,7 +9,7 @@ import {
   workers,
 } from "@/db/schema";
 import { transitionBooking } from "@/lib/bookings";
-import { chatPassPriceCents, stripeConfigured } from "@/lib/constants";
+import { membershipPriceCents, stripeConfigured } from "@/lib/constants";
 import { notify, notifyAdmins } from "@/lib/notify";
 import { bookingEventNow, publishBooking } from "@/lib/realtime";
 import {
@@ -50,8 +50,13 @@ export async function POST(req: Request): Promise<Response> {
               ? session.payment_intent
               : session.payment_intent?.id ?? null
           );
-        } else if (session.metadata?.kind === "chat_pass") {
-          await linkChatPassSubscription(session);
+        } else if (
+          // v3 renamed the product; sessions created before the rename
+          // still arrive with the legacy kind.
+          session.metadata?.kind === "membership" ||
+          session.metadata?.kind === "chat_pass"
+        ) {
+          await linkMembershipSubscription(session);
         }
         break;
       }
@@ -72,11 +77,11 @@ export async function POST(req: Request): Promise<Response> {
         break;
       }
       case "invoice.paid":
-        await fulfillChatPassInvoice(event.data.object);
+        await fulfillMembershipInvoice(event.data.object);
         break;
       case "customer.subscription.updated":
       case "customer.subscription.deleted":
-        await syncChatPassStatus(event.data.object);
+        await syncMembershipStatus(event.data.object);
         break;
       case "charge.refunded": {
         const charge = event.data.object;
@@ -247,11 +252,11 @@ async function fulfillBookingPayment(
   });
 }
 
-// --- Chat Pass subscription fulfillment ---------------------------------------
+// --- Membership subscription fulfillment --------------------------------------
 
 // checkout.session.completed (mode=subscription): link the Stripe ids to the
 // membership row immediately; invoice.paid does the period bookkeeping.
-async function linkChatPassSubscription(
+async function linkMembershipSubscription(
   session: Stripe.Checkout.Session
 ): Promise<void> {
   const userId = session.metadata?.userId;
@@ -286,7 +291,7 @@ async function linkChatPassSubscription(
 
 // invoice.paid: first charge AND every renewal. Sets the paid-through date
 // and writes the receipt row. Idempotent on the invoice id.
-async function fulfillChatPassInvoice(invoice: Stripe.Invoice): Promise<void> {
+async function fulfillMembershipInvoice(invoice: Stripe.Invoice): Promise<void> {
   const subscriptionId = invoiceSubscriptionId(invoice);
   if (!subscriptionId) return;
 
@@ -307,7 +312,7 @@ async function fulfillChatPassInvoice(invoice: Stripe.Invoice): Promise<void> {
     if (!existing) {
       await db.insert(membershipPayments).values({
         userId,
-        amountCents: invoice.amount_paid ?? chatPassPriceCents(),
+        amountCents: invoice.amount_paid ?? membershipPriceCents(),
         status: "succeeded",
         gatewayTransactionId: invoiceId,
         periodStart: new Date(),
@@ -337,13 +342,13 @@ async function fulfillChatPassInvoice(invoice: Stripe.Invoice): Promise<void> {
   await notify({
     userId,
     type: "membership_active",
-    title: "Your Chat Pass is active",
-    body: `Payment received — your Chat Pass runs until ${periodEnd.toDateString()} and renews automatically.`,
+    title: "Your Cheers Membership is active",
+    body: `Payment received — your membership runs until ${periodEnd.toDateString()} and renews automatically.`,
   });
 }
 
 // Status sync: past_due, canceled, resumed — Stripe is the source of truth.
-async function syncChatPassStatus(
+async function syncMembershipStatus(
   subscription: Stripe.Subscription
 ): Promise<void> {
   const userId =

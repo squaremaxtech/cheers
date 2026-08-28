@@ -43,7 +43,7 @@ export default function AdminDriverActions({
         type="button"
         disabled={busy}
         onClick={() => update({ verified: !verified })}
-        className="btn border border-hairline px-2.5 py-1 text-xs text-muted hover:text-gold"
+        className="btn border border-hairline px-2.5 py-1 text-xs text-muted hover:text-brand"
       >
         {verified ? "Revoke approval" : "Approve"}
       </button>

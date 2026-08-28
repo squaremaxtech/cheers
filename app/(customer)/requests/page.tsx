@@ -56,11 +56,11 @@ export default async function RequestsPage() {
         <div>
           <h1 className="font-display text-2xl text-ink">My requests</h1>
           <p className="mt-1 text-sm text-muted">
-            Jobs you&apos;ve advertised. Workers accept your budget or send
-            offers; choosing one books them.
+            Jobs you&apos;ve advertised. Professionals accept your budget or
+            send offers; choosing one books them.
           </p>
         </div>
-        <Link href="/requests/new" className="btn-gold">
+        <Link href="/requests/new" className="btn-primary">
           Post a request
         </Link>
       </div>
@@ -69,9 +69,9 @@ export default async function RequestsPage() {
         <div className="mt-6">
           <EmptyState
             title="No requests yet"
-            hint="Can't find the right gig? Describe what you need, name your price, and let approved workers come to you."
+            hint="Can't find the right service? Describe what you need, name your price, and let professionals come to you."
             action={
-              <Link href="/requests/new" className="btn-gold">
+              <Link href="/requests/new" className="btn-primary">
                 Post your first request
               </Link>
             }
@@ -126,7 +126,7 @@ function RequestCard({
   return (
     <Link
       href={`/requests/${r.id}`}
-      className="card flex flex-wrap items-center justify-between gap-3 p-5 transition-colors hover:border-gold/40"
+      className="card flex flex-wrap items-center justify-between gap-3 p-5 transition-colors hover:border-brand/40"
     >
       <div className="min-w-0">
         <p className="text-sm font-medium text-ink">
@@ -145,8 +145,9 @@ function RequestCard({
           {status === "matched" && item.stageName && ` · booked with ${item.stageName}`}
         </p>
       </div>
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-gold">{formatCents(r.budgetCents)}</span>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm text-gold-deep">{formatCents(r.budgetCents)}</span>
+        {r.premium && <Badge tone="gold">Premium</Badge>}
         <Badge tone={jobStatusTone(status)}>{jobRequestStatusLabel(status)}</Badge>
       </div>
     </Link>

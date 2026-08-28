@@ -124,7 +124,7 @@ export default async function RideRoomPage(props: PageProps<"/rides/[id]">) {
           Route
         </h2>
         <div className="flex gap-3">
-          <span className="mt-1 shrink-0 text-gold">●</span>
+          <span className="mt-1 shrink-0 text-gold-deep">●</span>
           <div>
             <p className="text-[11px] uppercase tracking-wider text-faint">
               Pickup
@@ -169,9 +169,9 @@ export default async function RideRoomPage(props: PageProps<"/rides/[id]">) {
           </div>
         )}
         {ride.finalFareCents !== null && (
-          <div className="hairline-top flex justify-between pt-2 text-base">
+          <div className="hairline-top flex justify-between pt-2 text-[1rem]">
             <span className="text-ink">Agreed fare</span>
-            <span className="font-medium text-gold">
+            <span className="font-medium text-gold-deep">
               {formatCents(ride.finalFareCents)}
             </span>
           </div>
@@ -233,7 +233,7 @@ export default async function RideRoomPage(props: PageProps<"/rides/[id]">) {
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="font-display text-xl text-gold">
+                    <span className="font-display text-xl text-gold-deep">
                       {formatCents(o.priceCents)}
                     </span>
                     {viewerRole === "rider" && (
@@ -251,7 +251,7 @@ export default async function RideRoomPage(props: PageProps<"/rides/[id]">) {
           (The driver doesn't need their own card; they get the trip panel.) */}
       {matched && driver && viewerRole !== "driver" && (
         <div className="card space-y-4 border-gold/30 p-6">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-gold">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-gold-deep">
             Your driver
           </h2>
           <div className="flex flex-wrap items-center gap-4">
@@ -305,7 +305,7 @@ export default async function RideRoomPage(props: PageProps<"/rides/[id]">) {
           </h2>
           <p className="text-sm text-muted">
             Riding: <span className="text-ink">{riderFirstName}</span> · collect{" "}
-            <span className="text-gold">
+            <span className="text-gold-deep">
               {formatCents(ride.finalFareCents ?? ride.offerCents)}
             </span>{" "}
             in cash at drop-off.
@@ -347,7 +347,7 @@ export default async function RideRoomPage(props: PageProps<"/rides/[id]">) {
       {viewerRole === "staff" && (
         <p className="text-xs text-faint">
           Staff view — read-only. Ride disputes are handled from{" "}
-          <Link href="/admin" className="text-gold">
+          <Link href="/admin" className="text-brand hover:text-brand-soft">
             the admin area
           </Link>
           .

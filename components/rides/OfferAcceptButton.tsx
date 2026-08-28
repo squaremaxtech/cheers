@@ -33,7 +33,7 @@ export default function OfferAcceptButton({
   return (
     <button
       type="button"
-      className="btn-gold"
+      className="btn-primary"
       disabled={working}
       onClick={handleAccept}
     >

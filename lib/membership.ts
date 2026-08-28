@@ -3,6 +3,11 @@ import { db } from "@/db";
 import { memberships } from "@/db/schema";
 import type { MembershipRow } from "@/types";
 
+// The one message every membership gate returns (booking, quotes, job
+// requests) so the paywall reads the same everywhere.
+export const MEMBERSHIP_REQUIRED =
+  "A Cheers Membership is required for this — join from the Membership page.";
+
 // Launch flag: the membership is free for everyone until this date (empty =
 // off). This is what keeps messaging and booking open while Stripe is not yet
 // live — cash-first. It is the ONLY switch on the membership gate.

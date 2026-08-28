@@ -8,7 +8,7 @@ import { isUuid } from "@/lib/slug";
 export const metadata: Metadata = { title: "Chats — Admin" };
 
 // Staff chat moderation: find a room by its exact chat ID or by the people
-// in it (worker stage name / customer name or email), then open the
+// in it (professional display name / customer name or email), then open the
 // read-only transcript.
 export default async function AdminChatsPage(props: PageProps<"/admin/chats">) {
   const search = await props.searchParams;
@@ -57,7 +57,7 @@ export default async function AdminChatsPage(props: PageProps<"/admin/chats">) {
             id="chats-q"
             name="q"
             defaultValue={q}
-            placeholder="Stage name, customer name or email"
+            placeholder="Display name, customer name or email"
             className="input w-64 py-1.5"
           />
         </div>
@@ -73,7 +73,7 @@ export default async function AdminChatsPage(props: PageProps<"/admin/chats">) {
             className="input w-72 py-1.5"
           />
         </div>
-        <button type="submit" className="btn-gold py-2 text-xs">
+        <button type="submit" className="btn-primary py-2 text-xs">
           Search
         </button>
         {(q || roomQuery) && (
@@ -119,7 +119,7 @@ export default async function AdminChatsPage(props: PageProps<"/admin/chats">) {
                   })}
                 </td>
                 <td className="p-3">
-                  <Link href={`/chats/${room.id}`} className="text-gold">
+                  <Link href={`/chats/${room.id}`} className="text-brand hover:text-brand-soft">
                     Open →
                   </Link>
                 </td>

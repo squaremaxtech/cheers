@@ -6,7 +6,7 @@ import { useFormStatus } from "react-dom";
 // server action is pending.
 export default function SubmitButton({
   children,
-  className = "btn-gold",
+  className = "btn-primary",
   pendingText = "Working…",
 }: {
   children: React.ReactNode;

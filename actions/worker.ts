@@ -44,7 +44,10 @@ export async function createWorkerProfile(
     }
     const parsed = createWorkerProfileSchema.safeParse(input);
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
-    const { acceptTerms: _acceptTerms, ...profile } = parsed.data;
+    const { acceptTerms, ...profile } = parsed.data;
+    // Belt and braces: the schema only parses a ticked box, and the box is
+    // what is recorded as termsAcceptedAt below.
+    if (!acceptTerms) return err("Please accept the terms to continue.");
 
     const [existing] = await db
       .select({ id: workers.id })

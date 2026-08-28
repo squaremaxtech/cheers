@@ -57,11 +57,11 @@ export default function ReviewForm({ bookingId }: { bookingId: string }) {
           type="checkbox"
           checked={anonymous}
           onChange={(e) => setAnonymous(e.target.checked)}
-          className="h-4 w-4 accent-[var(--color-gold)]"
+          className="h-4 w-4 accent-[var(--color-brand)]"
         />
         Post anonymously
       </label>
-      <button type="submit" className="btn-gold" disabled={busy}>
+      <button type="submit" className="btn-primary" disabled={busy}>
         {busy ? "Submitting…" : "Submit review"}
       </button>
     </form>

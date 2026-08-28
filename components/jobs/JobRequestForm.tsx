@@ -27,12 +27,18 @@ function jamaicaLocalFromNow(offsetMs: number): string {
 }
 
 // Post a job request: what, which category, where, when, budget, and how the
-// worker should be chosen. Workers with a live gig in the category see it on
-// their board the moment it posts.
+// professional should be chosen. Professionals with a live service in the
+// category see it on their board the moment it posts.
+//
+// canPostPremium comes from the server (lib/premium.ts hasPremiumAccess).
+// The checkbox is not rendered without it and actions/jobs.ts postJobRequest
+// forces `premium` back to false for a non-premium customer regardless.
 export default function JobRequestForm({
   categories,
+  canPostPremium = false,
 }: {
   categories: { id: string; name: string; blurb: string | null }[];
+  canPostPremium?: boolean;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -49,6 +55,7 @@ export default function JobRequestForm({
   const [budget, setBudget] = useState("");
   const [matchMode, setMatchMode] = useState<JobMatchMode>("manual");
   const [autoBookAt, setAutoBookAt] = useState("");
+  const [premium, setPremium] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const handleAddress = useCallback(
@@ -97,12 +104,13 @@ export default function JobRequestForm({
       startTime,
       durationMinutes: duration,
       budgetCents,
+      premium: canPostPremium && premium,
       matchMode,
       autoBookAt: matchMode === "lowest_price" ? autoBookAt : undefined,
     });
     setSubmitting(false);
     if (res.ok) {
-      toast.success("Request posted — workers are being notified.");
+      toast.success("Request posted — professionals are being notified.");
       router.push(`/requests/${res.data.jobRequestId}`);
     } else {
       toast.error(res.error);
@@ -148,9 +156,28 @@ export default function JobRequestForm({
             ))}
           </select>
           <p className="mt-1 text-xs text-faint">
-            Only approved workers with a live gig in this category can respond.
+            Only professionals with a live service in this category can respond.
           </p>
         </div>
+        {canPostPremium && (
+          <label className="flex cursor-pointer gap-3 rounded-2xl border border-hairline p-4 transition-colors hover:border-brand/30">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={premium}
+              onChange={(e) => setPremium(e.target.checked)}
+            />
+            <span>
+              <span className="block text-sm font-medium text-ink">
+                Premium request — visible only to premium professionals
+              </span>
+              <span className="mt-0.5 block text-xs leading-5 text-muted">
+                Only professionals we have enabled for premium services see it,
+                and only their premium services can fill it.
+              </span>
+            </span>
+          </label>
+        )}
         <div>
           <label className="label" htmlFor="job-description">
             Describe the job
@@ -161,7 +188,7 @@ export default function JobRequestForm({
             required
             minLength={20}
             maxLength={JOB_DESCRIPTION_MAX_CHARS}
-            placeholder="What exactly needs doing, for how many people, anything the worker should bring or know. This becomes the booking's instructions."
+            placeholder="What exactly needs doing, for how many people, anything the professional should bring or know. This becomes the booking's instructions."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
@@ -205,7 +232,7 @@ export default function JobRequestForm({
           </div>
           <div>
             <label className="label" htmlFor="job-area">
-              Area (shown to workers)
+              Area (shown to professionals)
             </label>
             <input
               id="job-area"
@@ -224,8 +251,8 @@ export default function JobRequestForm({
             onChange={handleAddress}
           />
           <p className="mt-1 text-xs text-faint">
-            Workers see only the parish and area while your request is open.
-            The full address is shared with the worker you book.
+            Professionals see only the parish and area while your request is
+            open. The full address is shared with the one you book.
           </p>
         </div>
       </fieldset>
@@ -306,21 +333,21 @@ export default function JobRequestForm({
             onChange={(e) => setBudget(e.target.value)}
           />
           <p className="mt-1 text-xs leading-5 text-faint">
-            Name your price — workers accept it as-is or counter with their own.
-            You only pay once a worker is booked (cash at the job, or card when
-            online payments are on).
+            Name your price — professionals accept it as-is or counter with
+            their own. You only pay once someone is booked (cash at the job, or
+            card when online payments are on).
           </p>
         </div>
 
         <div className="space-y-2">
-          <p className="label">How should your worker be chosen?</p>
+          <p className="label">How should your professional be chosen?</p>
           {JOB_MATCH_MODES.map((m) => (
             <label
               key={m.value}
               className={`flex cursor-pointer gap-3 rounded-2xl border p-4 transition-colors ${
                 matchMode === m.value
                   ? "border-gold/50 bg-gold/5"
-                  : "border-hairline hover:border-gold/30"
+                  : "border-hairline hover:border-brand/30"
               }`}
             >
               <input
@@ -376,7 +403,7 @@ export default function JobRequestForm({
         )}
       </fieldset>
 
-      <button type="submit" className="btn-gold w-full" disabled={submitting}>
+      <button type="submit" className="btn-primary w-full" disabled={submitting}>
         {submitting ? "Posting…" : "Post request"}
       </button>
     </form>

@@ -51,7 +51,7 @@ export default function AdminBookingActions({
         <>
           <button
             type="button"
-            className="btn-gold px-3 py-1.5 text-xs"
+            className="btn-primary px-3 py-1.5 text-xs"
             disabled={busy}
             onClick={() => run(() => acceptBooking({ bookingId }), "Accepted")}
           >
@@ -72,7 +72,7 @@ export default function AdminBookingActions({
         status === "in_progress") && (
         <button
           type="button"
-          className="btn-gold px-3 py-1.5 text-xs"
+          className="btn-primary px-3 py-1.5 text-xs"
           disabled={busy}
           onClick={() => run(() => completeBooking({ bookingId }), "Completed")}
         >

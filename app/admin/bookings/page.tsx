@@ -48,7 +48,7 @@ export default async function AdminBookingsPage() {
                 <p className="text-sm font-medium text-ink">
                   <Link
                     href={`/bookings/${booking.id}`}
-                    className="hover:text-gold-soft"
+                    className="hover:text-brand-soft"
                     title="Open live booking room"
                   >
                     {booking.serviceName}
@@ -62,7 +62,7 @@ export default async function AdminBookingsPage() {
                 <p className="mt-0.5 text-xs text-faint">{booking.address}</p>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-sm text-gold">
+                <span className="text-sm text-gold-deep">
                   {formatCents(
                     booking.priceCents + booking.addonsCents + booking.tipCents
                   )}

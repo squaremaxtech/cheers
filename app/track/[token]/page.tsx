@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 // Read-only tracking for a worker's trusted contact. NOT a logged-in page —
 // the token in the URL is the credential.
 //
-// What a contact is shown is deliberately narrow: the worker's stage name,
+// What a contact is shown is deliberately narrow: the worker's display name,
 // whether they are OK, and their last known position. NEVER the customer's
 // identity, NEVER the visit address, NEVER the booking value. A safety link is
 // not a licence to watch someone's working life.

@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { and, count, desc, eq, isNull, ne, sum } from "drizzle-orm";
+import { count, desc, eq, isNotNull, isNull, ne, sum } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
 import {
   bookings,
-  customerVerifications,
   driverVerifications,
+  identityVerifications,
   payments,
   safetyAlerts,
   safetySessions,
@@ -13,6 +13,7 @@ import {
   workers,
 } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
+import { getUserRow } from "@/lib/auth";
 import { formatCents } from "@/lib/constants";
 import { statusTone } from "@/lib/status";
 
@@ -20,17 +21,20 @@ export const metadata: Metadata = { title: "Admin" };
 
 export default async function AdminDashboard() {
   const [
+    viewer,
     [revenue],
     [bookingCount],
     [customerCount],
     [workerCount],
     [pendingVerifications],
-    [pendingWorkers],
+    [premiumCustomers],
+    [premiumProviders],
     [pendingDrivers],
     recent,
     [openAlerts],
     [liveSessions],
   ] = await Promise.all([
+    getUserRow(),
     db
       .select({ total: sum(payments.amountCents), fees: sum(payments.platformFeeCents) })
       .from(payments)
@@ -40,12 +44,16 @@ export default async function AdminDashboard() {
     db.select({ n: count() }).from(workers),
     db
       .select({ n: count() })
-      .from(customerVerifications)
-      .where(eq(customerVerifications.status, "pending")),
+      .from(identityVerifications)
+      .where(eq(identityVerifications.status, "pending")),
+    db
+      .select({ n: count() })
+      .from(users)
+      .where(isNotNull(users.premiumAccessAt)),
     db
       .select({ n: count() })
       .from(workers)
-      .where(and(eq(workers.verified, false), eq(workers.suspended, false))),
+      .where(isNotNull(workers.premiumProviderAt)),
     db
       .select({ n: count() })
       .from(driverVerifications)
@@ -65,6 +73,8 @@ export default async function AdminDashboard() {
       .where(ne(safetySessions.state, "ended")),
   ]);
 
+  const premiumCount = (premiumCustomers?.n ?? 0) + (premiumProviders?.n ?? 0);
+
   const cards = [
     {
       label: "Gross revenue",
@@ -78,11 +88,24 @@ export default async function AdminDashboard() {
     },
     { label: "Bookings", value: String(bookingCount?.n ?? 0), href: "/admin/bookings" },
     { label: "Customers", value: String(customerCount?.n ?? 0), href: "/admin" },
-    { label: "Workers", value: String(workerCount?.n ?? 0), href: "/admin/workers" },
+    {
+      label: "Professionals",
+      value: String(workerCount?.n ?? 0),
+      href: "/admin/workers",
+    },
+    // Promote is admin-only, so the quick link is too.
+    ...(viewer?.role === "admin"
+      ? [
+          {
+            label: "Premium accounts",
+            value: String(premiumCount),
+            href: "/admin/promote",
+          },
+        ]
+      : []),
   ];
 
   const pendingCount = pendingVerifications?.n ?? 0;
-  const pendingWorkerCount = pendingWorkers?.n ?? 0;
   const pendingDriverCount = pendingDrivers?.n ?? 0;
   const alertCount = openAlerts?.n ?? 0;
   const liveCount = liveSessions?.n ?? 0;
@@ -105,14 +128,14 @@ export default async function AdminDashboard() {
               waiting on a response
             </span>
           </p>
-          <span className="shrink-0 text-sm text-gold">Open safety desk →</span>
+          <span className="shrink-0 text-sm text-brand">Open safety desk →</span>
         </Link>
       )}
 
       {alertCount === 0 && liveCount > 0 && (
         <Link
           href="/safety"
-          className="card flex items-center justify-between gap-3 p-4 hover:border-gold/40"
+          className="card flex items-center justify-between gap-3 p-4 hover:border-brand/40"
         >
           <p className="text-sm text-muted">
             <Badge tone="success">{liveCount}</Badge>
@@ -121,39 +144,26 @@ export default async function AdminDashboard() {
               checked in
             </span>
           </p>
-          <span className="shrink-0 text-sm text-gold">Live board →</span>
+          <span className="shrink-0 text-sm text-brand">Live board →</span>
         </Link>
       )}
 
+      {/* Verified ID is an optional badge that gates nothing — this queue is
+          never urgent, and it must not look like it is. */}
       {pendingCount > 0 && (
         <Link
           href="/admin/verifications"
-          className="card flex items-center justify-between gap-3 border-warn/40 p-4 hover:border-warn"
+          className="card flex items-center justify-between gap-3 p-4 hover:border-brand/40"
         >
-          <p className="text-sm text-ink">
-            <Badge tone="warn">{pendingCount}</Badge>
+          <p className="text-sm text-muted">
+            <Badge>{pendingCount}</Badge>
             <span className="ml-3">
-              customer verification{pendingCount === 1 ? "" : "s"} awaiting
-              review
+              Verified ID request{pendingCount === 1 ? "" : "s"} waiting —
+              nothing on the platform is blocked by these; review when it suits
+              you
             </span>
           </p>
-          <span className="text-sm text-gold">Review →</span>
-        </Link>
-      )}
-
-      {pendingWorkerCount > 0 && (
-        <Link
-          href="/admin/workers"
-          className="card flex items-center justify-between gap-3 border-warn/40 p-4 hover:border-warn"
-        >
-          <p className="text-sm text-ink">
-            <Badge tone="warn">{pendingWorkerCount}</Badge>
-            <span className="ml-3">
-              worker profile{pendingWorkerCount === 1 ? "" : "s"} awaiting
-              approval (hidden from the site until approved)
-            </span>
-          </p>
-          <span className="text-sm text-gold">Review →</span>
+          <span className="text-sm text-brand">Review →</span>
         </Link>
       )}
 
@@ -169,13 +179,17 @@ export default async function AdminDashboard() {
               review (profile goes live on approval)
             </span>
           </p>
-          <span className="text-sm text-gold">Review →</span>
+          <span className="text-sm text-brand">Review →</span>
         </Link>
       )}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div
+        className={`grid grid-cols-2 gap-4 ${
+          cards.length > 5 ? "lg:grid-cols-6" : "lg:grid-cols-5"
+        }`}
+      >
         {cards.map((c) => (
-          <Link key={c.label} href={c.href} className="card p-5 hover:border-gold/40">
+          <Link key={c.label} href={c.href} className="card p-5 hover:border-brand/40">
             <p className="text-xs uppercase tracking-wider text-faint">{c.label}</p>
             <p className="font-display mt-2 text-xl text-ink">{c.value}</p>
           </Link>
@@ -187,7 +201,7 @@ export default async function AdminDashboard() {
           <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
             Latest bookings
           </h2>
-          <Link href="/admin/bookings" className="text-sm text-gold">
+          <Link href="/admin/bookings" className="text-sm text-brand hover:text-brand-soft">
             Manage →
           </Link>
         </div>

@@ -154,7 +154,7 @@ export default function AvailabilityEditor({
           type="button"
           onClick={saveWeekly}
           disabled={busy}
-          className="btn-gold mt-5"
+          className="btn-primary mt-5"
         >
           {busy ? "Saving…" : "Save weekly schedule"}
         </button>

@@ -45,7 +45,7 @@ export default function DriverRideControls({
       {status === "accepted" && (
         <button
           type="button"
-          className="btn-gold"
+          className="btn-primary"
           disabled={working}
           onClick={() => run(startArriving, "Rider notified — you're on the way")}
         >
@@ -55,7 +55,7 @@ export default function DriverRideControls({
       {(status === "accepted" || status === "arriving") && (
         <button
           type="button"
-          className={status === "arriving" ? "btn-gold" : "btn-outline"}
+          className={status === "arriving" ? "btn-primary" : "btn-outline"}
           disabled={working}
           onClick={() => run(markPickedUp, "Trip started")}
         >
@@ -65,7 +65,7 @@ export default function DriverRideControls({
       {status === "picked_up" && (
         <button
           type="button"
-          className="btn-gold"
+          className="btn-primary"
           disabled={working}
           onClick={() => run(completeRide, "Ride completed — collect the cash fare")}
         >

@@ -29,7 +29,7 @@ export default function PaymentAdminActions({
       <button
         type="button"
         disabled={busy}
-        className="btn-gold px-3 py-1.5 text-xs"
+        className="btn-primary px-3 py-1.5 text-xs"
         onClick={async () => {
           const confirmText = payoutOwed
             ? "Record this settlement as collected from the worker (cash-week fees)?"
@@ -76,7 +76,7 @@ export default function PaymentAdminActions({
         <button
           type="button"
           disabled={busy}
-          className="btn-gold px-3 py-1.5 text-xs"
+          className="btn-primary px-3 py-1.5 text-xs"
           onClick={() =>
             act(
               "Mark this payment as collected? The booking confirms if it was still awaiting payment.",

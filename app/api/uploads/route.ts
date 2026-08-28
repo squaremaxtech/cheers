@@ -13,7 +13,7 @@ import type { UploadKind } from "@/lib/uploads";
 // it:
 //   media (default) → uploads/users/<userId>/   (worker profile photos/videos)
 //   receipt         → uploads/receipts/         (worker cash proofs / evidence)
-//   identity        → uploads/identity/<userId>/ (customer ID documents)
+//   identity        → uploads/identity/<userId>/ (ID documents, any user)
 //   chat            → uploads/chat/<roomId>/     (chat images; needs roomId +
 //                                                 room participation)
 //   driver          → uploads/users/<userId>/    (driver face/vehicle photos —

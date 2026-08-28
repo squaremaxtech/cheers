@@ -88,7 +88,7 @@ export default function SafetyControls({
           </div>
           <button
             type="button"
-            className="btn-gold"
+            className="btn-primary"
             style={{ minHeight: 48 }}
             disabled={busy}
             onClick={handleTravel}
@@ -121,7 +121,7 @@ export default function SafetyControls({
           </div>
           <button
             type="submit"
-            className="btn-gold"
+            className="btn-primary"
             style={{ minHeight: 48 }}
             disabled={busy || pin.length !== 4}
           >

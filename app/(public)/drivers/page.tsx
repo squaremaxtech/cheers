@@ -42,7 +42,7 @@ export default async function DriversPage(props: PageProps<"/drivers">) {
             across Jamaica — name your price, they accept or counter.
           </p>
         </div>
-        <Link href="/rides/new" className="btn-gold">
+        <Link href="/rides/new" className="btn-primary">
           Request a ride
         </Link>
       </div>
@@ -109,7 +109,7 @@ export default async function DriversPage(props: PageProps<"/drivers">) {
             title="No drivers match"
             hint="Try widening the filters — or post a ride request anyway: every approved driver sees it, whatever their parish."
             action={
-              <Link href="/rides/new" className="btn-gold">
+              <Link href="/rides/new" className="btn-primary">
                 Request a ride
               </Link>
             }
@@ -123,7 +123,7 @@ export default async function DriversPage(props: PageProps<"/drivers">) {
               <Link
                 key={d.id}
                 href={`/drivers/${d.slug}`}
-                className="card group block overflow-hidden transition-colors hover:border-gold/40"
+                className="card group block overflow-hidden transition-colors hover:border-brand/40"
               >
                 <div className="relative aspect-[4/5] overflow-hidden bg-raised">
                   {/* eslint-disable-next-line @next/next/no-img-element -- uploaded media served by our media route */}
@@ -144,7 +144,7 @@ export default async function DriversPage(props: PageProps<"/drivers">) {
                   <p className="text-xs text-muted">{vehicleLabel(d)}</p>
                   {location && <p className="text-xs text-faint">{location}</p>}
                   {(d.perKmRateCents > 0 || d.minFareCents > 0) && (
-                    <p className="mt-1 text-sm text-gold">
+                    <p className="mt-1 text-sm text-gold-deep">
                       {d.perKmRateCents > 0 &&
                         `${formatCents(d.perKmRateCents)}/km`}
                       {d.perKmRateCents > 0 && d.minFareCents > 0 && " · "}

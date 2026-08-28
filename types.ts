@@ -123,7 +123,7 @@ export type ChatMessage = {
   id: string;
   roomId: string;
   senderRole: ChatParticipantRole;
-  // What the OTHER side sees: worker's stage name / customer's first name.
+  // What the OTHER side sees: worker's display name / customer's first name.
   senderLabel: string;
   kind: ChatMessageKind;
   body: string;
@@ -262,6 +262,44 @@ export type BrowseFilters = {
 // lib/premium.ts viewerPremium(); when false, premium gigs, their media and
 // their prices must be completely unreachable — no badge, no trace.
 export type PremiumViewer = { canSeePremium: boolean };
+
+// --- Admin Promote tab (§1.5) ------------------------------------------------------
+
+// One row of the /admin/promote search: any account, plus the professional
+// profile behind it when there is one. Admin-only — it carries the worker id
+// (the grant/revoke buttons need it) but never realName.
+export type PromoteUserRow = {
+  userId: string;
+  role: Role;
+  name: string | null;
+  email: string;
+  joinedAt: Date;
+  // Customer premium access. Null on every other role — professionals get
+  // provider status instead.
+  premiumAccessAt: Date | null;
+  worker: {
+    id: string;
+    stageName: string;
+    slug: string;
+    premiumProviderAt: Date | null;
+  } | null;
+};
+
+// The two "who holds what right now" lists under the Promote search.
+export type PremiumCustomerRow = {
+  userId: string;
+  name: string | null;
+  email: string;
+  grantedAt: Date;
+};
+
+export type PremiumProviderRow = {
+  workerId: string;
+  stageName: string;
+  slug: string;
+  email: string;
+  grantedAt: Date;
+};
 
 export type DriverBrowseFilters = {
   q?: string;

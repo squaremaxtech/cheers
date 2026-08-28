@@ -2,16 +2,21 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import Badge from "@/components/ui/Badge";
 import QuoteRequestForm from "@/components/gigs/QuoteRequestForm";
 import MediaGallery from "@/components/workers/MediaGallery";
 import { formatCents } from "@/lib/constants";
 import type { PublicGigWithAddons } from "@/lib/gigs";
 import type { WorkerMediaRow } from "@/types";
 
-// The interactive core of a worker profile: their live gigs side by side
-// (?gig=<slug> preselects one), the selected gig's details, and the gallery
-// filtered to media tagged for that gig (untagged media always shows —
+// The interactive core of a professional's profile: their live services side
+// by side (?gig=<slug> preselects one), the selected service's details, and
+// the gallery filtered to media tagged for it (untagged media always shows —
 // mirrors lib/gigs' getGigMedia).
+//
+// Both `gigs` and `media` arrive already narrowed to what this viewer may
+// see (the page applies the premium rail), so a premium listing only ever
+// reaches a viewer entitled to it — the "Premium" badge simply labels it.
 export default function GigShowcase({
   stageName,
   workerSlug,
@@ -53,11 +58,16 @@ export default function GigShowcase({
               onClick={() => setSelectedId(g.id)}
               className={`rounded-full border px-4 py-2 text-sm transition-colors ${
                 g.id === selectedId
-                  ? "border-gold bg-gold/10 text-gold"
-                  : "border-hairline text-muted hover:border-gold/40"
+                  ? "border-gold bg-gold/10 text-gold-deep"
+                  : "border-hairline text-muted hover:border-brand/40"
               }`}
             >
               {g.title}
+              {g.premium && (
+                <span className="ml-2 text-[10px] uppercase tracking-wider text-gold-deep">
+                  Premium
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -75,16 +85,21 @@ export default function GigShowcase({
               <h2 className="mt-1 font-display text-xl text-ink">
                 {selected.title}
               </h2>
+              {selected.premium && (
+                <div className="mt-2">
+                  <Badge tone="gold">Premium</Badge>
+                </div>
+              )}
             </div>
             {selected.pricingMode === "fixed" ? (
-              <p className="text-lg text-gold">
+              <p className="text-lg text-gold-deep">
                 {formatCents(selected.priceCents)}
                 <span className="ml-2 text-xs text-faint">
                   · {selected.durationMinutes} min
                 </span>
               </p>
             ) : (
-              <p className="text-lg text-gold">
+              <p className="text-lg text-gold-deep">
                 {selected.priceCents > 0
                   ? `From ${formatCents(selected.priceCents)}`
                   : "Custom quote"}
@@ -128,7 +143,7 @@ export default function GigShowcase({
                         </span>
                       )}
                     </span>
-                    <span className="shrink-0 text-gold">
+                    <span className="shrink-0 text-gold-deep">
                       +{formatCents(a.priceCents)}
                     </span>
                   </li>
@@ -142,12 +157,12 @@ export default function GigShowcase({
               // Carry the chosen gig into the booking form (signed-out users
               // go to /login, which takes no params).
               href={signedIn ? `/book/${workerSlug}?gig=${selected.id}` : "/login"}
-              className="btn-gold mt-5 inline-flex"
+              className="btn-primary mt-5 inline-flex"
             >
               {signedIn ? "Book this gig" : "Sign in to book"}
             </Link>
           ) : !signedIn ? (
-            <Link href="/login" className="btn-gold mt-5 inline-flex">
+            <Link href="/login" className="btn-primary mt-5 inline-flex">
               Sign in to request a quote
             </Link>
           ) : quoteOpenId === selected.id ? (
@@ -156,7 +171,7 @@ export default function GigShowcase({
             <button
               type="button"
               onClick={() => setQuoteOpenId(selected.id)}
-              className="btn-gold mt-5 inline-flex"
+              className="btn-primary mt-5 inline-flex"
             >
               Request a quote
             </button>

@@ -8,12 +8,17 @@ import EmptyState from "@/components/ui/EmptyState";
 import CustomerRiskCard from "@/components/worker/CustomerRiskCard";
 import WorkerBookingActions from "@/components/worker/WorkerBookingActions";
 import { formatCents, formatTime12 } from "@/lib/constants";
-import { customerRiskSummaries } from "@/lib/safety/risk";
+import {
+  customerRiskSummaries,
+  type CustomerRiskSummary,
+} from "@/lib/safety/risk";
 import { statusTone } from "@/lib/status";
 import { getWorkerContext } from "@/lib/worker-context";
-import type { SafetySessionState } from "@/types";
+import type { BookingRow, SafetySessionState } from "@/types";
 
 export const metadata: Metadata = { title: "Bookings" };
+
+type BookingListRow = { booking: BookingRow; customerName: string | null };
 
 const safetyChip: Partial<
   Record<SafetySessionState, { tone: "success" | "warn" | "danger"; label: string }>
@@ -72,97 +77,6 @@ export default async function WorkerBookingsPage() {
       r.booking.status === "refunded"
   );
 
-  function Section({
-    title,
-    items,
-    showActions,
-  }: {
-    title: string;
-    items: typeof rows;
-    showActions: boolean;
-  }) {
-    if (items.length === 0) return null;
-    return (
-      <section>
-        <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
-          {title}
-        </h2>
-        <div className="mt-3 space-y-3">
-          {items.map(({ booking, customerName }) => {
-            const sessionState = sessionByBooking.get(booking.id);
-            const chip = sessionState ? safetyChip[sessionState] : undefined;
-            return (
-              <div key={booking.id} className="card p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-ink">
-                      <Link href={`/bookings/${booking.id}`} className="hover:text-gold-soft">
-                        {booking.serviceName}
-                      </Link>
-                      <span className="ml-2 text-xs text-faint">{booking.code}</span>
-                    </p>
-                    <p className="mt-1 text-xs text-muted">
-                      {customerName ?? "Customer"} · {booking.date} at{" "}
-                      {formatTime12(booking.startTime)} · {booking.durationMinutes} min
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {/* Safety state before money: a glance at this list should
-                        answer "is anything wrong right now?" first. */}
-                    {chip && <Badge tone={chip.tone}>{chip.label}</Badge>}
-                    <span className="text-sm text-gold">
-                      {formatCents(booking.priceCents + booking.addonsCents)}
-                    </span>
-                    <Badge tone={statusTone(booking.status)}>{booking.status}</Badge>
-                  </div>
-                </div>
-
-                {/* What the worker is entitled to know BEFORE agreeing to be
-                    alone with someone in a private home. */}
-                {booking.status === "pending" && (
-                  <div className="mt-3">
-                    <CustomerRiskCard
-                      summary={risk.get(booking.customerId) ?? null}
-                      address={booking.address}
-                    />
-                  </div>
-                )}
-
-                {(booking.status === "confirmed" ||
-                  booking.status === "in_progress") && (
-                  <p className="mt-3 text-xs text-muted">
-                    📍 {booking.address}
-                    {booking.instructions && (
-                      <span className="mt-1 block text-faint">
-                        “{booking.instructions}”
-                      </span>
-                    )}
-                    <Link
-                      href={`/bookings/${booking.id}`}
-                      className="mt-1 block text-gold"
-                    >
-                      Open live booking room → (map, PIN start, check-ins, SOS)
-                    </Link>
-                  </p>
-                )}
-
-                {showActions && (
-                  <div className="mt-4">
-                    <WorkerBookingActions
-                      bookingId={booking.id}
-                      status={booking.status}
-                      serviceTotalCents={booking.priceCents + booking.addonsCents}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-    );
-  }
-
   return (
     <div className="space-y-8">
       <h1 className="font-display text-2xl text-ink">Bookings</h1>
@@ -173,11 +87,126 @@ export default async function WorkerBookingsPage() {
         />
       ) : (
         <>
-          <Section title={`New requests (${requests.length})`} items={requests} showActions />
-          <Section title="Upcoming" items={upcoming} showActions />
-          <Section title="History" items={past} showActions={false} />
+          <Section
+            title={`New requests (${requests.length})`}
+            items={requests}
+            showActions
+            sessionByBooking={sessionByBooking}
+            risk={risk}
+          />
+          <Section
+            title="Upcoming"
+            items={upcoming}
+            showActions
+            sessionByBooking={sessionByBooking}
+            risk={risk}
+          />
+          <Section
+            title="History"
+            items={past}
+            showActions={false}
+            sessionByBooking={sessionByBooking}
+            risk={risk}
+          />
         </>
       )}
     </div>
+  );
+}
+
+// Declared at module scope, not inside the page: a component created during
+// render is a new component type on every render.
+function Section({
+  title,
+  items,
+  showActions,
+  sessionByBooking,
+  risk,
+}: {
+  title: string;
+  items: BookingListRow[];
+  showActions: boolean;
+  sessionByBooking: Map<string, SafetySessionState>;
+  risk: Map<string, CustomerRiskSummary>;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section>
+      <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
+        {title}
+      </h2>
+      <div className="mt-3 space-y-3">
+        {items.map(({ booking, customerName }) => {
+          const sessionState = sessionByBooking.get(booking.id);
+          const chip = sessionState ? safetyChip[sessionState] : undefined;
+          return (
+            <div key={booking.id} className="card p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-ink">
+                    <Link href={`/bookings/${booking.id}`} className="hover:text-brand-soft">
+                      {booking.serviceName}
+                    </Link>
+                    <span className="ml-2 text-xs text-faint">{booking.code}</span>
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    {customerName ?? "Customer"} · {booking.date} at{" "}
+                    {formatTime12(booking.startTime)} · {booking.durationMinutes} min
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {/* Safety state before money: a glance at this list should
+                      answer "is anything wrong right now?" first. */}
+                  {chip && <Badge tone={chip.tone}>{chip.label}</Badge>}
+                  <span className="text-sm text-gold-deep">
+                    {formatCents(booking.priceCents + booking.addonsCents)}
+                  </span>
+                  <Badge tone={statusTone(booking.status)}>{booking.status}</Badge>
+                </div>
+              </div>
+
+              {/* What the worker is entitled to know BEFORE agreeing to be
+                  alone with someone in a private home. */}
+              {booking.status === "pending" && (
+                <div className="mt-3">
+                  <CustomerRiskCard
+                    summary={risk.get(booking.customerId) ?? null}
+                    address={booking.address}
+                  />
+                </div>
+              )}
+
+              {(booking.status === "confirmed" ||
+                booking.status === "in_progress") && (
+                <p className="mt-3 text-xs text-muted">
+                  📍 {booking.address}
+                  {booking.instructions && (
+                    <span className="mt-1 block text-faint">
+                      “{booking.instructions}”
+                    </span>
+                  )}
+                  <Link
+                    href={`/bookings/${booking.id}`}
+                    className="mt-1 block text-brand hover:text-brand-soft"
+                  >
+                    Open live booking room → (map, PIN start, check-ins, SOS)
+                  </Link>
+                </p>
+              )}
+
+              {showActions && (
+                <div className="mt-4">
+                  <WorkerBookingActions
+                    bookingId={booking.id}
+                    status={booking.status}
+                    serviceTotalCents={booking.priceCents + booking.addonsCents}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }

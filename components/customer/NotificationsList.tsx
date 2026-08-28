@@ -26,7 +26,7 @@ export default function NotificationsList({
       {hasUnread && (
         <button
           type="button"
-          className="mb-3 text-xs text-gold hover:text-gold-soft"
+          className="mb-3 text-xs text-brand hover:text-brand-soft"
           onClick={async () => {
             const res = await markAllNotificationsRead();
             if (res.ok) router.refresh();

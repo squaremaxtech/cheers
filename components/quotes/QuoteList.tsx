@@ -91,7 +91,7 @@ function QuoteCard({ quote }: { quote: CustomerQuote }) {
               with{" "}
               <Link
                 href={`/workers/${quote.workerSlug}`}
-                className="underline decoration-hairline underline-offset-2 hover:text-gold"
+                className="underline decoration-hairline underline-offset-2 hover:text-brand"
               >
                 {quote.stageName}
               </Link>
@@ -113,7 +113,7 @@ function QuoteCard({ quote }: { quote: CustomerQuote }) {
         quote.offerDurationMinutes !== null && (
           <div className="mt-4 rounded-2xl border border-gold/30 bg-gold/5 p-4">
             <p className="text-sm text-ink">
-              Offer: <span className="text-gold">{formatCents(quote.offerPriceCents)}</span>{" "}
+              Offer: <span className="text-gold-deep">{formatCents(quote.offerPriceCents)}</span>{" "}
               <span className="text-muted">
                 · {quote.offerDurationMinutes} minutes
               </span>
@@ -127,7 +127,7 @@ function QuoteCard({ quote }: { quote: CustomerQuote }) {
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="btn-gold"
+                  className="btn-primary"
                   onClick={() => setAccepting(true)}
                 >
                   Accept &amp; book
@@ -148,7 +148,7 @@ function QuoteCard({ quote }: { quote: CustomerQuote }) {
       {status === "accepted" && quote.bookingId && (
         <Link
           href={`/bookings/${quote.bookingId}`}
-          className="mt-3 inline-block text-sm text-gold underline-offset-2 hover:underline"
+          className="mt-3 inline-block text-sm text-brand underline-offset-2 hover:underline"
         >
           View the booking →
         </Link>
@@ -257,7 +257,7 @@ function AcceptForm({
         />
       </label>
       <div className="flex flex-wrap gap-2">
-        <button type="submit" className="btn-gold" disabled={busy}>
+        <button type="submit" className="btn-primary" disabled={busy}>
           {busy ? "Booking…" : "Confirm booking"}
         </button>
         <button type="button" className="btn-ghost" onClick={onClose}>

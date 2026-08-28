@@ -125,7 +125,7 @@ export default function PayoutControls({
       </div>
       <button
         type="button"
-        className="btn-gold py-2 text-xs"
+        className="btn-primary py-2 text-xs"
         disabled={busy}
         onClick={generate}
       >

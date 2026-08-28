@@ -49,8 +49,8 @@ export default function TimeSlotPicker({
                 onClick={() => onSelect(slot.time)}
                 className={`${base} cursor-pointer ${
                   selected
-                    ? "border-gold/70 bg-gold text-base font-medium"
-                    : "border-hairline text-ink hover:border-gold/40"
+                    ? "border-brand bg-brand text-white font-medium"
+                    : "border-hairline text-ink hover:border-brand/40"
                 }`}
               >
                 {formatTime12(slot.time)}

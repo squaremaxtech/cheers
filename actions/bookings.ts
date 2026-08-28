@@ -13,20 +13,18 @@ import {
   parseBookingStart,
   transitionBooking,
 } from "@/lib/bookings";
-import {
-  BOOKING_DURATIONS_MINUTES,
-  bookingRequiresChatPass,
-} from "@/lib/constants";
+import { BOOKING_DURATIONS_MINUTES } from "@/lib/constants";
 import { refundBookingPayments } from "@/lib/refunds";
 import { bookingEventNow, publishBooking } from "@/lib/realtime";
 import { guardErrorMessage, requireUser } from "@/lib/guards";
 import type { ActionResult, BookingRow, TimeSlot, UserRow } from "@/types";
-import { hasChatAccess } from "@/lib/membership";
+import { MEMBERSHIP_REQUIRED, hasMemberAccess } from "@/lib/membership";
 import { notify, notifyAdmins } from "@/lib/notify";
 import { workerHasBlocked } from "@/lib/safety/risk";
-import { isCustomerVerified } from "@/lib/verification";
 import { publicWorkerConditions } from "@/lib/workers";
 import { publicGigConditions } from "@/lib/gigs";
+import { ONBOARDING_REQUIRED, customerNeedsOnboarding } from "@/lib/onboarding";
+import { viewerPremium } from "@/lib/premium";
 import {
   bookingDatesSchema,
   bookingDecisionSchema,
@@ -154,17 +152,11 @@ export async function createBooking(
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
     const data = parsed.data;
 
-    // Booking is subscription-free (cash-first launch). The owner can flip
-    // BOOKING_REQUIRES_SUBSCRIPTION=on later to gate it on the Chat Pass.
-    if (bookingRequiresChatPass() && !(await hasChatAccess(user.id))) {
-      return err("An active Chat Pass is required to book. Visit Membership to join.");
-    }
-    // Worker safety: customers book only after staff verifies their ID.
-    if (user.role === "customer" && !(await isCustomerVerified(user.id))) {
-      return err(
-        "Your identity must be verified before you can book. Check your verification status on your dashboard."
-      );
-    }
+    // Gate order (plan §2.3): signed in -> onboarded (name, phone, terms)
+    // -> membership -> the worker/gig/slot rules below. Identity
+    // verification is an optional badge and gates nothing.
+    if (customerNeedsOnboarding(user)) return err(ONBOARDING_REQUIRED);
+    if (!(await hasMemberAccess(user.id))) return err(MEMBERSHIP_REQUIRED);
 
     const start = parseBookingStart(data.date, data.startTime);
     if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) {
@@ -186,6 +178,9 @@ export async function createBooking(
       return err("This worker is not currently accepting bookings.");
     }
 
+    // publicGigConditions with the viewer enforces the premium rail: a
+    // premium gig simply does not exist for a non-premium customer, and
+    // fails with the SAME message as a missing or switched-off gig.
     const [gig] = await db
       .select()
       .from(gigs)
@@ -193,7 +188,7 @@ export async function createBooking(
         and(
           eq(gigs.id, data.gigId),
           eq(gigs.workerId, worker.id),
-          ...publicGigConditions()
+          ...publicGigConditions(viewerPremium(user))
         )
       );
     if (!gig) return err("That gig is not offered by this worker.");

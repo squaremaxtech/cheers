@@ -121,7 +121,7 @@ export async function sendContactConfirmation(opts: {
         `<p><strong>${opts.workerName}</strong> listed you as a trusted safety contact.</p>
          <p>If they don't check in during a booking, our safety team may contact you and share a live tracking link.</p>
          <p style="margin-top:24px;">
-           <a href="${link}" style="background:#d6b25e;color:#0c0a09;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;">Confirm</a>
+           <a href="${link}" style="background:#0b6b4a;color:#ffffff;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:bold;">Confirm</a>
          </p>
          <p style="color:#6b6b6b;font-size:13px;">If this wasn't expected, ignore this email — you won't be contacted.</p>`
       ),
@@ -168,7 +168,7 @@ export async function sendTrackingLinks(
           html: `<p><strong>${ctx.stageName}</strong> has started a monitored booking and listed you as a safety contact.</p>
              <p>You can follow their status and last known position here:</p>
              <p style="margin-top:24px;">
-               <a href="${link}" style="background:#d6b25e;color:#0c0a09;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;">Open tracking</a>
+               <a href="${link}" style="background:#0b6b4a;color:#ffffff;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:bold;">Open tracking</a>
              </p>
              <p style="color:#6b6b6b;font-size:13px;">This link expires shortly after the booking ends. Our safety team monitors every session; you'll only hear from us again if something needs attention.</p>`,
           sms: smsLine(
@@ -225,7 +225,7 @@ const OVERDUE_COPY: Record<
       "They haven't confirmed arriving at a booking they were travelling to.",
     sms: "hasn't confirmed arriving at a Cheers booking.",
   },
-  // Phrased to read correctly after "<stage name> " — no possessives, or the
+  // Phrased to read correctly after "<display name> " — no possessives, or the
   // join produces "Maxx 's booking has run over".
   overrun: {
     subject: "hasn't checked out of a booking that has run over",

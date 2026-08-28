@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Badge from "@/components/ui/Badge";
 import {
-  bookingRequiresChatPass,
-  chatPassPriceCents,
   formatCents,
+  membershipPriceCents,
   PLATFORM_FEE_PERCENT,
   staffedSafetyDesk,
   stripeConfigured,
@@ -23,7 +22,7 @@ export default function AdminSettingsPage() {
     {
       label: "Online payments (Stripe)",
       value: stripeConfigured()
-        ? "Live — card buttons and Chat Pass checkout shown"
+        ? "Live — card buttons and membership checkout shown"
         : "Not set — dormant (cash-first, card UI hidden)",
       env: "STRIPE_SECRET_KEY",
     },
@@ -33,23 +32,19 @@ export default function AdminSettingsPage() {
       env: "STRIPE_WEBHOOK_SECRET",
     },
     {
-      label: "Chat Pass price",
-      value: `${formatCents(chatPassPriceCents())}/month`,
-      env: "CHAT_PASS_PRICE_CENTS",
+      label: "Cheers Membership (monthly)",
+      value: `${formatCents(membershipPriceCents())}/month`,
+      env: "MEMBERSHIP_PRICE_CENTS",
     },
     {
-      label: "Free chat period",
+      // The launch window is the ONLY switch on the membership gate — there is
+      // no separate lever for booking any more. Membership gates messaging and
+      // booking together.
+      label: "Launch free-access window",
       value: freeAccessActive()
-        ? `Active until ${process.env.FREE_ACCESS_UNTIL} — chat free for everyone`
-        : "Inactive — Chat Pass required to message",
+        ? `Active until ${process.env.FREE_ACCESS_UNTIL} — while active, membership (messaging and booking) is free for everyone`
+        : "Inactive — a Cheers Membership is required to message and book",
       env: "FREE_ACCESS_UNTIL",
-    },
-    {
-      label: "Booking requires Chat Pass",
-      value: bookingRequiresChatPass()
-        ? "On — bookings need an active pass"
-        : "Off — booking is subscription-free",
-      env: "BOOKING_REQUIRES_SUBSCRIPTION",
     },
     {
       label: "Safety desk staffing",

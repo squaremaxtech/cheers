@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-// Invisible companion to the /chats inbox: refreshes the server-rendered
+// Invisible helper beside the /chats inbox: refreshes the server-rendered
 // list (previews, ordering, unread dots) whenever any of the viewer's rooms
 // receives a message.
 export default function InboxLive() {

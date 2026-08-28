@@ -34,6 +34,8 @@ import {
   adminUpdateWorkerSchema,
   gigCategorySchema,
   markPayoutPaidSchema,
+  setCustomerPremiumAccessSchema,
+  setWorkerPremiumProviderSchema,
   updateGigCategorySchema,
 } from "@/schemas/admin";
 import { reviewDriverVerificationSchema } from "@/schemas/driver";
@@ -321,7 +323,8 @@ export async function updateGigCategory(
   }
 }
 
-// Admin override of any worker profile + platform flags (verify/suspend/hide).
+// Admin override of any worker profile + platform flags (hide/suspend).
+// There is no approval flag: professionals publish themselves (plan §2.1).
 export async function adminUpdateWorker(input: unknown): Promise<ActionResult<undefined>> {
   try {
     const admin = await requireAdmin();
@@ -336,12 +339,11 @@ export async function adminUpdateWorker(input: unknown): Promise<ActionResult<un
 
     const updates = {
       ...parsed.data.profile,
-      ...(parsed.data.verified !== undefined && { verified: parsed.data.verified }),
       ...(parsed.data.active !== undefined && { active: parsed.data.active }),
       ...(parsed.data.suspended !== undefined && { suspended: parsed.data.suspended }),
     };
     if (Object.keys(updates).length === 0) return err(ERR.badRequest);
-    // Stage-name overrides regenerate the public URL slug too.
+    // Display-name overrides regenerate the public URL slug too.
     const nextStageName = parsed.data.profile?.stageName;
     let slug = worker.slug;
     if (nextStageName && nextStageName !== worker.stageName) {
@@ -349,7 +351,7 @@ export async function adminUpdateWorker(input: unknown): Promise<ActionResult<un
         .select({ id: workers.id })
         .from(workers)
         .where(eq(workers.stageName, nextStageName));
-      if (taken) return err("That stage name is already taken.");
+      if (taken) return err("That display name is already taken.");
       slug = await uniqueWorkerSlug(nextStageName, worker.id);
     }
 
@@ -366,14 +368,6 @@ export async function adminUpdateWorker(input: unknown): Promise<ActionResult<un
       after: updates,
     });
 
-    if (parsed.data.verified === true && !worker.verified) {
-      await notify({
-        userId: worker.userId,
-        type: "worker_verified",
-        title: "Your profile is approved — you're live",
-        body: "Our team approved your profile. Customers can now find, message and book you on Cheers.",
-      });
-    }
     if (parsed.data.suspended === true && !worker.suspended) {
       await notify({
         userId: worker.userId,
@@ -386,6 +380,184 @@ export async function adminUpdateWorker(input: unknown): Promise<ActionResult<un
     revalidatePath("/admin/workers");
     revalidatePath("/browse");
     revalidatePath(`/workers/${slug}`);
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// --- Premium tier (admin-curated) ------------------------------------------------
+
+// Grant or revoke a CUSTOMER's premium access: the right to see, search and
+// book premium gigs. This action is the ONLY writer of users.premium_access_at
+// — there is no self-serve path, no payment path and no env lever.
+export async function setCustomerPremiumAccess(
+  input: unknown
+): Promise<ActionResult<undefined>> {
+  try {
+    const admin = await requireAdmin();
+    const parsed = setCustomerPremiumAccessSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, parsed.data.userId));
+    if (!user) return err(ERR.notFound);
+    // Staff already see premium (they moderate it) and professionals get
+    // provider status instead — the column would be meaningless on them.
+    if (user.role !== "customer") {
+      return err(
+        "Premium access is for customer accounts. Professionals get premium provider status instead."
+      );
+    }
+    if ((user.premiumAccessAt !== null) === parsed.data.enabled) {
+      return ok(undefined); // already in the requested state
+    }
+
+    await db
+      .update(users)
+      .set({
+        premiumAccessAt: parsed.data.enabled ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id));
+    await writeAudit({
+      actorUserId: admin.id,
+      action: parsed.data.enabled
+        ? "user.premium_access_grant"
+        : "user.premium_access_revoke",
+      entity: "users",
+      entityId: user.id,
+      before: { premiumAccessAt: user.premiumAccessAt },
+      after: { enabled: parsed.data.enabled },
+    });
+
+    await notify({
+      userId: user.id,
+      type: parsed.data.enabled
+        ? "premium_access_granted"
+        : "premium_access_revoked",
+      title: parsed.data.enabled
+        ? "You have premium access on Cheers"
+        : "Your premium access has ended",
+      body: parsed.data.enabled
+        ? "Premium services are now visible to you. Look for the Premium filter on Browse to see everything you can book."
+        : "Premium services are no longer part of your account. Everything else on Cheers works exactly as before.",
+      meta: { url: parsed.data.enabled ? "/browse?premium=1" : "/dashboard" },
+    });
+
+    revalidatePath("/admin/promote");
+    revalidatePath("/browse");
+    revalidatePath("/dashboard");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// Grant or revoke a PROFESSIONAL's premium provider status: the right to
+// publish premium gigs. Revoking deactivates the premium gigs they already
+// published so nothing lingers half-visible; re-granting does not bring them
+// back (the worker switches them on again themselves).
+export async function setWorkerPremiumProvider(
+  input: unknown
+): Promise<ActionResult<undefined>> {
+  try {
+    const admin = await requireAdmin();
+    const parsed = setWorkerPremiumProviderSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const [worker] = await db
+      .select()
+      .from(workers)
+      .where(eq(workers.id, parsed.data.workerId));
+    if (!worker) return err(ERR.notFound);
+    const [owner] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, worker.userId));
+    if (!owner) return err(ERR.notFound);
+    if (owner.role !== "worker") {
+      return err(
+        "Premium provider status is for professional accounts. Customers get premium access instead."
+      );
+    }
+    if ((worker.premiumProviderAt !== null) === parsed.data.enabled) {
+      return ok(undefined); // already in the requested state
+    }
+
+    // The status flip and the premium-gig takedown are ONE unit: a revoke
+    // must never leave premium listings live under a worker who may no
+    // longer publish them (the visibility rail reads gigs.premium, not the
+    // worker's status, so a half-applied revoke would keep them visible).
+    const deactivated = await db.transaction(async (tx) => {
+      await tx
+        .update(workers)
+        .set({
+          premiumProviderAt: parsed.data.enabled ? new Date() : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(workers.id, worker.id));
+      if (parsed.data.enabled) return [];
+      // Revoking: take the premium listings down in the same breath.
+      return tx
+        .update(gigs)
+        .set({ active: false, updatedAt: new Date() })
+        .where(
+          and(
+            eq(gigs.workerId, worker.id),
+            eq(gigs.premium, true),
+            eq(gigs.active, true)
+          )
+        )
+        .returning({ id: gigs.id, title: gigs.title });
+    });
+    await writeAudit({
+      actorUserId: admin.id,
+      action: parsed.data.enabled
+        ? "worker.premium_provider_grant"
+        : "worker.premium_provider_revoke",
+      entity: "workers",
+      entityId: worker.id,
+      before: { premiumProviderAt: worker.premiumProviderAt },
+      after: { enabled: parsed.data.enabled },
+    });
+
+    if (!parsed.data.enabled) {
+      for (const gig of deactivated) {
+        await writeAudit({
+          actorUserId: admin.id,
+          action: "gig.premium_deactivate",
+          entity: "gigs",
+          entityId: gig.id,
+          before: { active: true },
+          after: { active: false, reason: "premium provider revoked" },
+        });
+      }
+    }
+
+    await notify({
+      userId: worker.userId,
+      type: parsed.data.enabled
+        ? "premium_provider_granted"
+        : "premium_provider_revoked",
+      title: parsed.data.enabled
+        ? "You can now offer premium services"
+        : "Premium services are switched off for your profile",
+      body: parsed.data.enabled
+        ? "Your account can publish premium services — mark a gig as premium in Gigs and only premium members will see it."
+        : deactivated.length > 0
+          ? `Your account no longer publishes premium services, so ${deactivated.length} premium gig${deactivated.length === 1 ? " was" : "s were"} switched off. Your standard gigs are unaffected.`
+          : "Your account no longer publishes premium services. Your standard gigs are unaffected.",
+      meta: { url: "/worker/gigs" },
+    });
+
+    revalidatePath("/admin/promote");
+    revalidatePath("/browse");
+    revalidatePath(`/workers/${worker.slug}`);
+    revalidatePath("/worker");
+    revalidatePath("/worker/gigs");
     return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));

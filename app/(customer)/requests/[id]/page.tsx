@@ -3,7 +3,14 @@ import { notFound, redirect } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { bookings, gigCategories, jobOffers, jobRequests, workers } from "@/db/schema";
+import {
+  bookings,
+  gigCategories,
+  jobOffers,
+  jobRequests,
+  users,
+  workers,
+} from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import JobCancelButton from "@/components/jobs/JobCancelButton";
 import JobOfferList, { type CustomerOffer } from "@/components/jobs/JobOfferList";
@@ -23,7 +30,11 @@ import {
 } from "@/lib/constants";
 import { isModeratingStaff } from "@/lib/guards";
 import { effectiveJobStatus } from "@/lib/jobs";
-import { attachPrimaryPhotos, publicWorkerColumns } from "@/lib/workers";
+import {
+  attachPrimaryPhotos,
+  publicWorkerColumns,
+  publicWorkerUserJoin,
+} from "@/lib/workers";
 
 export const metadata: Metadata = { title: "Request" };
 
@@ -67,6 +78,9 @@ export default async function JobRequestPage(props: PageProps<"/requests/[id]">)
           })
           .from(jobOffers)
           .innerJoin(workers, eq(jobOffers.workerId, workers.id))
+          // publicWorkerColumns reads idVerified off users.id_verified_at —
+          // the join is required wherever those columns are selected.
+          .innerJoin(users, publicWorkerUserJoin)
           .where(
             and(eq(jobOffers.jobRequestId, request.id), eq(jobOffers.status, "open"))
           )
@@ -98,6 +112,7 @@ export default async function JobRequestPage(props: PageProps<"/requests/[id]">)
       city: o.worker.city,
       avgRating: o.worker.avgRating,
       reviewCount: o.worker.reviewCount,
+      idVerified: o.worker.idVerified,
       photoUrl: photoByWorker.get(o.worker.id) ?? null,
     },
   }));
@@ -123,6 +138,7 @@ export default async function JobRequestPage(props: PageProps<"/requests/[id]">)
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {request.premium && <Badge tone="gold">Premium</Badge>}
           <Badge tone={jobStatusTone(status)}>{jobRequestStatusLabel(status)}</Badge>
           <JobRequestLive jobRequestId={request.id} terminal={!live} />
         </div>
@@ -136,19 +152,19 @@ export default async function JobRequestPage(props: PageProps<"/requests/[id]">)
             {row.matchedSlug ? (
               <Link
                 href={`/workers/${row.matchedSlug}`}
-                className="text-gold hover:text-gold-soft"
+                className="text-brand hover:text-brand-soft"
               >
                 {row.matchedName}
               </Link>
             ) : (
-              <span>{row.matchedName ?? "a worker"}</span>
+              <span>{row.matchedName ?? "a professional"}</span>
             )}
             .
           </p>
           {booking && (
             <Link
               href={`/bookings/${booking.id}`}
-              className="btn-gold mt-4 inline-flex"
+              className="btn-primary mt-4 inline-flex"
             >
               Open booking {booking.code} →
             </Link>
@@ -189,18 +205,18 @@ export default async function JobRequestPage(props: PageProps<"/requests/[id]">)
             </dd>
             <dd className="text-xs text-faint">
               {request.address}{" "}
-              <span className="text-faint">(address shared only with the booked worker)</span>
+              <span className="text-faint">(address shared only with the professional you book)</span>
             </dd>
           </div>
           <div>
             <dt className="text-[11px] uppercase tracking-wider text-faint">
               Your budget
             </dt>
-            <dd className="text-gold">{formatCents(request.budgetCents)}</dd>
+            <dd className="text-gold-deep">{formatCents(request.budgetCents)}</dd>
           </div>
           <div className="sm:col-span-2">
             <dt className="text-[11px] uppercase tracking-wider text-faint">
-              How the worker is chosen
+              How the professional is chosen
             </dt>
             <dd className="text-ink">{mode?.label ?? request.matchMode}</dd>
             <dd className="text-xs text-faint">{mode?.hint}</dd>
@@ -215,6 +231,12 @@ export default async function JobRequestPage(props: PageProps<"/requests/[id]">)
             )}
           </div>
         </dl>
+        {request.premium && (
+          <p className="text-xs text-faint">
+            Premium request — only professionals enabled for premium services
+            can see it, and only with a premium service of their own.
+          </p>
+        )}
         {live && (
           <p className="text-xs text-faint">
             Open until {formatJamaicaDateTime(request.expiresAt)} (the job start).
@@ -234,14 +256,15 @@ export default async function JobRequestPage(props: PageProps<"/requests/[id]">)
             </h2>
             {request.matchMode === "first_accept" && (
               <p className="text-xs text-faint">
-                The first worker to accept your budget is booked automatically.
+                The first professional to accept your budget is booked
+                automatically.
               </p>
             )}
           </div>
           {offers.length === 0 ? (
             <p className="text-sm text-faint">
-              No offers yet — workers in {row.categoryName} were notified the
-              moment you posted. Keep this page open; offers appear live.
+              No offers yet — professionals in {row.categoryName} were notified
+              the moment you posted. Keep this page open; offers appear live.
             </p>
           ) : (
             <JobOfferList

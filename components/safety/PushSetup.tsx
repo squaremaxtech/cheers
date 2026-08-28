@@ -157,7 +157,7 @@ export default function PushSetup({ vapidKey }: { vapidKey: string | null }) {
         ) : (
           state !== "unsupported" &&
           state !== "denied" && (
-            <button type="button" className="btn-gold" disabled={busy} onClick={enable}>
+            <button type="button" className="btn-primary" disabled={busy} onClick={enable}>
               Turn on alerts
             </button>
           )
@@ -173,7 +173,7 @@ export default function PushSetup({ vapidKey }: { vapidKey: string | null }) {
 
       {isIOS && !standalone && (
         <div className="rounded-xl border border-gold/30 bg-gold/5 p-3 text-xs text-muted">
-          <p className="font-medium text-gold">Install Cheers first</p>
+          <p className="font-medium text-gold-deep">Install Cheers first</p>
           <p className="mt-1">
             On iPhone, notifications only work once Cheers is on your home
             screen. Tap the Share button, then{" "}

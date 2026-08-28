@@ -12,7 +12,6 @@ import {
   JOB_AUTO_BOOK_MIN_MINUTES,
   JOB_OFFERS_PER_MINUTE,
   JOB_REQUESTS_PER_DAY,
-  bookingRequiresChatPass,
   formatCents,
 } from "@/lib/constants";
 import { guardErrorMessage, requireUser, requireWorker } from "@/lib/guards";
@@ -24,12 +23,13 @@ import {
   notifyWorkersOfNewJob,
   parseJobLocalTime,
 } from "@/lib/jobs";
-import { hasChatAccess } from "@/lib/membership";
+import { MEMBERSHIP_REQUIRED, hasMemberAccess } from "@/lib/membership";
 import { notify } from "@/lib/notify";
+import { ONBOARDING_REQUIRED, customerNeedsOnboarding } from "@/lib/onboarding";
+import { hasPremiumAccess, isPremiumProvider } from "@/lib/premium";
 import { rateLimit } from "@/lib/rate-limit";
 import { publishJobBoard, publishJobRequest } from "@/lib/realtime";
 import { workerHasBlocked } from "@/lib/safety/risk";
-import { isCustomerVerified } from "@/lib/verification";
 import {
   jobOfferDecisionSchema,
   jobOfferSchema,
@@ -60,23 +60,19 @@ export async function postJobRequest(
 ): Promise<ActionResult<{ jobRequestId: string }>> {
   try {
     const user = await requireUser();
-    if (user.role === "customer" && !user.onboardedAt) {
-      return err("Finish setting up your account first.");
-    }
+    // A matched request becomes a real booking — possibly automatically, with
+    // nobody in the room — so every booking gate applies at POST time
+    // (plan §2.3): onboarded -> membership -> the rules below.
+    if (customerNeedsOnboarding(user)) return err(ONBOARDING_REQUIRED);
+    if (!(await hasMemberAccess(user.id))) return err(MEMBERSHIP_REQUIRED);
     const parsed = postJobRequestSchema.safeParse(input);
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
     const data = parsed.data;
 
-    // A matched request becomes a real booking — possibly automatically, with
-    // nobody in the room — so every booking gate applies at POST time.
-    if (bookingRequiresChatPass() && !(await hasChatAccess(user.id))) {
-      return err("An active Chat Pass is required to book. Visit Membership to join.");
-    }
-    if (user.role === "customer" && !(await isCustomerVerified(user.id))) {
-      return err(
-        "Your identity must be verified before you can post a request (a match becomes a real booking). Check your verification status on your dashboard."
-      );
-    }
+    // Server rule, not just UI: only a premium customer can post on the
+    // premium rail (mirrors createGig in actions/gigs.ts).
+    const premium = data.premium && hasPremiumAccess(user);
+
     if (!rateLimit(`jobs:${user.id}`, JOB_REQUESTS_PER_DAY, DAY_MS)) {
       return err("You've posted a lot of requests today. Try again tomorrow.");
     }
@@ -127,6 +123,7 @@ export async function postJobRequest(
         startTime: data.startTime,
         durationMinutes: data.durationMinutes,
         budgetCents: data.budgetCents,
+        premium,
         matchMode: data.matchMode,
         autoBookAt,
         expiresAt: start,
@@ -139,7 +136,7 @@ export async function postJobRequest(
     // the customer's response. Safe on this single long-lived pm2 process, and
     // the helper is fully try/caught internally (never rejects).
     void notifyWorkersOfNewJob(request, category.name);
-    publishJobBoard();
+    publishJobBoard(request.premium);
 
     revalidateJobPaths(request.id);
     return ok({ jobRequestId: request.id });
@@ -235,7 +232,7 @@ export async function cancelJobRequest(
       });
     }
 
-    publishJobBoard();
+    publishJobBoard(request.premium);
     publishJobRequest(request.id, "status");
     revalidateJobPaths(request.id);
     return ok(undefined);
@@ -269,12 +266,9 @@ export async function acceptJobOffer(
     const parsed = jobOfferDecisionSchema.safeParse(input);
     if (!parsed.success) return err(ERR.badRequest);
 
-    // Same gate as any booking; a verification revoked since posting wins.
-    if (user.role === "customer" && !(await isCustomerVerified(user.id))) {
-      return err(
-        "Your identity must be verified before you can book. Check your verification status on your dashboard."
-      );
-    }
+    // Same gates as any booking; a membership that lapsed since posting wins.
+    if (customerNeedsOnboarding(user)) return err(ONBOARDING_REQUIRED);
+    if (!(await hasMemberAccess(user.id))) return err(MEMBERSHIP_REQUIRED);
 
     const loaded = await loadOwnOpenRequest(user.id, parsed.data.jobRequestId);
     if ("error" in loaded) return err(loaded.error);
@@ -346,7 +340,7 @@ export async function declineJobOffer(
     }
 
     publishJobRequest(loaded.request.id, "offer");
-    publishJobBoard();
+    publishJobBoard(loaded.request.premium);
     revalidateJobPaths(loaded.request.id);
     return ok(undefined);
   } catch (error) {
@@ -367,9 +361,11 @@ export async function sendJobOffer(
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
     const data = parsed.data;
     const { user, worker } = await requireWorker();
-    if (!worker.verified || !worker.active) {
+    // Professionals publish themselves — 'live' is their own switch plus
+    // no admin suspension (plan §2.1).
+    if (!worker.active || worker.suspended) {
       return err(
-        "Your profile must be approved and switched on before you can respond to requests."
+        "Switch your profile on before you can respond to requests."
       );
     }
     if (!rateLimit(`job-offers:${user.id}`, JOB_OFFERS_PER_MINUTE, MINUTE_MS)) {
@@ -393,7 +389,18 @@ export async function sendJobOffer(
       return err("This request is no longer open.");
     }
 
-    const eligible = await eligibleGigs(worker.id, request.categoryId);
+    // Never admit the premium rail exists to a worker who is not on it —
+    // the same message they get for a request that just closed.
+    if (request.premium && !isPremiumProvider(worker)) {
+      return err("This request is no longer open.");
+    }
+    // Same premium rail as the board: a premium request is fulfilled only
+    // by a premium gig, a standard request only by a standard gig.
+    const eligible = await eligibleGigs(
+      worker.id,
+      request.categoryId,
+      request.premium
+    );
     if (eligible.length === 0) {
       return err(
         `Add a live gig in ${row.categoryName} to respond to this request (Gigs → New gig).`
@@ -488,7 +495,7 @@ export async function sendJobOffer(
     }
 
     publishJobRequest(request.id, "offer");
-    publishJobBoard();
+    publishJobBoard(request.premium);
     // Email only on a worker's first offer — a reprice is an in-app row.
     await notify({
       userId: request.customerId,
@@ -524,7 +531,11 @@ export async function withdrawJobOffer(
       .returning({ jobRequestId: jobOffers.jobRequestId });
     if (updated.length === 0) return err(ERR.notFound);
     publishJobRequest(updated[0].jobRequestId, "offer");
-    publishJobBoard();
+    const [request] = await db
+      .select({ premium: jobRequests.premium })
+      .from(jobRequests)
+      .where(eq(jobRequests.id, updated[0].jobRequestId));
+    publishJobBoard(request?.premium ?? false);
     revalidateJobPaths(updated[0].jobRequestId);
     return ok(undefined);
   } catch (error) {

@@ -45,7 +45,7 @@ export default function RideReviewForm({ rideId }: { rideId: string }) {
               type="button"
               aria-label={`${star} star${star > 1 ? "s" : ""}`}
               className={`text-3xl leading-none transition-colors ${
-                star <= rating ? "text-gold" : "text-hairline hover:text-gold-soft"
+                star <= rating ? "text-gold" : "text-hairline hover:text-gold"
               }`}
               onClick={() => setRating(star)}
             >
@@ -67,7 +67,7 @@ export default function RideReviewForm({ rideId }: { rideId: string }) {
           onChange={(e) => setBody(e.target.value)}
         />
       </div>
-      <button type="submit" className="btn-gold" disabled={saving}>
+      <button type="submit" className="btn-primary" disabled={saving}>
         {saving ? "Submitting…" : "Submit rating"}
       </button>
     </form>

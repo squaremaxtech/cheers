@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { acceptJobOffer, declineJobOffer } from "@/actions/jobs";
+import Badge from "@/components/ui/Badge";
 import StarRating from "@/components/ui/StarRating";
 import { formatDuration, formatJamaicaDateTime } from "@/components/jobs/jobUi";
 import { formatCents } from "@/lib/constants";
@@ -25,6 +26,7 @@ export type CustomerOffer = {
     city: string | null;
     avgRating: number;
     reviewCount: number;
+    idVerified: boolean;
     photoUrl: string | null;
   };
 };
@@ -89,7 +91,7 @@ export default function JobOfferList({
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center font-display text-lg text-gold">
+                <div className="flex h-full w-full items-center justify-center font-display text-lg text-gold-deep">
                   {o.worker.stageName.slice(0, 1)}
                 </div>
               )}
@@ -98,7 +100,7 @@ export default function JobOfferList({
               <Link
                 href={`/workers/${o.worker.slug}`}
                 target="_blank"
-                className="text-sm font-medium text-ink hover:text-gold-soft"
+                className="text-sm font-medium text-ink hover:text-brand-soft"
               >
                 {o.worker.stageName}
               </Link>
@@ -113,6 +115,9 @@ export default function JobOfferList({
                     {o.worker.city ? `, ${o.worker.city}` : ""}
                   </span>
                 )}
+                {o.worker.idVerified && (
+                  <Badge tone="success">Verified ID</Badge>
+                )}
               </div>
               {o.note && <p className="mt-2 text-sm text-muted">{o.note}</p>}
               <p className="mt-1 text-xs text-faint">
@@ -122,7 +127,7 @@ export default function JobOfferList({
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <p className="font-display text-2xl text-gold">
+            <p className="font-display text-2xl text-gold-deep">
               {formatCents(o.priceCents)}
             </p>
             <p className="text-xs text-faint">
@@ -132,7 +137,7 @@ export default function JobOfferList({
               <div className="flex gap-2">
                 <button
                   type="button"
-                  className="btn-gold"
+                  className="btn-primary"
                   disabled={workingId === o.id}
                   onClick={() => handleAccept(o)}
                 >

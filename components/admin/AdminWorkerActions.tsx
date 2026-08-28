@@ -5,25 +5,22 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { adminUpdateWorker } from "@/actions/admin";
 
+// Oversight levers on a live professional. There is no approval button:
+// professionals publish themselves, and the only thing an admin can do is
+// take the profile down — hide it from the site, or suspend the account.
 export default function AdminWorkerActions({
   workerId,
-  verified,
   suspended,
   active,
 }: {
   workerId: string;
-  verified: boolean;
   suspended: boolean;
   active: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
-  async function update(patch: {
-    verified?: boolean;
-    suspended?: boolean;
-    active?: boolean;
-  }) {
+  async function update(patch: { suspended?: boolean; active?: boolean }) {
     setBusy(true);
     const res = await adminUpdateWorker({ workerId, profile: {}, ...patch });
     setBusy(false);
@@ -40,14 +37,6 @@ export default function AdminWorkerActions({
       <button
         type="button"
         disabled={busy}
-        onClick={() => update({ verified: !verified })}
-        className="btn border border-hairline px-2.5 py-1 text-xs text-muted hover:text-gold"
-      >
-        {verified ? "Revoke approval" : "Approve"}
-      </button>
-      <button
-        type="button"
-        disabled={busy}
         onClick={() => update({ active: !active })}
         className="btn border border-hairline px-2.5 py-1 text-xs text-muted hover:text-ink"
       >
@@ -59,7 +48,9 @@ export default function AdminWorkerActions({
         onClick={() => {
           if (
             suspended ||
-            window.confirm("Suspend this worker? Their profile disappears immediately.")
+            window.confirm(
+              "Suspend this professional? Their profile disappears immediately."
+            )
           ) {
             update({ suspended: !suspended });
           }

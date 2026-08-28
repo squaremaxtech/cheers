@@ -3,7 +3,9 @@ import type { Metadata } from "next";
 import GigCard from "@/components/gigs/GigCard";
 import GigFilters from "@/components/gigs/GigFilters";
 import EmptyState from "@/components/ui/EmptyState";
+import { getUserRow } from "@/lib/auth";
 import { getGigCards, getGigCategories } from "@/lib/gigs";
+import { viewerPremium } from "@/lib/premium";
 import type { BrowseFilters } from "@/types";
 
 export const metadata: Metadata = { title: "Browse Gigs" };
@@ -14,6 +16,10 @@ function firstParam(v: string | string[] | undefined): string | undefined {
 
 export default async function BrowsePage(props: PageProps<"/browse">) {
   const params = await props.searchParams;
+
+  // The premium rail is decided here and enforced inside every query below.
+  // Signed out → viewerPremium(null) → canSeePremium false.
+  const viewer = viewerPremium(await getUserRow());
 
   const filters: BrowseFilters = {
     q: firstParam(params.q),
@@ -26,12 +32,16 @@ export default async function BrowsePage(props: PageProps<"/browse">) {
       ? Number(firstParam(params.minRating)) * 100
       : undefined,
     language: firstParam(params.language),
+    // Ignored server-side unless the viewer can see premium (lib/gigs.ts).
+    premium: firstParam(params.premium) === "1",
   };
 
   const [results, categories] = await Promise.all([
-    getGigCards(filters),
+    getGigCards(filters, viewer),
     getGigCategories(),
   ]);
+
+  const premiumOnly = viewer.canSeePremium && filters.premium === true;
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-10">
@@ -39,32 +49,34 @@ export default async function BrowsePage(props: PageProps<"/browse">) {
         <div>
           <h1 className="font-display text-3xl text-ink">Browse gigs</h1>
           <p className="mt-1 text-sm text-muted">
-            {results.length} available across Jamaica
+            {results.length}
+            {premiumOnly ? " premium" : ""} available across Jamaica
           </p>
         </div>
         <Link
           href="/requests/new"
-          className="card flex items-center gap-3 px-4 py-3 transition-colors hover:border-gold/40"
+          className="card flex items-center gap-3 px-4 py-3 transition-colors hover:border-brand/40"
         >
           <span className="text-sm text-muted">
             Can&apos;t find it? <span className="text-ink">Post a request</span> and let
-            workers come to you
+            professionals come to you
           </span>
-          <span className="text-gold">→</span>
+          <span className="text-brand">→</span>
         </Link>
       </div>
       <div className="mt-6">
         <GigFilters
           categories={categories.map((c) => ({ slug: c.slug, name: c.name }))}
+          canSeePremium={viewer.canSeePremium}
         />
       </div>
       <div className="mt-8">
         {results.length === 0 ? (
           <EmptyState
             title="No matches right now"
-            hint="Try loosening your filters — or post what you need and let approved workers send you offers."
+            hint="Try loosening your filters — or post what you need and let professionals send you offers."
             action={
-              <Link href="/requests/new" className="btn-gold">
+              <Link href="/requests/new" className="btn-primary">
                 Post a request
               </Link>
             }

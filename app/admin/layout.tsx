@@ -1,15 +1,18 @@
 import { redirect } from "next/navigation";
-import DashboardShell from "@/components/layout/DashboardShell";
+import DashboardShell, {
+  type NavItem,
+} from "@/components/layout/DashboardShell";
 import SiteHeader from "@/components/layout/SiteHeader";
 import { getUserRow } from "@/lib/auth";
 import { isDriver, isSafetyMonitor } from "@/lib/guards";
 
-const nav = [
+const nav: NavItem[] = [
   { href: "/admin", label: "Overview" },
   { href: "/safety", label: "Safety desk" },
-  { href: "/admin/workers", label: "Workers" },
+  { href: "/admin/workers", label: "Professionals" },
   { href: "/admin/drivers", label: "Drivers" },
   { href: "/admin/gigs", label: "Gigs" },
+  { href: "/admin/promote", label: "Promote" },
   { href: "/admin/verifications", label: "Verifications" },
   { href: "/admin/bookings", label: "Bookings" },
   { href: "/admin/requests", label: "Requests" },
@@ -38,11 +41,19 @@ export default async function AdminLayout({
   if (isDriver(user)) redirect("/driver");
   if (isSafetyMonitor(user)) redirect("/safety");
 
+  // Granting premium is an owner decision, not a desk task: /admin/promote
+  // is admin-only (the page redirects, the actions requireAdmin), so support
+  // never sees the link either.
+  const items =
+    user.role === "admin"
+      ? nav
+      : nav.filter((item) => item.href !== "/admin/promote");
+
   return (
     <>
       <SiteHeader />
       <main className="flex-1">
-        <DashboardShell title="Admin" nav={nav}>
+        <DashboardShell title="Admin" nav={items}>
           {children}
         </DashboardShell>
       </main>

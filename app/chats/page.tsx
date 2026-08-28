@@ -113,7 +113,7 @@ export default async function ChatsPage() {
           ) : (
             <>
               Find someone on the{" "}
-              <Link href="/browse" className="text-gold">
+              <Link href="/browse" className="text-brand hover:text-brand-soft">
                 browse page
               </Link>{" "}
               and say hello from their profile.
@@ -126,7 +126,7 @@ export default async function ChatsPage() {
             <li key={room.id}>
               <Link
                 href={`/chats/${room.id}`}
-                className="card flex items-center justify-between gap-4 p-4 hover:border-gold/40"
+                className="card flex items-center justify-between gap-4 p-4 hover:border-brand/40"
               >
                 <div className="min-w-0">
                   <p

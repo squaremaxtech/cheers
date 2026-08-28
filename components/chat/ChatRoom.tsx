@@ -25,7 +25,7 @@ function formatMessageTime(iso: string): string {
 // Live chat view: initial messages come from the server render; new ones
 // arrive over the room's SSE stream (sender included — sends are de-duped by
 // id). Staff get a read-only transcript. A customer without send rights
-// (no Chat Pass, no live booking with this worker — decided server-side)
+// (no membership, no live booking with this professional — server-decided)
 // keeps reading the thread but the composer is replaced by the paywall
 // prompt. Presence of the counterpart shows when known (initialOnline null =
 // hidden/not applicable). Messages and presence are keyed by participant
@@ -152,7 +152,7 @@ export default function ChatRoom({
                 <div
                   className={`rounded-2xl border px-4 py-2.5 ${
                     own
-                      ? "border-gold/30 bg-gold/10"
+                      ? "border-brand/30 bg-brand/10"
                       : "border-hairline bg-raised"
                   }`}
                 >
@@ -190,18 +190,18 @@ export default function ChatRoom({
       </div>
 
       {participant && !canSend ? (
-        // The Chat Pass paywall (customer only): the thread stays readable,
+        // The membership paywall (customer only): the thread stays readable,
         // only the composer locks.
         <div className="border-t border-hairline p-4 text-center">
           <p className="text-sm text-ink">
-            🔒 Messaging workers needs the $5/month Chat Pass
+            🔒 Messaging professionals needs a Cheers Membership
           </p>
           <p className="mt-1 text-xs text-muted">
             Booked with {counterpartLabel}? Chat unlocks free the moment a
             booking is live — coordination is never paywalled.
           </p>
-          <Link href="/membership" className="btn-gold mt-3 inline-block py-2 text-xs">
-            Get the Chat Pass
+          <Link href="/membership" className="btn-primary mt-3 inline-block py-2 text-xs">
+            View membership
           </Link>
         </div>
       ) : participant ? (
@@ -229,7 +229,7 @@ export default function ChatRoom({
               roomId={roomId}
               accept="image/jpeg,image/png,image/webp,image/gif"
               label="📷"
-              className="btn-ghost shrink-0 px-3 text-base"
+              className="btn-ghost shrink-0 px-3 text-[1rem]"
               onUploaded={(url) => setAttachedUrl(url)}
             />
             <textarea
@@ -248,7 +248,7 @@ export default function ChatRoom({
             />
             <button
               type="button"
-              className="btn-gold shrink-0"
+              className="btn-primary shrink-0"
               disabled={sending || (text.trim().length === 0 && !attachedUrl)}
               onClick={() => void handleSend()}
             >

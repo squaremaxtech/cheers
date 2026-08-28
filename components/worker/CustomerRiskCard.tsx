@@ -30,8 +30,10 @@ export default function CustomerRiskCard({
       </p>
 
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-        <span className={summary.verified ? "text-success" : "text-warn"}>
-          {summary.verified ? "✓ ID verified" : "⚠ ID not verified"}
+        {/* The optional Verified ID badge (plan §2.2). It gates nothing on
+            either side — it is one more signal, not a requirement. */}
+        <span className={summary.verified ? "text-success" : "text-muted"}>
+          {summary.verified ? "✓ Verified ID" : "No Verified ID"}
         </span>
         <span className="text-muted">
           Account {formatAge(summary.accountAgeDays)}

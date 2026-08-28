@@ -20,7 +20,7 @@ function emailBody(opts: { body: string; meta?: Record<string, string> }): strin
   if (!url) return `<p>${opts.body}</p>`;
   return `<p>${opts.body}</p>
     <p style="margin-top:24px;">
-      <a href="${url}" style="background:#d6b25e;color:#0c0a09;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;">${label}</a>
+      <a href="${url}" style="background:#0b6b4a;color:#ffffff;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:bold;">${label}</a>
     </p>`;
 }
 
@@ -121,9 +121,10 @@ export async function notifyAdmins(opts: {
   }
 }
 
-// Identity verifications are reviewed by admins and supervisors — the same
-// set that may approve them (actions/verification.ts). Plain customer
-// support and drivers are not notified.
+// Identity verifications (the optional Verified ID badge) are reviewed by
+// admins and supervisors — the same set that may approve them
+// (actions/verification.ts). Plain customer support and drivers are not
+// notified.
 export async function notifyVerificationTeam(opts: {
   type: string;
   title: string;

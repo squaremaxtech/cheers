@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
 import { bookings, notifications } from "@/db/schema";
+import AcceptTermsBanner from "@/components/ui/AcceptTermsBanner";
 import Badge from "@/components/ui/Badge";
 import NotificationsList from "@/components/customer/NotificationsList";
 import ProfileForm from "@/components/customer/ProfileForm";
@@ -11,8 +12,10 @@ import VerificationCard from "@/components/customer/VerificationCard";
 import { getUserRow } from "@/lib/auth";
 import { isSafetyMonitor } from "@/lib/guards";
 import { freeAccessActive, getMembership } from "@/lib/membership";
+import { needsTermsAcceptance } from "@/lib/onboarding";
+import { hasPremiumAccess } from "@/lib/premium";
 import { statusTone } from "@/lib/status";
-import { getCustomerVerification } from "@/lib/verification";
+import { getIdentityVerification } from "@/lib/verification";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -44,7 +47,7 @@ export default async function CustomerDashboard() {
         .orderBy(desc(notifications.createdAt))
         .limit(8),
       getMembership(user.id),
-      getCustomerVerification(user.id),
+      getIdentityVerification(user.id),
     ]);
 
   const membershipLabel = freeAccessActive()
@@ -57,6 +60,10 @@ export default async function CustomerDashboard() {
 
   return (
     <div className="space-y-8">
+      {needsTermsAcceptance(user) && (
+        <AcceptTermsBanner updated={user.termsAcceptedAt !== null} />
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl text-ink">
@@ -71,10 +78,32 @@ export default async function CustomerDashboard() {
         </Link>
       </div>
 
-      {/* Identity verification status (booking is gated on approval) */}
+      {/* Premium access (admin-granted — plan §1.5) */}
+      {hasPremiumAccess(user) && (
+        <section className="card border-gold/40 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
+                Premium access
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Your account can see and book premium services — listings that
+                are invisible to everyone else. They carry a{" "}
+                <span className="text-gold-deep">Premium</span> badge wherever they
+                appear, and you can filter for them on Browse.
+              </p>
+            </div>
+            <Link href="/browse?premium=1" className="btn-primary shrink-0">
+              Browse premium
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {/* Verified ID badge — optional, gates nothing (plan §2.2) */}
       <section className="card p-6">
         <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
-          Identity verification
+          Get your Verified ID badge (optional)
         </h2>
         <div className="mt-4">
           <VerificationCard
@@ -90,15 +119,15 @@ export default async function CustomerDashboard() {
           <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
             Recent bookings
           </h2>
-          <Link href="/bookings" className="text-sm text-gold hover:text-gold-soft">
+          <Link href="/bookings" className="text-sm text-brand hover:text-brand-soft">
             View all →
           </Link>
         </div>
         {recentBookings.length === 0 ? (
           <p className="mt-4 text-sm text-faint">
             No bookings yet.{" "}
-            <Link href="/browse" className="text-gold">
-              Browse workers
+            <Link href="/browse" className="text-brand hover:text-brand-soft">
+              Browse professionals
             </Link>{" "}
             to get started.
           </p>
@@ -108,7 +137,7 @@ export default async function CustomerDashboard() {
               <li key={b.id}>
                 <Link
                   href={`/bookings/${b.id}`}
-                  className="flex items-center justify-between gap-3 py-3 text-sm hover:text-gold-soft"
+                  className="flex items-center justify-between gap-3 py-3 text-sm hover:text-brand-soft"
                 >
                   <span className="text-ink">
                     {b.serviceName}

@@ -179,7 +179,7 @@ export default async function AdminPaymentsPage() {
                         href={payment.cashProofUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="ml-1 text-gold"
+                        className="ml-1 text-brand hover:text-brand-soft"
                       >
                         proof
                       </a>

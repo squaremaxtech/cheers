@@ -31,7 +31,7 @@ export default function QuoteRequestForm({
         </p>
         <Link
           href="/quotes"
-          className="mt-2 inline-block text-gold hover:text-gold-soft"
+          className="mt-2 inline-block text-brand hover:text-brand-soft"
         >
           Track it on your quotes page →
         </Link>
@@ -69,7 +69,7 @@ export default function QuoteRequestForm({
           id="q-description"
           rows={4}
           className="input"
-          placeholder="What needs doing, roughly how big is the job, anything the worker should know…"
+          placeholder="What needs doing, roughly how big is the job, anything the professional should know…"
           required
           minLength={10}
           maxLength={QUOTE_DESCRIPTION_MAX_CHARS}
@@ -116,7 +116,7 @@ export default function QuoteRequestForm({
           onChange={(e) => setLocationNote(e.target.value)}
         />
       </div>
-      <button type="submit" className="btn-gold w-full" disabled={submitting}>
+      <button type="submit" className="btn-primary w-full" disabled={submitting}>
         {submitting ? "Sending…" : "Send quote request"}
       </button>
       <p className="text-xs text-faint">

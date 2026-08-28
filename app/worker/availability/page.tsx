@@ -1,4 +1,4 @@
-import { asc, eq, gte } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
 import { availability, availabilityExceptions } from "@/db/schema";

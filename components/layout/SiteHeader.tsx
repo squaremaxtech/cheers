@@ -19,9 +19,9 @@ export default async function SiteHeader() {
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:px-5">
         <Link
           href="/"
-          className="font-display shrink-0 text-lg tracking-[0.2em] text-gold sm:text-xl sm:tracking-[0.25em]"
+          className="font-display shrink-0 text-xl font-extrabold tracking-tight text-brand sm:text-2xl"
         >
-          CHEERS
+          Cheers
         </Link>
 
         <nav className="flex min-w-0 items-center gap-1 text-sm" style={{ overflow: "auto" }}>
@@ -49,7 +49,7 @@ export default async function SiteHeader() {
               Dashboard
             </Link>
           ) : (
-            <Link href="/login" className="btn-gold ml-1 shrink-0 sm:ml-2">
+            <Link href="/login" className="btn-primary ml-1 shrink-0 sm:ml-2">
               Sign in
             </Link>
           )}

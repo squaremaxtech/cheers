@@ -27,18 +27,30 @@ export type BoardGig = { id: string; title: string; durationMinutes: number };
 export default function JobBoard({
   cards,
   gigsByCategory,
+  premiumGigsByCategory,
   canRespond,
 }: {
   cards: JobBoardCard[];
-  // This worker's live gigs per category — what they can respond with.
+  // This worker's live standard gigs per category — what they can respond
+  // with on a standard request.
   gigsByCategory: Record<string, BoardGig[]>;
-  // False until the profile is approved and switched on.
+  // Their live PREMIUM gigs per category. The premium rail is exact: a
+  // premium request is answered only with a premium gig (plan §1.3). Empty
+  // for everyone who is not a premium provider — they never see a premium
+  // request either.
+  premiumGigsByCategory: Record<string, BoardGig[]>;
+  // False while the profile is switched off or suspended by an admin.
   canRespond: boolean;
 }) {
   const router = useRouter();
   const [connected, setConnected] = useState(false);
   const [filter, setFilter] = useState("");
-  const hasGigs = Object.keys(gigsByCategory).length > 0;
+  const gigsFor = (c: JobBoardCard): BoardGig[] =>
+    (c.premium ? premiumGigsByCategory : gigsByCategory)[c.categoryId] ?? [];
+  const hasGigs =
+    Object.keys(gigsByCategory).length +
+      Object.keys(premiumGigsByCategory).length >
+    0;
   const [mineOnly, setMineOnly] = useState(hasGigs);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -59,7 +71,7 @@ export default function JobBoard({
 
   const term = filter.trim().toLowerCase();
   const visible = cards.filter((c) => {
-    if (mineOnly && hasGigs && !gigsByCategory[c.categoryId]) return false;
+    if (mineOnly && hasGigs && gigsFor(c).length === 0) return false;
     if (!term) return true;
     return `${c.title} ${c.description} ${c.parish} ${c.area ?? ""} ${c.categoryName} ${c.tags.join(" ")}`
       .toLowerCase()
@@ -118,7 +130,7 @@ export default function JobBoard({
             <JobCard
               key={c.id}
               card={c}
-              gigs={gigsByCategory[c.categoryId] ?? []}
+              gigs={gigsFor(c)}
               canRespond={canRespond}
             />
           ))}
@@ -223,7 +235,7 @@ function JobCard({
     <li className="card space-y-3 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-base font-medium text-ink">{c.title}</p>
+          <p className="text-[1rem] font-medium text-ink">{c.title}</p>
           <p className="mt-0.5 text-sm text-muted">
             {c.categoryName} · {c.parish}
             {c.area ? ` (${c.area})` : ""}
@@ -241,19 +253,19 @@ function JobCard({
           </p>
         </div>
         <div className="text-right">
-          <p className="font-display text-2xl text-gold">{formatCents(c.budgetCents)}</p>
+          <p className="font-display text-2xl text-gold-deep">{formatCents(c.budgetCents)}</p>
           <p className="text-xs text-faint">customer&apos;s budget</p>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        {c.premium && <Badge tone="gold">Premium</Badge>}
         <Badge tone={instant ? "gold" : "neutral"}>{JOB_MODE_SHORT[c.matchMode]}</Badge>
         {c.matchMode === "lowest_price" && c.autoBookAt && (
           <span className="text-xs text-faint">
             best offer booked {formatJamaicaDateTime(c.autoBookAt)}
           </span>
         )}
-        <Badge tone="neutral">Verified account</Badge>
         {c.tags.map((t) => (
           <span
             key={t}
@@ -272,7 +284,7 @@ function JobCard({
       {c.description.length > 220 && (
         <button
           type="button"
-          className="text-xs text-gold hover:text-gold-soft"
+          className="text-xs text-brand hover:text-brand-soft"
           onClick={() => setExpanded((v) => !v)}
         >
           {expanded ? "Show less" : "Read more"}
@@ -282,7 +294,7 @@ function JobCard({
       {mine && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-hairline bg-raised px-4 py-2 text-sm">
           <span className="text-muted">Your offer:</span>
-          <span className="text-gold">{formatCents(mine.priceCents)}</span>
+          <span className="text-gold-deep">{formatCents(mine.priceCents)}</span>
           <span className="text-faint">· {formatDuration(mine.durationMinutes)}</span>
           <Badge tone={jobOfferTone(mine.status)}>{JOB_OFFER_STATUS_LABELS[mine.status]}</Badge>
           {liveOffer && (
@@ -300,13 +312,13 @@ function JobCard({
 
       {!canRespond ? (
         <p className="text-xs text-faint">
-          Your profile must be approved and switched on before you can respond.
+          Switch your profile on before you can respond to requests.
         </p>
       ) : !eligible ? (
         <p className="text-xs text-muted">
-          You need a live gig in <span className="text-ink">{c.categoryName}</span> to
-          respond.{" "}
-          <Link href="/worker/gigs" className="text-gold hover:text-gold-soft">
+          You need a live {c.premium ? "premium " : ""}gig in{" "}
+          <span className="text-ink">{c.categoryName}</span> to respond.{" "}
+          <Link href="/worker/gigs" className="text-brand hover:text-brand-soft">
             Add one →
           </Link>
         </p>
@@ -315,7 +327,7 @@ function JobCard({
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              className="btn-gold"
+              className="btn-primary"
               disabled={busy}
               onClick={handleAccept}
             >
@@ -399,7 +411,7 @@ function JobCard({
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  className="btn-gold"
+                  className="btn-primary"
                   disabled={busy}
                   onClick={handleCounter}
                 >

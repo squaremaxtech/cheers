@@ -1,39 +1,42 @@
-import { asc, desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { workers } from "@/db/schema";
+import { users, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import AdminWorkerActions from "@/components/admin/AdminWorkerActions";
 import { formatCents } from "@/lib/constants";
 
-export const metadata: Metadata = { title: "Workers — Admin" };
+export const metadata: Metadata = { title: "Professionals — Admin" };
 
-// Worker signup is open (no invites); the approval gate below is what keeps
-// unreviewed profiles off the site.
+// Professionals publish themselves — nothing here waits on you. There is no
+// approval queue and no pending state: oversight is takedown (hide the
+// profile, suspend the account). The users join carries the optional
+// Verified ID badge, which gates nothing.
 export default async function AdminWorkersPage() {
-  // Pending approval first — those are the ones waiting on you.
   const rows = await db
-    .select()
+    .select({ worker: workers, idVerifiedAt: users.idVerifiedAt })
     .from(workers)
-    .orderBy(asc(workers.verified), desc(workers.createdAt))
+    .innerJoin(users, eq(workers.userId, users.id))
+    .orderBy(desc(workers.createdAt))
     .limit(200);
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-display text-2xl text-ink">Workers</h1>
+        <h1 className="font-display text-2xl text-ink">Professionals</h1>
         <p className="mt-1 text-sm text-muted">
-          Anyone can sign up as a worker, but new profiles stay OFF the site
-          until you approve them. Full override: approve, suspend, hide, or
-          edit any profile.
+          Anyone can sign up and go live the moment they publish a gig — no
+          approval step. Your levers are takedown: hide a profile from the site
+          or suspend the account. Premium providers are granted from{" "}
+          <span className="text-ink">Promote</span>.
         </p>
       </div>
 
       <div className="card overflow-x-auto p-2">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wider text-faint">
-              <th className="p-3">Stage name</th>
+              <th className="p-3">Display name</th>
               <th className="p-3">Real name (private)</th>
               <th className="p-3">Parish</th>
               <th className="p-3">Rate</th>
@@ -43,7 +46,7 @@ export default async function AdminWorkersPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-hairline">
-            {rows.map((w) => (
+            {rows.map(({ worker: w, idVerifiedAt }) => (
               <tr key={w.id}>
                 <td className="p-3 font-medium text-ink">{w.stageName}</td>
                 <td className="p-3 text-muted">{w.realName ?? "—"}</td>
@@ -56,20 +59,24 @@ export default async function AdminWorkersPage() {
                 </td>
                 <td className="p-3">
                   <span className="flex flex-wrap gap-1">
-                    {!w.verified && <Badge tone="warn">Pending approval</Badge>}
                     {w.suspended ? (
                       <Badge tone="danger">Suspended</Badge>
-                    ) : w.verified && w.active ? (
+                    ) : w.active ? (
                       <Badge tone="success">Live</Badge>
-                    ) : w.verified ? (
+                    ) : (
                       <Badge>Hidden</Badge>
-                    ) : null}
+                    )}
+                    {w.premiumProviderAt !== null && (
+                      <Badge tone="gold">Premium</Badge>
+                    )}
+                    {idVerifiedAt !== null && (
+                      <Badge tone="success">Verified ID</Badge>
+                    )}
                   </span>
                 </td>
                 <td className="p-3">
                   <AdminWorkerActions
                     workerId={w.id}
-                    verified={w.verified}
                     suspended={w.suspended}
                     active={w.active}
                   />
@@ -79,7 +86,7 @@ export default async function AdminWorkersPage() {
           </tbody>
         </table>
         {rows.length === 0 && (
-          <p className="p-6 text-sm text-faint">No worker profiles yet.</p>
+          <p className="p-6 text-sm text-faint">No professional profiles yet.</p>
         )}
       </div>
     </div>

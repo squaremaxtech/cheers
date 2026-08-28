@@ -45,18 +45,27 @@ export default function BookingCustomerActions({
   const [showReschedule, setShowReschedule] = useState(false);
   const [newDate, setNewDate] = useState("");
   const [newTime, setNewTime] = useState("");
-  const [slots, setSlots] = useState<TimeSlot[] | null>(null);
-  const [slotsLoading, setSlotsLoading] = useState(false);
-  // Bumped to force a slot refetch after losing a booking race.
+  // Bumped to force a slot refetch (losing a booking race, reopening the
+  // reschedule form).
   const [slotsVersion, setSlotsVersion] = useState(0);
+  // The slot board is keyed by what it was fetched for; `slots` and the
+  // loading flag are derived from whether the stored result matches the
+  // current key, so nothing is set synchronously inside the effect.
+  const slotsKey =
+    showReschedule && newDate
+      ? `${newDate}|${durationMinutes}|${slotsVersion}`
+      : null;
+  const [slotsResult, setSlotsResult] = useState<{
+    key: string;
+    slots: TimeSlot[];
+  } | null>(null);
+  const slots =
+    slotsKey !== null && slotsResult?.key === slotsKey ? slotsResult.slots : null;
+  const slotsLoading = slotsKey !== null && slots === null;
 
   useEffect(() => {
-    if (!showReschedule || !newDate) {
-      setSlots(null);
-      return;
-    }
+    if (slotsKey === null) return;
     let stale = false;
-    setSlotsLoading(true);
     getBookingSlots({
       workerId,
       date: newDate,
@@ -64,23 +73,22 @@ export default function BookingCustomerActions({
       excludeBookingId: bookingId,
     }).then((res) => {
       if (stale) return;
-      setSlotsLoading(false);
       if (res.ok) {
-        setSlots(res.data.slots);
+        setSlotsResult({ key: slotsKey, slots: res.data.slots });
         setNewTime((t) =>
           res.data.slots.some((s) => s.time === t && s.state === "available")
             ? t
             : ""
         );
       } else {
-        setSlots([]);
+        setSlotsResult({ key: slotsKey, slots: [] });
         toast.error(res.error);
       }
     });
     return () => {
       stale = true;
     };
-  }, [showReschedule, newDate, workerId, durationMinutes, bookingId, slotsVersion]);
+  }, [slotsKey, newDate, workerId, durationMinutes, bookingId]);
 
   const tipCents = Math.round((serviceTotalCents * tipPercent) / 100);
   const cancellable =
@@ -178,7 +186,9 @@ export default function BookingCustomerActions({
             booking.
           </p>
           <div className="mt-4">
-            <p className="label">Add a tip? (100% goes to your worker)</p>
+            <p className="label">
+              Add a tip? (100% goes to your professional)
+            </p>
             <div className="flex gap-2">
               {TIP_PERCENTS.map((p) => (
                 <button
@@ -187,7 +197,7 @@ export default function BookingCustomerActions({
                   onClick={() => setTipPercent(p)}
                   className={`btn px-4 py-2 text-xs ${
                     tipPercent === p
-                      ? "bg-gold text-base"
+                      ? "bg-brand text-white"
                       : "border border-hairline text-muted"
                   }`}
                 >
@@ -202,7 +212,7 @@ export default function BookingCustomerActions({
                 type="button"
                 onClick={() => handlePayCard(tipCents)}
                 disabled={busy}
-                className="btn-gold w-full"
+                className="btn-primary w-full"
               >
                 {busy
                   ? "Working…"
@@ -213,7 +223,7 @@ export default function BookingCustomerActions({
               type="button"
               onClick={handlePayCash}
               disabled={busy}
-              className={stripeConfigured ? "btn-outline w-full" : "btn-gold w-full"}
+              className={stripeConfigured ? "btn-outline w-full" : "btn-primary w-full"}
             >
               {busy
                 ? "Working…"
@@ -250,7 +260,10 @@ export default function BookingCustomerActions({
           <button
             type="button"
             className="btn-outline"
-            onClick={() => setShowReschedule((v) => !v)}
+            onClick={() => {
+              setShowReschedule((v) => !v);
+              setSlotsVersion((v) => v + 1);
+            }}
           >
             Reschedule
           </button>
@@ -295,7 +308,7 @@ export default function BookingCustomerActions({
               onSelect={setNewTime}
             />
           </div>
-          <button type="submit" className="btn-gold" disabled={busy || !newTime}>
+          <button type="submit" className="btn-primary" disabled={busy || !newTime}>
             Confirm
           </button>
         </form>

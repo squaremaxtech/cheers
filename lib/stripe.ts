@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { CURRENCY, chatPassPriceCents, stripeConfigured } from "@/lib/constants";
+import { CURRENCY, membershipPriceCents, stripeConfigured } from "@/lib/constants";
 
 // Stripe is the online-payments layer and it is OPTIONAL (cash-first
 // Jamaica): every flow in the app works with no keys set, and the card /
@@ -79,9 +79,9 @@ export async function createBookingCheckoutSession(opts: {
   return session.url;
 }
 
-// The $5/month Chat Pass subscription. Status and period are webhook-driven
-// from then on (invoice.paid / customer.subscription.*).
-export async function createChatPassCheckoutSession(opts: {
+// The monthly Cheers Membership subscription. Status and period are
+// webhook-driven from then on (invoice.paid / customer.subscription.*).
+export async function createMembershipCheckoutSession(opts: {
   userId: string;
   customerEmail: string;
   returnPath: string;
@@ -95,16 +95,16 @@ export async function createChatPassCheckoutSession(opts: {
         quantity: 1,
         price_data: {
           currency: CURRENCY,
-          unit_amount: chatPassPriceCents(),
+          unit_amount: membershipPriceCents(),
           recurring: { interval: "month" },
           product_data: {
-            name: "Cheers Chat Pass",
-            description: "Message any worker on Cheers",
+            name: "Cheers Membership",
+            description: "Message and book professionals on Cheers",
           },
         },
       },
     ],
-    metadata: { kind: "chat_pass", userId: opts.userId },
+    metadata: { kind: "membership", userId: opts.userId },
     subscription_data: { metadata: { userId: opts.userId } },
     success_url: appUrl(`${opts.returnPath}?success=1`),
     cancel_url: appUrl(`${opts.returnPath}?cancelled=1`),

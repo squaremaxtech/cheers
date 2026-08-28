@@ -19,7 +19,14 @@ type InboxListener = (event: InboxStreamEvent) => void;
 type SafetyDeskListener = (event: SafetyDeskStreamEvent) => void;
 type RideListener = (event: RideStreamEvent) => void;
 type DriverBoardListener = (event: DriverBoardStreamEvent) => void;
-type JobBoardListener = (event: JobBoardStreamEvent) => void;
+// The second argument is the premium rail of the request that changed —
+// the stream route drops premium wake-ups for non-provider workers, so a
+// premium request leaves no trace (not even a timing one) on a standard
+// board. It never reaches the client.
+type JobBoardListener = (
+  event: JobBoardStreamEvent,
+  premium: boolean
+) => void;
 type JobRequestListener = (event: JobRequestStreamEvent) => void;
 
 // Stored on globalThis so dev-server hot reloads reuse one registry instead
@@ -260,11 +267,13 @@ export function subscribeJobBoard(listener: JobBoardListener): () => void {
   };
 }
 
-export function publishJobBoard(): void {
+// premium = the request that changed is on the premium rail; only premium
+// providers are woken for it (see app/api/jobs/board/stream/route.ts).
+export function publishJobBoard(premium = false): void {
   const event: JobBoardStreamEvent = { kind: "jobs", at: new Date().toISOString() };
   for (const listener of [...jobBoardListeners]) {
     try {
-      listener(event);
+      listener(event, premium);
     } catch {
       jobBoardListeners.delete(listener);
     }

@@ -3,10 +3,10 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { customerVerifications, users } from "@/db/schema";
+import { identityVerifications, users } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
 import { writeAudit } from "@/lib/audit";
-import { idDocumentLabel } from "@/lib/constants";
+import { TERMS_VERSION, idDocumentLabel } from "@/lib/constants";
 import {
   guardErrorMessage,
   requireUser,
@@ -14,24 +14,25 @@ import {
 } from "@/lib/guards";
 import { notify, notifyVerificationTeam } from "@/lib/notify";
 import { removeStoredUpload } from "@/lib/uploads";
-import { getCustomerVerification } from "@/lib/verification";
+import { getIdentityVerification } from "@/lib/verification";
+import { completeOnboardingSchema } from "@/schemas/account";
 import {
   reviewVerificationSchema,
   submitVerificationSchema,
 } from "@/schemas/verification";
 import type { ActionResult } from "@/types";
 
-// Customer submits (or re-submits after a rejection) their ID document.
-// Creates/updates their single customer_verifications row back to pending
-// and alerts the verification team (admins + supervisors).
+// Identity verification is an OPTIONAL badge, open to any signed-in user —
+// customers and professionals alike (plan §2.2). It gates nothing: booking,
+// posting, quoting and messaging all work without it. Submitting (or
+// re-submitting after a rejection) writes the caller's single
+// identity_verifications row back to pending and alerts the reviewers
+// (admins + supervisors).
 export async function submitIdentityVerification(
   input: unknown
 ): Promise<ActionResult<undefined>> {
   try {
     const user = await requireUser();
-    if (user.role !== "customer") {
-      return err("Only customer accounts submit identity verification.");
-    }
     const parsed = submitVerificationSchema.safeParse(input);
     if (!parsed.success) {
       return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
@@ -42,9 +43,9 @@ export async function submitIdentityVerification(
       return err(ERR.badRequest);
     }
 
-    const existing = await getCustomerVerification(user.id);
+    const existing = await getIdentityVerification(user.id);
     if (existing?.status === "approved") {
-      return err("You are already verified.");
+      return err("Your ID is already verified.");
     }
     // A replaced document (re-submission) is deleted from disk immediately.
     if (existing?.documentUrl && existing.documentUrl !== parsed.data.documentUrl) {
@@ -53,7 +54,7 @@ export async function submitIdentityVerification(
 
     if (existing) {
       await db
-        .update(customerVerifications)
+        .update(identityVerifications)
         .set({
           status: "pending",
           documentType: parsed.data.documentType,
@@ -64,28 +65,35 @@ export async function submitIdentityVerification(
           note: null,
           updatedAt: new Date(),
         })
-        .where(eq(customerVerifications.id, existing.id));
+        .where(eq(identityVerifications.id, existing.id));
     } else {
-      await db.insert(customerVerifications).values({
+      await db.insert(identityVerifications).values({
         userId: user.id,
         documentType: parsed.data.documentType,
         fullName: parsed.data.fullName,
         documentUrl: parsed.data.documentUrl,
       });
     }
+    // The badge is only ever true while a decision stands — a fresh
+    // submission drops it until this one is reviewed.
+    await db
+      .update(users)
+      .set({ idVerifiedAt: null, updatedAt: new Date() })
+      .where(eq(users.id, user.id));
 
     await notifyVerificationTeam({
-      type: "customer_verification_pending",
+      type: "identity_verification_pending",
       title: existing
-        ? "Customer verification re-submitted"
-        : "New customer verification pending",
+        ? "Identity verification re-submitted"
+        : "New identity verification pending",
       body: `${user.name ?? user.email} uploaded a ${idDocumentLabel(
         parsed.data.documentType
-      )} for identity verification. Review it in Admin → Verifications.`,
+      )} for the Verified ID badge. Review it in Admin → Verifications.`,
     });
 
     revalidatePath("/welcome");
     revalidatePath("/dashboard");
+    revalidatePath("/worker/verification");
     revalidatePath("/admin/verifications");
     return ok(undefined);
   } catch (error) {
@@ -93,36 +101,45 @@ export async function submitIdentityVerification(
   }
 }
 
-// Final step of the first-login customer setup: profile saved, ID document
-// submitted and membership sorted. Marks the account onboarded so the
-// /welcome wizard stops gating the customer area.
-export async function completeCustomerOnboarding(): Promise<
-  ActionResult<undefined>
-> {
+// Final step of the first-login customer setup. Onboarding records a usable
+// profile (name + phone) and legal acceptance — nothing else. ID
+// verification is optional and never part of this gate, and membership is
+// sold where chat and booking are, not here.
+export async function completeCustomerOnboarding(
+  input: unknown
+): Promise<ActionResult<undefined>> {
   try {
     const user = await requireUser();
     if (user.role !== "customer") return err(ERR.forbidden);
-    if (user.onboardedAt) return ok(undefined); // already done — idempotent
-
-    // Onboarding = profile + ID document only. No membership step: browsing
-    // and booking are free; the Chat Pass is sold where chat is, not here.
-    const verification = await getCustomerVerification(user.id);
-    if (!verification) {
-      return err("Please submit your ID document first.");
+    const parsed = completeOnboardingSchema.safeParse(input);
+    if (!parsed.success) {
+      return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
     }
 
+    const now = new Date();
     await db
       .update(users)
-      .set({ onboardedAt: new Date(), updatedAt: new Date() })
+      .set({
+        name: parsed.data.name,
+        phone: parsed.data.phone,
+        termsAcceptedAt: now,
+        termsVersion: TERMS_VERSION,
+        // Idempotent: re-running keeps the original onboarding date.
+        onboardedAt: user.onboardedAt ?? now,
+        updatedAt: now,
+      })
       .where(eq(users.id, user.id));
 
-    await notify({
-      userId: user.id,
-      type: "customer_onboarded",
-      title: "Welcome to Cheers — verification in review",
-      body: "Your profile is set up and your ID is with our team for review. You can browse every worker now; booking unlocks the moment you're verified.",
-    });
+    if (!user.onboardedAt) {
+      await notify({
+        userId: user.id,
+        type: "customer_onboarded",
+        title: "Welcome to Cheers",
+        body: "Your account is ready — browse professionals across Jamaica, message them and book in minutes. Adding a Verified ID badge is optional and can be done anytime from your dashboard.",
+      });
+    }
 
+    revalidatePath("/welcome");
     revalidatePath("/dashboard");
     return ok(undefined);
   } catch (error) {
@@ -130,9 +147,11 @@ export async function completeCustomerOnboarding(): Promise<
   }
 }
 
-// Staff decision (admins + supervisors). Either way the uploaded document is
-// deleted from disk — documents are only held while a decision is pending.
-export async function reviewCustomerVerification(
+// Staff decision (admins + supervisors). Approving stamps the denormalised
+// badge (users.id_verified_at); rejecting clears it. Either way the uploaded
+// document is deleted from disk — documents are only held while a decision
+// is pending.
+export async function reviewIdentityVerification(
   input: unknown
 ): Promise<ActionResult<undefined>> {
   try {
@@ -142,8 +161,8 @@ export async function reviewCustomerVerification(
 
     const [verification] = await db
       .select()
-      .from(customerVerifications)
-      .where(eq(customerVerifications.id, parsed.data.verificationId));
+      .from(identityVerifications)
+      .where(eq(identityVerifications.id, parsed.data.verificationId));
     if (!verification) return err(ERR.notFound);
     if (verification.status !== "pending") {
       return err("This submission was already reviewed.");
@@ -151,7 +170,7 @@ export async function reviewCustomerVerification(
 
     // CAS: two reviewers deciding at the same moment — first one wins.
     const updated = await db
-      .update(customerVerifications)
+      .update(identityVerifications)
       .set({
         status: parsed.data.decision,
         reviewedByUserId: reviewer.id,
@@ -162,11 +181,11 @@ export async function reviewCustomerVerification(
       })
       .where(
         and(
-          eq(customerVerifications.id, verification.id),
-          eq(customerVerifications.status, "pending")
+          eq(identityVerifications.id, verification.id),
+          eq(identityVerifications.status, "pending")
         )
       )
-      .returning({ id: customerVerifications.id });
+      .returning({ id: identityVerifications.id });
     if (updated.length === 0) {
       return err("This submission was just reviewed by someone else.");
     }
@@ -174,30 +193,36 @@ export async function reviewCustomerVerification(
       await removeStoredUpload(verification.documentUrl);
     }
 
+    const approved = parsed.data.decision === "approved";
+    await db
+      .update(users)
+      .set({ idVerifiedAt: approved ? new Date() : null, updatedAt: new Date() })
+      .where(eq(users.id, verification.userId));
+
     await writeAudit({
       actorUserId: reviewer.id,
-      action: `customer_verification.${parsed.data.decision}`,
-      entity: "customer_verifications",
+      action: `identity_verification.${parsed.data.decision}`,
+      entity: "identity_verifications",
       entityId: verification.id,
       before: { status: "pending" },
       after: { status: parsed.data.decision, note: parsed.data.note },
     });
 
-    if (parsed.data.decision === "approved") {
+    if (approved) {
       await notify({
         userId: verification.userId,
-        type: "customer_verified",
-        title: "You're verified — bookings are open",
-        body: "Our team confirmed your identity. You can now book any worker on Cheers.",
+        type: "identity_verified",
+        title: "Your Verified ID badge is live",
+        body: "We confirmed your identity — the Verified ID badge now shows on your profile and your listings.",
       });
     } else {
       await notify({
         userId: verification.userId,
-        type: "customer_verification_rejected",
+        type: "identity_verification_rejected",
         title: "We couldn't verify your ID",
         body: `${
           parsed.data.note ? `Reviewer note: ${parsed.data.note}. ` : ""
-        }Please re-submit a clear photo of a valid ID from your dashboard.`,
+        }You can re-submit a clear photo of a valid ID anytime — the badge is optional and nothing on your account is blocked.`,
       });
     }
 

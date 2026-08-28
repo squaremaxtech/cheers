@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { signIn } from "next-auth/react";
 import toast from "react-hot-toast";
 
@@ -30,9 +31,12 @@ export default function LoginPage() {
 
   return (
     <div className="card w-full max-w-sm p-8">
-      <h1 className="font-display text-2xl text-ink">Welcome</h1>
+      <h1 className="font-display text-2xl tracking-tight text-ink">
+        Welcome to Cheers
+      </h1>
       <p className="mt-1 text-sm text-muted">
-        Sign in or create your account — one link, no passwords.
+        Sign in or create your account — one link, no passwords. The same
+        account hires professionals and offers services.
       </p>
 
       <form onSubmit={handleEmail} className="mt-6 space-y-4">
@@ -50,15 +54,15 @@ export default function LoginPage() {
             className="input"
           />
         </div>
-        <button type="submit" className="btn-gold w-full" disabled={sending}>
+        <button type="submit" className="btn-primary w-full" disabled={sending}>
           {sending ? "Sending link…" : "Email me a sign-in link"}
         </button>
       </form>
 
       <div className="my-6 flex items-center gap-3 text-xs text-faint">
-        <span className="gold-line flex-1" />
+        <span className="brand-line flex-1" />
         or
-        <span className="gold-line flex-1" />
+        <span className="brand-line flex-1" />
       </div>
 
       <button
@@ -69,9 +73,26 @@ export default function LoginPage() {
         Continue with Google
       </button>
 
-      <p className="mt-6 text-center text-xs text-faint">
-        By continuing you confirm you are 18+ and agree to our Terms.
-      </p>
+      <div className="mt-6 space-y-2 text-center text-xs leading-5 text-faint">
+        <p>
+          You must be 18 or older to use Cheers —{" "}
+          <Link href="/terms#eligibility" className="text-brand hover:underline">
+            eligibility
+          </Link>
+          .
+        </p>
+        <p>
+          By continuing you agree to the{" "}
+          <Link href="/terms" className="text-brand hover:underline">
+            Terms of Service
+          </Link>{" "}
+          and the{" "}
+          <Link href="/privacy" className="text-brand hover:underline">
+            Privacy Policy
+          </Link>
+          .
+        </p>
+      </div>
     </div>
   );
 }

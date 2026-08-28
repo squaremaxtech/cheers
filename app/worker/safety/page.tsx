@@ -44,7 +44,7 @@ export default async function WorkerSafetyPage() {
 
       {/* Plain-language explanation of the automatic protection. */}
       <section className="card space-y-3 border-gold/30 p-6">
-        <h2 className="text-sm font-medium uppercase tracking-wider text-gold">
+        <h2 className="text-sm font-medium uppercase tracking-wider text-gold-deep">
           What happens automatically
         </h2>
         <ul className="space-y-2 text-sm text-muted">

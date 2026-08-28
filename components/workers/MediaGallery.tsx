@@ -51,7 +51,7 @@ export default function MediaGallery({
               type="button"
               onClick={() => setActive(i)}
               className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border ${
-                i === active ? "border-gold" : "border-hairline"
+                i === active ? "border-brand" : "border-hairline"
               }`}
             >
               {m.type === "video" ? (

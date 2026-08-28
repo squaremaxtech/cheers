@@ -168,7 +168,7 @@ export default function BookingLive({
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            className={sharing ? "btn-outline" : "btn-gold"}
+            className={sharing ? "btn-outline" : "btn-primary"}
             onClick={sharing ? stopSharing : startSharing}
           >
             {sharing ? "Stop sharing my location" : "Share my location"}
@@ -178,7 +178,7 @@ export default function BookingLive({
               ? "Everyone on this booking can see your position."
               : viewerRole === "worker" || viewerRole === "driver"
                 ? "Share while travelling so the team can follow your progress."
-                : "Share so your worker can find you faster."}
+                : "Share so your professional can find you faster."}
           </p>
         </div>
       )}

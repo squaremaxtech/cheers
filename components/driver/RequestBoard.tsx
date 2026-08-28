@@ -140,7 +140,7 @@ export default function RequestBoard({
             <li key={r.id} className="card space-y-3 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-base font-medium text-ink">
+                  <p className="text-[1rem] font-medium text-ink">
                     {r.pickupAddress}
                   </p>
                   <p className="mt-0.5 text-sm text-muted">
@@ -160,7 +160,7 @@ export default function RequestBoard({
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-display text-2xl text-gold">
+                  <p className="font-display text-2xl text-gold-deep">
                     {formatCents(r.offerCents)}
                   </p>
                   {r.suggestedFareCents !== null && (
@@ -174,7 +174,7 @@ export default function RequestBoard({
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  className="btn-gold"
+                  className="btn-primary"
                   disabled={workingId === r.id}
                   onClick={() => handleAccept(r)}
                 >
@@ -227,7 +227,7 @@ export default function RequestBoard({
                     </div>
                     <button
                       type="button"
-                      className="btn-gold"
+                      className="btn-primary"
                       disabled={workingId === r.id}
                       onClick={() => handleCounter(r)}
                     >

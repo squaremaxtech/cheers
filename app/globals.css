@@ -1,24 +1,33 @@
 @import "tailwindcss";
 
-/* Cheers — dark luxury theme. Single dark theme by design. */
+/* ---------------------------------------------------------------------------
+   Cheers — single light, professional theme.
+
+   The token NAMES are the contract: 100+ files use text-ink / bg-surface /
+   border-hairline / text-gold and must keep working. Only the values changed
+   when the product moved from the old dark theme to a light, professional
+   freelance marketplace. Deep Jamaican green is the action colour; gold is
+   kept for ratings, premium and highlights only.
+--------------------------------------------------------------------------- */
 @theme {
-  --color-base: #0c0a09; /* page background */
-  --color-surface: #171412; /* cards, panels */
-  --color-raised: #201c19; /* hover / elevated surfaces */
-  --color-hairline: #2c2724; /* borders */
-  --color-ink: #faf7f2; /* primary text */
-  --color-muted: #a89f94; /* secondary text */
-  --color-faint: #6b6259; /* tertiary text */
-  --color-gold: #d6b25e; /* accent */
-  --color-gold-soft: #e3c47a;
-  --color-wine: #7c2d3e; /* deep velvet accent for gradients */
-  --color-velvet: #2a1218; /* plush burgundy-black for deep surfaces */
-  --color-success: #4ade80;
-  --color-danger: #f87171;
-  --color-warn: #fbbf24;
+  --color-base: #f7f6f2; /* page background (warm off-white) */
+  --color-surface: #ffffff; /* cards, panels */
+  --color-raised: #f1efe9; /* hover / inputs */
+  --color-hairline: #e5e2da; /* borders */
+  --color-ink: #16140f; /* primary text */
+  --color-muted: #5b564d; /* secondary text */
+  --color-faint: #9c968b; /* tertiary text */
+  --color-brand: #0b6b4a; /* primary action (deep Jamaican green) */
+  --color-brand-soft: #118a61; /* hover / gradients */
+  --color-gold: #b8912a; /* accent: ratings, premium, highlights */
+  --color-gold-soft: #d6b45c; /* gold wash / decorative only */
+  --color-gold-deep: #7a5e15; /* gold TEXT on a light surface (6:1 on white) */
+  --color-success: #15803d;
+  --color-danger: #dc2626;
+  --color-warn: #d97706;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-display), Georgia, serif;
+  --font-display: var(--font-display), ui-sans-serif, system-ui, sans-serif;
 }
 
 /* Mobile: stray wide content must never create page-level sideways scroll
@@ -32,58 +41,199 @@ body {
 }
 
 body {
-  background:
-    radial-gradient(
-      120% 90% at 50% -10%,
-      rgba(124, 45, 62, 0.14),
-      transparent 60%
-    ),
-    var(--color-base);
+  background: var(--color-base);
   color: var(--color-ink);
   font-family: var(--font-sans);
 }
 
-/* Suede grain: a whisper of texture over every surface */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.35;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
+/* Kept from the old theme: every direct child of <body> is its own stacking
+   context, which is what the fixed safety bar, the SOS takeover and the toast
+   layer currently order themselves against. The texture overlay that
+   originally needed it is gone; the stacking order is deliberately unchanged. */
 body > * {
   position: relative;
   z-index: 1;
 }
 
-/* Serif display headings */
+/* Display face (Manrope, loaded in app/layout.tsx). Family only — heading
+   weight and tracking stay in the utilities so a page can still override. */
 .font-display {
   font-family: var(--font-display);
 }
 
-/* Shared surfaces — velvet: soft sheen from above, plush shadow below */
-.card {
-  @apply rounded-2xl border border-hairline;
-  background:
-    linear-gradient(170deg, rgba(250, 247, 242, 0.03), transparent 45%),
-    var(--color-surface);
-  box-shadow:
-    0 1px 0 rgba(250, 247, 242, 0.04) inset,
-    0 18px 40px -24px rgba(0, 0, 0, 0.7);
+/* Tight headings, no italics. Element selectors on purpose: any tracking-*
+   utility on the element still wins. */
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.02em;
 }
 
-/* Deep velvet panel for hero/feature moments */
-.velvet {
+/* ---------------------------------------------------------------------------
+   Cascade note (read before editing anything below).
+
+   These component classes are UNLAYERED, so they beat Tailwind's utilities
+   (which live in @layer utilities) no matter the specificity. That is what we
+   want for structure — a `.btn` must stay a `.btn` shape. It is NOT what we
+   want for colour: the codebase is full of `card border-warn/40`,
+   `btn-outline text-success`, `hover:border-brand/40` and, in the SOS
+   takeover, `border-white/60 text-white`, all of which are the author asking
+   for a different colour on this one element.
+
+   So: every COLOUR default sits in @layer components (a utility on the element
+   wins), and everything else — radius, padding, type scale, shadow — stays
+   unlayered (a stray utility cannot resize a button).
+--------------------------------------------------------------------------- */
+@layer components {
+  .card {
+    border-color: var(--color-hairline);
+    background-color: var(--color-surface);
+  }
+
+  .input {
+    border-color: var(--color-hairline);
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+  }
+
+  .btn-primary {
+    background-color: var(--color-brand);
+    color: #ffffff;
+  }
+
+  .btn-primary:hover {
+    background-color: var(--color-brand-soft);
+  }
+
+  /* Transparent, not white: outline buttons also appear on the red SOS
+     takeover and inside .panel-brand, where a white fill would swallow the
+     white label. On a white card the result is identical. */
+  .btn-outline {
+    border-color: var(--color-hairline);
+    background-color: transparent;
+    color: var(--color-ink);
+  }
+
+  .btn-outline:hover {
+    border-color: color-mix(in srgb, var(--color-brand) 50%, transparent);
+    color: var(--color-brand);
+  }
+
+  .btn-ghost {
+    color: var(--color-muted);
+  }
+
+  .btn-ghost:hover {
+    background-color: var(--color-raised);
+    color: var(--color-ink);
+  }
+
+  .btn-danger {
+    border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+    background-color: transparent;
+    color: var(--color-danger);
+  }
+
+  .btn-danger:hover {
+    background-color: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  }
+}
+
+/* Shared surfaces */
+.card {
+  @apply rounded-xl border;
+  box-shadow:
+    0 1px 2px rgba(22, 20, 15, 0.04),
+    0 10px 30px -18px rgba(22, 20, 15, 0.15);
+}
+
+/* Opt-in hover lift — only for cards that are themselves a link or a button. */
+.card-interactive {
+  @apply transition-all;
+}
+
+.card-interactive:hover {
+  border-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
+  box-shadow:
+    0 1px 2px rgba(22, 20, 15, 0.05),
+    0 18px 36px -20px rgba(22, 20, 15, 0.22);
+  transform: translateY(-1px);
+}
+
+/* Deep green panel for hero / feature moments. Everything inside sits on a
+   dark ground, so the ink/muted/faint text utilities are re-pointed to white
+   here instead of being overridden at every call site. */
+.panel-brand {
   background:
-    linear-gradient(170deg, rgba(250, 247, 242, 0.04), transparent 50%),
     radial-gradient(
-      130% 100% at 50% 0%,
-      rgba(124, 45, 62, 0.35),
-      var(--color-velvet) 70%
-    );
+      120% 120% at 0% 0%,
+      color-mix(in srgb, var(--color-brand-soft) 85%, transparent),
+      transparent 55%
+    ),
+    linear-gradient(155deg, var(--color-brand) 0%, #0a3a2a 65%, #12100c 100%);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.panel-brand .text-ink,
+.panel-brand .text-brand,
+.panel-brand .text-brand-soft {
+  color: #ffffff;
+}
+
+.panel-brand .text-muted,
+.panel-brand .text-faint {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.panel-brand .text-gold,
+.panel-brand .text-gold-deep {
+  color: var(--color-gold-soft);
+}
+
+.panel-brand .border-hairline,
+.panel-brand .hairline-top {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Light chips (a neutral Badge, an inset note) would be white-on-white here. */
+.panel-brand .bg-raised,
+.panel-brand .bg-surface {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+/* A green button on a green panel disappears — invert the CTA. */
+.panel-brand .btn-primary {
+  background: #ffffff;
+  color: var(--color-brand);
+  box-shadow: 0 10px 22px -14px rgba(0, 0, 0, 0.6);
+}
+
+.panel-brand .btn-primary:hover {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-brand);
+}
+
+.panel-brand .btn-outline {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: transparent;
+  color: #ffffff;
+}
+
+.panel-brand .btn-outline:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.7);
+  color: #ffffff;
+}
+
+.panel-brand .btn-ghost {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.panel-brand .btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
 }
 
 .hairline-top {
@@ -92,7 +242,12 @@ body > * {
 
 /* Form controls */
 .input {
-  @apply w-full rounded-xl border border-hairline bg-raised px-4 py-2.5 text-sm text-ink placeholder:text-faint outline-none transition-colors focus:border-gold/60;
+  @apply w-full rounded-xl border px-4 py-2.5 text-sm placeholder:text-faint outline-none transition-colors;
+}
+
+.input:focus {
+  border-color: color-mix(in srgb, var(--color-brand) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 22%, transparent);
 }
 
 .label {
@@ -101,35 +256,24 @@ body > * {
 
 /* Buttons — .btn is the shared base, variants layer on top */
 .btn,
-.btn-gold,
+.btn-primary,
 .btn-outline,
 .btn-ghost,
 .btn-danger {
   @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50;
 }
 
-.btn-gold {
-  @apply text-base;
-  background: linear-gradient(180deg, var(--color-gold-soft), var(--color-gold));
+/* Colours for these four live in the @layer components block near the top so
+   a utility on the element can override them. */
+.btn-primary {
   box-shadow:
-    0 1px 0 rgba(250, 247, 242, 0.35) inset,
-    0 10px 24px -12px rgba(214, 178, 94, 0.55);
+    0 1px 2px rgba(22, 20, 15, 0.08),
+    0 10px 22px -14px rgba(11, 107, 74, 0.65);
 }
 
-.btn-gold:hover {
-  filter: brightness(1.06);
-}
-
-.btn-outline {
-  @apply border border-hairline text-ink hover:border-gold/50 hover:text-gold-soft;
-}
-
-.btn-ghost {
-  @apply text-muted hover:bg-raised hover:text-ink;
-}
-
+.btn-outline,
 .btn-danger {
-  @apply border border-danger/40 text-danger hover:bg-danger/10;
+  @apply border;
 }
 
 /* ---------------------------------------------------------------------------
@@ -146,7 +290,7 @@ body > * {
   background: color-mix(in srgb, var(--color-surface) 94%, transparent);
   backdrop-filter: blur(12px);
   padding-bottom: env(safe-area-inset-bottom, 0);
-  box-shadow: 0 -12px 32px -18px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 -10px 30px -18px rgba(22, 20, 15, 0.35);
 }
 
 /* Room to breathe under content on pages that carry the bar. */
@@ -154,19 +298,31 @@ body > * {
   padding-bottom: 11rem;
 }
 
-/* Subtle gold shimmer divider used on marketing pages */
-.gold-line {
+/* Subtle brand divider used on marketing pages */
+.brand-line {
   height: 1px;
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(214, 178, 94, 0.5),
+    color-mix(in srgb, var(--color-brand) 45%, transparent),
     transparent
   );
 }
 
 ::selection {
-  background: rgba(214, 178, 94, 0.3);
+  background: color-mix(in srgb, var(--color-brand) 20%, transparent);
+  color: var(--color-ink);
+}
+
+/* Keyboard focus. :where() keeps specificity at 0 so component styles still
+   win; .input draws its own ring above. */
+:where(a, button, [role="button"], summary):focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+.panel-brand :where(a, button, [role="button"]):focus-visible {
+  outline-color: #ffffff;
 }
 
 @media (prefers-reduced-motion: reduce) {

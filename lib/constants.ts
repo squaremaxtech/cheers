@@ -109,12 +109,12 @@ export const JOB_MATCH_MODES = [
   {
     value: "manual",
     label: "I'll choose",
-    hint: "Offers collect on your request; you pick the worker you want.",
+    hint: "Offers collect on your request; you pick the professional you want.",
   },
   {
     value: "first_accept",
     label: "Instant — first to accept",
-    hint: "The first approved worker to accept your budget (or less) is booked on the spot.",
+    hint: "The first professional to accept your budget (or less) is booked on the spot.",
   },
   {
     value: "lowest_price",
@@ -408,10 +408,16 @@ export const CHAT_SEND_PER_MINUTE = 25;
 export const CHAT_IMAGES_PER_HOUR = 20;
 export const CHAT_NEW_ROOMS_PER_DAY = 15;
 
-// Where would-be workers apply — worker signup itself is invite-only.
-export const WORKER_CONTACT_EMAIL = "general@cheersja.com";
+// Public contact addresses (REFACTOR-PLAN §6). Owner can change them here;
+// every page, email and legal document reads these values.
+export const CONTACT_EMAILS = {
+  hello: "hello@cheersja.com",
+  support: "support@cheersja.com",
+  safety: "safety@cheersja.com",
+} as const;
 
-// ID documents accepted for customer identity verification.
+// ID documents accepted for identity verification (customers and
+// professionals both submit the same set).
 export const ID_DOCUMENT_TYPES = [
   { value: "drivers_license", label: "Driver's licence" },
   { value: "passport", label: "Passport" },

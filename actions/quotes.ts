@@ -10,10 +10,12 @@ import { claimBookingSlot, parseBookingStart } from "@/lib/bookings";
 import { QUOTE_EXPIRY_DAYS, QUOTES_PER_DAY } from "@/lib/constants";
 import { publicGigConditions } from "@/lib/gigs";
 import { guardErrorMessage, requireUser, requireWorker } from "@/lib/guards";
+import { MEMBERSHIP_REQUIRED, hasMemberAccess } from "@/lib/membership";
 import { notify } from "@/lib/notify";
+import { ONBOARDING_REQUIRED, customerNeedsOnboarding } from "@/lib/onboarding";
+import { canSeePremium, viewerPremium } from "@/lib/premium";
 import { rateLimit } from "@/lib/rate-limit";
 import { workerHasBlocked } from "@/lib/safety/risk";
-import { isCustomerVerified } from "@/lib/verification";
 import { publicWorkerConditions } from "@/lib/workers";
 import {
   quoteAcceptSchema,
@@ -26,7 +28,7 @@ import type { ActionResult, QuoteRow } from "@/types";
 // The quote loop for quote-mode gigs (plumbers, engineers — anyone who can't
 // publish one fixed price): customer describes the job -> worker sends ONE
 // priced offer -> customer accepts (which creates the booking, already
-// 'accepted') or declines. Single round by design; the Chat Pass stays the
+// 'accepted') or declines. Single round by design; the membership stays the
 // only doorway to free-form conversation.
 
 function generateQuoteCode(): string {
@@ -50,9 +52,9 @@ export async function requestQuote(
 ): Promise<ActionResult<{ quoteId: string }>> {
   try {
     const user = await requireUser();
-    if (user.role === "customer" && !user.onboardedAt) {
-      return err("Finish setting up your account first.");
-    }
+    // Same gate order as booking (plan §2.3) — a quote ends in a booking.
+    if (customerNeedsOnboarding(user)) return err(ONBOARDING_REQUIRED);
+    if (!(await hasMemberAccess(user.id))) return err(MEMBERSHIP_REQUIRED);
     const parsed = quoteRequestSchema.safeParse(input);
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
     const data = parsed.data;
@@ -68,7 +70,7 @@ export async function requestQuote(
       .where(
         and(
           eq(gigs.id, data.gigId),
-          ...publicGigConditions(),
+          ...publicGigConditions(viewerPremium(user)),
           ...publicWorkerConditions()
         )
       );
@@ -260,12 +262,9 @@ export async function acceptQuoteOffer(
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
     const data = parsed.data;
 
-    // Worker safety: same ID-verification gate as any booking.
-    if (user.role === "customer" && !(await isCustomerVerified(user.id))) {
-      return err(
-        "Your identity must be verified before you can book. Check your verification status on your dashboard."
-      );
-    }
+    // Accepting creates a booking, so it carries the booking gates.
+    if (customerNeedsOnboarding(user)) return err(ONBOARDING_REQUIRED);
+    if (!(await hasMemberAccess(user.id))) return err(MEMBERSHIP_REQUIRED);
 
     const [quote] = await db
       .select()
@@ -295,6 +294,11 @@ export async function acceptQuoteOffer(
       .innerJoin(workers, eq(gigs.workerId, workers.id))
       .where(eq(gigs.id, quote.gigId));
     if (!row || row.worker.suspended) return err("This gig is no longer available.");
+    // Premium access revoked since the quote went out: the gig reads as gone
+    // rather than admitting it exists.
+    if (row.gig.premium && !canSeePremium(user)) {
+      return err("This gig is no longer available.");
+    }
     // A block placed after the offer went out still wins — same silence as
     // createBooking (the customer just sees "unavailable").
     if (await workerHasBlocked(row.worker.id, user.id)) {

@@ -34,10 +34,10 @@ export default async function BookingsPage() {
         <div className="mt-6">
           <EmptyState
             title="No bookings yet"
-            hint="Find someone extraordinary and make your first booking."
+            hint="Find the right professional and make your first booking."
             action={
-              <Link href="/browse" className="btn-gold">
-                Browse workers
+              <Link href="/browse" className="btn-primary">
+                Browse services
               </Link>
             }
           />
@@ -48,7 +48,7 @@ export default async function BookingsPage() {
             <Link
               key={booking.id}
               href={`/bookings/${booking.id}`}
-              className="card flex flex-wrap items-center justify-between gap-3 p-5 transition-colors hover:border-gold/40"
+              className="card flex flex-wrap items-center justify-between gap-3 p-5 transition-colors hover:border-brand/40"
             >
               <div>
                 <p className="text-sm font-medium text-ink">
@@ -61,7 +61,7 @@ export default async function BookingsPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-sm text-gold">
+                <span className="text-sm text-gold-deep">
                   {formatCents(
                     booking.priceCents + booking.addonsCents + booking.tipCents
                   )}

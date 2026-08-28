@@ -53,8 +53,9 @@ export async function requireStaff(): Promise<UserRow> {
   return requireRole("admin", "support");
 }
 
-// Customer identity verifications: admins and support supervisors review
-// and decide. Plain customer support may look, drivers get nothing.
+// Identity verifications (customers AND professionals): admins and support
+// supervisors review and decide. Plain customer support may look, drivers
+// get nothing.
 export async function requireVerificationReviewer(): Promise<UserRow> {
   const user = await requireUser();
   if (user.role === "admin") return user;

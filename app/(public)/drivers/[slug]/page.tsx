@@ -167,7 +167,7 @@ export default async function DriverProfilePage(
                       <p className="text-sm font-medium text-ink">
                         {r.riderName?.split(" ")[0] ?? "Rider"}
                       </p>
-                      <span className="text-sm text-gold">
+                      <span className="text-sm text-gold-deep">
                         {"★".repeat(r.rating)}
                         <span className="text-hairline">
                           {"★".repeat(5 - r.rating)}
@@ -190,7 +190,7 @@ export default async function DriverProfilePage(
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="card p-6">
             <p className="text-sm text-muted">Rides with {driver.displayName}</p>
-            <p className="font-display mt-1 text-2xl text-gold">
+            <p className="font-display mt-1 text-2xl text-gold-deep">
               You name the price
             </p>
             <p className="mt-3 text-sm leading-6 text-muted">
@@ -208,7 +208,7 @@ export default async function DriverProfilePage(
                   `minimum ${formatCents(driver.minFareCents)}`}
               </p>
             )}
-            <Link href={requestHref} className="btn-gold mt-6 w-full">
+            <Link href={requestHref} className="btn-primary mt-6 w-full">
               {viewer ? "Request a ride" : "Sign in to request a ride"}
             </Link>
             <p className="mt-3 text-center text-[11px] text-faint">

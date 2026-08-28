@@ -135,7 +135,7 @@ export default function DriverVerificationForm({
         once reviewed.
       </p>
 
-      <button type="submit" className="btn-gold" disabled={saving}>
+      <button type="submit" className="btn-primary" disabled={saving}>
         {saving ? "Submitting…" : "Submit for review"}
       </button>
     </form>

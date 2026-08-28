@@ -78,7 +78,7 @@ export default function SafetySettings({ hasCancelPin }: { hasCancelPin: boolean
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button type="submit" className="btn-gold" disabled={busy || pin.length !== 4}>
+        <button type="submit" className="btn-primary" disabled={busy || pin.length !== 4}>
           Save code
         </button>
         {hasCancelPin && (

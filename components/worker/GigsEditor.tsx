@@ -23,10 +23,14 @@ export default function GigsEditor({
   categories,
   gigs,
   addons,
+  premiumProvider,
 }: {
   categories: GigCategoryRow[];
   gigs: GigRow[];
   addons: GigAddonRow[];
+  // Admin-granted (plan §1.4). Only a premium provider sees the premium
+  // toggle; the server forces premium = false for everyone else either way.
+  premiumProvider: boolean;
 }) {
   // First visit with no gigs: open the create form straight away.
   const [creating, setCreating] = useState(gigs.length === 0);
@@ -46,7 +50,7 @@ export default function GigsEditor({
         {!atLimit && (
           <button
             type="button"
-            className={creating ? "btn-outline" : "btn-gold"}
+            className={creating ? "btn-outline" : "btn-primary"}
             onClick={() => setCreating((v) => !v)}
           >
             {creating ? "Close" : "+ New gig"}
@@ -58,10 +62,14 @@ export default function GigsEditor({
         <div className="card border-gold/30 p-5">
           <h2 className="font-display text-lg text-ink">New gig</h2>
           <p className="mt-1 text-xs text-muted">
-            Approved workers&apos; gigs go live immediately — make it count.
+            Your gigs go live the moment you publish them — make it count.
           </p>
           <div className="mt-4">
-            <GigForm categories={categories} onDone={() => setCreating(false)} />
+            <GigForm
+              categories={categories}
+              premiumProvider={premiumProvider}
+              onDone={() => setCreating(false)}
+            />
           </div>
         </div>
       )}
@@ -80,6 +88,7 @@ export default function GigsEditor({
               gig={gig}
               categories={categories}
               addons={addons.filter((a) => a.gigId === gig.id)}
+              premiumProvider={premiumProvider}
             />
           ))}
         </div>
@@ -92,10 +101,12 @@ function GigCard({
   gig,
   categories,
   addons,
+  premiumProvider,
 }: {
   gig: GigRow;
   categories: GigCategoryRow[];
   addons: GigAddonRow[];
+  premiumProvider: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const categoryName =
@@ -123,11 +134,12 @@ function GigCard({
             {categoryName} · {priceLabel} · {gig.durationMinutes} min
           </p>
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {gig.premium && <Badge tone="gold">Premium</Badge>}
           {gig.suspended && <Badge tone="danger">Suspended by admin</Badge>}
           <span
             className={`rounded-full px-3 py-1 text-[11px] uppercase tracking-wider ${
-              gig.active ? "bg-gold/15 text-gold" : "bg-raised text-faint"
+              gig.active ? "bg-gold/15 text-gold-deep" : "bg-raised text-faint"
             }`}
           >
             {gig.active ? "Active" : "Paused"}
@@ -138,7 +150,11 @@ function GigCard({
       {open && (
         <>
           <div className="mt-4">
-            <GigForm gig={gig} categories={categories} />
+            <GigForm
+              gig={gig}
+              categories={categories}
+              premiumProvider={premiumProvider}
+            />
           </div>
           {/* Add-ons live outside the gig form to avoid nested <form>s. */}
           <AddonsEditor gigId={gig.id} addons={addons} />
@@ -152,10 +168,12 @@ function GigCard({
 function GigForm({
   gig,
   categories,
+  premiumProvider,
   onDone,
 }: {
   gig?: GigRow;
   categories: GigCategoryRow[];
+  premiumProvider: boolean;
   onDone?: () => void;
 }) {
   const router = useRouter();
@@ -166,6 +184,7 @@ function GigForm({
     gig?.safetyMonitored ?? true
   );
   const [active, setActive] = useState(gig?.active ?? true);
+  const [premium, setPremium] = useState(gig?.premium ?? false);
   const [busy, setBusy] = useState(false);
   // A retired category disappears from the picker but the gig keeps it —
   // surface it so the select doesn't silently jump to something else.
@@ -191,6 +210,10 @@ function GigForm({
       durationMinutes: form.get("duration"),
       safetyMonitored,
       active,
+      // Only a premium provider can set this; createGig/updateGig force it
+      // back to false for anyone else (plan §1.4), so a revoked provider
+      // saving an old premium gig drops it back to a standard one.
+      premium: premiumProvider && premium,
     };
     setBusy(true);
     const res = gig
@@ -313,7 +336,7 @@ function GigForm({
               onClick={() => setPricingMode(mode)}
               className={`btn px-4 py-1.5 text-xs ${
                 pricingMode === mode
-                  ? "bg-gold text-base"
+                  ? "bg-brand text-white"
                   : "border border-hairline text-muted"
               }`}
             >
@@ -378,9 +401,17 @@ function GigForm({
         title="Active"
         hint="Paused gigs disappear from browse and can't be booked."
       />
+      {premiumProvider && (
+        <ToggleRow
+          on={premium}
+          onToggle={() => setPremium((v) => !v)}
+          title="Premium service"
+          hint="Visible only to premium members. If your premium status is removed, premium gigs are deactivated."
+        />
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" className="btn-gold" disabled={busy}>
+        <button type="submit" className="btn-primary" disabled={busy}>
           {busy ? "Saving…" : gig ? "Save changes" : "Publish gig"}
         </button>
         {gig && (
@@ -419,7 +450,7 @@ function ToggleRow({
         type="button"
         onClick={onToggle}
         className={`btn shrink-0 px-4 py-1.5 text-xs ${
-          on ? "bg-gold text-base" : "border border-hairline text-muted"
+          on ? "bg-brand text-white" : "border border-hairline text-muted"
         }`}
       >
         {on ? "On" : "Off"}
@@ -469,7 +500,7 @@ function AddonsEditor({
             >
               <span className="text-ink">
                 {a.name}{" "}
-                <span className="text-gold">+{formatCents(a.priceCents)}</span>
+                <span className="text-gold-deep">+{formatCents(a.priceCents)}</span>
                 {a.description && (
                   <span className="ml-2 text-xs text-faint">
                     {a.description}

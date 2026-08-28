@@ -26,7 +26,7 @@ export const metadata: Metadata = { title: "My Rides — Driver" };
 function RideRowCard({ ride, withControls }: { ride: RideRow; withControls: boolean }) {
   return (
     <div className="card space-y-3 p-5">
-      <Link href={`/rides/${ride.id}`} className="block hover:text-gold-soft">
+      <Link href={`/rides/${ride.id}`} className="block hover:text-brand-soft">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-medium text-ink">
             {ride.pickupAddress}
@@ -39,7 +39,7 @@ function RideRowCard({ ride, withControls }: { ride: RideRow; withControls: bool
         </div>
         <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
           <span className="text-faint">{ride.code}</span>
-          <span className="text-gold">
+          <span className="text-gold-deep">
             {formatCents(ride.finalFareCents ?? ride.offerCents)} cash
           </span>
           <span>
@@ -134,7 +134,7 @@ export default async function DriverRidesPage() {
               title="No matched rides"
               hint="Accept a request (or have a rider accept your offer) and it lands here."
               action={
-                <Link href="/driver/requests" className="btn-gold">
+                <Link href="/driver/requests" className="btn-primary">
                   Browse open requests
                 </Link>
               }
@@ -163,7 +163,7 @@ export default async function DriverRidesPage() {
               <Link
                 key={a.bookingId}
                 href={`/bookings/${a.bookingId}`}
-                className="card flex flex-wrap items-center justify-between gap-3 p-5 transition-colors hover:border-gold/40"
+                className="card flex flex-wrap items-center justify-between gap-3 p-5 transition-colors hover:border-brand/40"
               >
                 <div>
                   <p className="text-sm font-medium text-ink">

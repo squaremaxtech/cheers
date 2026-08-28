@@ -204,14 +204,14 @@ export default function RideRequestForm({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className={schedule ? "btn-outline" : "btn-gold"}
+            className={schedule ? "btn-outline" : "btn-primary"}
             onClick={() => setSchedule(false)}
           >
             As soon as possible
           </button>
           <button
             type="button"
-            className={schedule ? "btn-gold" : "btn-outline"}
+            className={schedule ? "btn-primary" : "btn-outline"}
             onClick={() => setSchedule(true)}
           >
             Schedule for later
@@ -271,7 +271,7 @@ export default function RideRequestForm({
         </div>
       </fieldset>
 
-      <button type="submit" className="btn-gold w-full" disabled={submitting}>
+      <button type="submit" className="btn-primary w-full" disabled={submitting}>
         {submitting ? "Posting request…" : "Request ride"}
       </button>
     </form>

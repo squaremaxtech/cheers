@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { drivers, gigs, workers } from "@/db/schema";
 
 // "Maxx!" -> "maxx", "Déjà Vu" -> "deja-vu". Falls back to "worker" so a slug
-// is never empty (stage names are min 2 chars but could be all symbols).
+// is never empty (display names are min 2 chars but could be all symbols).
 export function slugify(input: string): string {
   const slug = input
     .normalize("NFKD")
@@ -23,7 +23,7 @@ export async function uniqueWorkerSlug(
 ): Promise<string> {
   let base = slugify(stageName);
   // Route lookups treat UUID-shaped params as worker ids — a UUID-shaped
-  // stage name would produce an unreachable slug, so suffix it.
+  // display name would produce an unreachable slug, so suffix it.
   if (isUuid(base)) base = `${base}-w`;
   let candidate = base;
   for (let n = 2; ; n++) {

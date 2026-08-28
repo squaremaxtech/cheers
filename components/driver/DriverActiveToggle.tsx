@@ -35,7 +35,7 @@ export default function DriverActiveToggle({ active }: { active: boolean }) {
       </div>
       <button
         type="button"
-        className={active ? "btn-outline" : "btn-gold"}
+        className={active ? "btn-outline" : "btn-primary"}
         disabled={working}
         onClick={toggle}
       >

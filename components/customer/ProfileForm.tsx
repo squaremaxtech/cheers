@@ -46,7 +46,7 @@ export default function ProfileForm({
           className="input"
         />
       </div>
-      <button type="submit" className="btn-gold" disabled={saving}>
+      <button type="submit" className="btn-primary" disabled={saving}>
         {saving ? "Saving…" : "Save changes"}
       </button>
     </form>

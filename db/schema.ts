@@ -688,12 +688,13 @@ export const payouts = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Chat pass (memberships table, repurposed)
+// Cheers Membership (memberships table)
 // ---------------------------------------------------------------------------
 
-// The $5/month Chat Pass: unlocks messaging any worker. Browsing is free,
-// booking never requires it, and a booked customer/worker pair can always
-// chat (coordination is never paywalled — lib/chat-access.ts).
+// The monthly Cheers Membership: unlocks messaging AND booking for customers
+// (plan §2.3; lib/membership.ts hasMemberAccess). Browsing is free, workers
+// never need one, and a booked customer/worker pair can always chat
+// (coordination is never paywalled — lib/chat-access.ts).
 //
 // Until Stripe is live, access comes from the FREE_ACCESS_UNTIL launch flag.
 // Once Stripe Billing runs it, status/currentPeriodEnd are webhook-driven and
