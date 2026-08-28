@@ -1,7 +1,14 @@
-import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { drivers } from "@/db/schema";
-import type { DriverBrowseFilters, DriverRow, PublicDriver } from "@/types";
+import { drivers, notifications } from "@/db/schema";
+import { formatCents } from "@/lib/constants";
+import { sendPush } from "@/lib/safety/push";
+import type {
+  DriverBrowseFilters,
+  DriverRow,
+  PublicDriver,
+  RideRow,
+} from "@/types";
 
 // The ONLY columns public queries may select — userId and stripeAccountId
 // stay private (same discipline as publicWorkerColumns).
@@ -82,4 +89,57 @@ export function vehicleLabel(d: {
   const year = d.vehicleYear ? ` ${d.vehicleYear}` : "";
   const plate = d.vehiclePlate ? ` · ${d.vehiclePlate}` : "";
   return `${d.vehicleColor} ${d.vehicleMake} ${d.vehicleModel}${year}${plate}`;
+}
+
+// A new ride request, pushed to every driver who could take it. The live
+// request board (lib/realtime.ts publishDriverBoard) only reaches drivers with
+// that page open — which is nobody, most of the time, and least of all for a
+// scheduled ride to a booking. Nothing here is more than the board already
+// shows a biddable driver.
+//
+// Side effect: never throws. A ride must not fail to post because a push
+// endpoint is down.
+export async function notifyDriversOfNewRide(ride: RideRow): Promise<void> {
+  try {
+    const rows = await db
+      .select({ userId: drivers.userId })
+      .from(drivers)
+      .where(and(...publicDriverConditions(), ne(drivers.userId, ride.riderUserId)));
+    if (rows.length === 0) return;
+
+    const when = ride.scheduledAt
+      ? ride.scheduledAt.toLocaleString("en-US", {
+          weekday: "short",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : "ASAP";
+    const summary = `${when} · ${ride.pickupAddress} → ${ride.dropoffAddress} · rider offers ${formatCents(ride.offerCents)}`;
+
+    await db.insert(notifications).values(
+      rows.map((r) => ({
+        userId: r.userId,
+        type: "ride_requested",
+        title: `New ride request ${ride.code}`,
+        body: `${summary}. Open your request board to accept it or send your own fare.`,
+        meta: { rideId: ride.id },
+      }))
+    );
+    await sendPush(
+      rows.map((r) => r.userId),
+      {
+        title: "New ride request on Cheers",
+        body: summary,
+        url: "/driver/requests",
+        // Per-ride tag so separate requests don't collapse into one another
+        // on the lock screen.
+        tag: `ride-${ride.id}`,
+      }
+    );
+  } catch (error) {
+    console.error(
+      "notifyDriversOfNewRide failed:",
+      error instanceof Error ? error.message : error
+    );
+  }
 }

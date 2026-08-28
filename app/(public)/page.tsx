@@ -6,16 +6,20 @@ import {
   membershipPriceCents,
   PLATFORM_FEE_PERCENT,
 } from "@/lib/constants";
+import { getUserRow } from "@/lib/auth";
 import { getGigCategories } from "@/lib/gigs";
 import { freeAccessActive } from "@/lib/membership";
+import { viewerPremium } from "@/lib/premium";
 import { getPublicWorkers } from "@/lib/workers";
 
-// The public front door. Everything here is read-only and cached-friendly:
-// getPublicWorkers() already hides premium-only professionals, so a signed-out
-// visitor never sees a trace of the premium tier (plan §1.3).
+// The public front door. getPublicWorkers() takes the viewer's premium rail,
+// so a signed-out visitor (or any standard member) never sees a trace of the
+// premium tier, while a premium member's featured list includes the
+// professionals who only offer premium services (plan §1.3).
 export default async function HomePage() {
+  const viewer = viewerPremium(await getUserRow());
   const [featured, categories] = await Promise.all([
-    getPublicWorkers({ limit: 6 }),
+    getPublicWorkers(viewer, { limit: 6 }),
     getGigCategories(),
   ]);
 

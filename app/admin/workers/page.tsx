@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { users, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import AdminWorkerActions from "@/components/admin/AdminWorkerActions";
+import { getUserRow } from "@/lib/auth";
 import { formatCents } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Professionals — Admin" };
@@ -13,6 +14,9 @@ export const metadata: Metadata = { title: "Professionals — Admin" };
 // profile, suspend the account). The users join carries the optional
 // Verified ID badge, which gates nothing.
 export default async function AdminWorkersPage() {
+  // Desk support may hide a profile; suspending the account is admin-only.
+  const viewer = await getUserRow();
+  const isAdmin = viewer?.role === "admin";
   const rows = await db
     .select({ worker: workers, idVerifiedAt: users.idVerifiedAt })
     .from(workers)
@@ -79,6 +83,7 @@ export default async function AdminWorkersPage() {
                     workerId={w.id}
                     suspended={w.suspended}
                     active={w.active}
+                    isAdmin={isAdmin}
                   />
                 </td>
               </tr>

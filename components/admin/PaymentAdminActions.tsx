@@ -10,21 +10,28 @@ import type { ActionResult, PaymentRow } from "@/types";
 // Renders refund (for a payment) or mark-paid (for a payout) controls.
 // payoutOwed = negative payout (cash week — the worker owes the platform),
 // where "paid" means the fee settlement was collected/deducted.
+//
+// Desk support may resolve a PENDING payment (the stuck-cash remedy); money
+// leaving the platform — refunds and payouts — is admin-only, so those
+// controls are not rendered for them at all rather than failing on click.
 export default function PaymentAdminActions({
   paymentId,
   status,
   payoutId,
   payoutOwed = false,
+  isAdmin,
 }: {
   paymentId?: string;
   status?: PaymentRow["status"];
   payoutId?: string;
   payoutOwed?: boolean;
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
   if (payoutId) {
+    if (!isAdmin) return null;
     return (
       <button
         type="button"
@@ -106,7 +113,7 @@ export default function PaymentAdminActions({
     );
   }
 
-  if (status !== "succeeded") return null;
+  if (status !== "succeeded" || !isAdmin) return null;
 
   return (
     <button

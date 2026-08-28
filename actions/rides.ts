@@ -5,7 +5,10 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { bookings, drivers, rideOffers, rideReviews, rides, workers } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
-import { publicDriverConditions } from "@/lib/drivers";
+import {
+  notifyDriversOfNewRide,
+  publicDriverConditions,
+} from "@/lib/drivers";
 import {
   RIDE_OFFERS_PER_MINUTE,
   RIDE_REQUEST_OPEN_HOURS,
@@ -126,8 +129,10 @@ export async function requestRide(
       })
       .returning();
 
-    // Drivers learn about it from the live request board — no email fan-out.
+    // The live board wakes drivers who have it open; the fan-out reaches the
+    // rest (in-app + push, no email).
     publishDriverBoard();
+    await notifyDriversOfNewRide(ride);
 
     revalidatePath("/rides");
     return ok({ rideId: ride.id });

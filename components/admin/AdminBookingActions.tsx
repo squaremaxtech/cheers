@@ -12,14 +12,19 @@ import {
 } from "@/actions/bookings";
 import type { ActionResult, BookingStatus } from "@/types";
 
+// Force-cancel is the desk remedy for a complaint and is available to desk
+// support; deciding, completing and reassigning a booking on the parties'
+// behalf stays with admins, so those controls are not rendered for support.
 export default function AdminBookingActions({
   bookingId,
   status,
   workers,
+  isAdmin,
 }: {
   bookingId: string;
   status: BookingStatus;
   workers: { id: string; stageName: string }[];
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -47,7 +52,7 @@ export default function AdminBookingActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {status === "pending" && (
+      {isAdmin && status === "pending" && (
         <>
           <button
             type="button"
@@ -67,18 +72,19 @@ export default function AdminBookingActions({
           </button>
         </>
       )}
-      {(status === "accepted" ||
-        status === "confirmed" ||
-        status === "in_progress") && (
-        <button
-          type="button"
-          className="btn-primary px-3 py-1.5 text-xs"
-          disabled={busy}
-          onClick={() => run(() => completeBooking({ bookingId }), "Completed")}
-        >
-          Mark completed
-        </button>
-      )}
+      {isAdmin &&
+        (status === "accepted" ||
+          status === "confirmed" ||
+          status === "in_progress") && (
+          <button
+            type="button"
+            className="btn-primary px-3 py-1.5 text-xs"
+            disabled={busy}
+            onClick={() => run(() => completeBooking({ bookingId }), "Completed")}
+          >
+            Mark completed
+          </button>
+        )}
       <button
         type="button"
         className="btn-danger px-3 py-1.5 text-xs"
@@ -96,33 +102,35 @@ export default function AdminBookingActions({
         Force cancel
       </button>
 
-      <span className="ml-2 flex items-center gap-1">
-        <select
-          className="input w-40 py-1.5 text-xs"
-          value={reassignTo}
-          onChange={(e) => setReassignTo(e.target.value)}
-        >
-          <option value="">Reassign to…</option>
-          {workers.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.stageName}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="btn-outline px-3 py-1.5 text-xs"
-          disabled={busy || !reassignTo}
-          onClick={() =>
-            run(
-              () => reassignBooking({ bookingId, newWorkerId: reassignTo }),
-              "Reassigned"
-            )
-          }
-        >
-          Go
-        </button>
-      </span>
+      {isAdmin && (
+        <span className="ml-2 flex items-center gap-1">
+          <select
+            className="input w-40 py-1.5 text-xs"
+            value={reassignTo}
+            onChange={(e) => setReassignTo(e.target.value)}
+          >
+            <option value="">Reassign to…</option>
+            {workers.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.stageName}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn-outline px-3 py-1.5 text-xs"
+            disabled={busy || !reassignTo}
+            onClick={() =>
+              run(
+                () => reassignBooking({ bookingId, newWorkerId: reassignTo }),
+                "Reassigned"
+              )
+            }
+          >
+            Go
+          </button>
+        </span>
+      )}
     </div>
   );
 }

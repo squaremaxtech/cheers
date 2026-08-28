@@ -7,7 +7,13 @@ import { bookings, payments, workers } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
 import { writeAudit } from "@/lib/audit";
 import { transitionBooking } from "@/lib/bookings";
-import { guardErrorMessage, requireAdmin, requireUser, requireWorker } from "@/lib/guards";
+import {
+  guardErrorMessage,
+  requireAdmin,
+  requireDeskStaff,
+  requireUser,
+  requireWorker,
+} from "@/lib/guards";
 import { notify, notifyAdmins } from "@/lib/notify";
 import {
   createBookingCheckoutSession,
@@ -323,7 +329,7 @@ export async function adminResolvePendingPayment(
   input: unknown
 ): Promise<ActionResult<undefined>> {
   try {
-    const admin = await requireAdmin();
+    const actor = await requireDeskStaff();
     const parsed = adminPaymentStatusSchema.safeParse(input);
     if (!parsed.success) return err(ERR.badRequest);
 
@@ -361,15 +367,15 @@ export async function adminResolvePendingPayment(
       await transitionBooking({
         booking,
         to: "confirmed",
-        actorUserId: admin.id,
-        note: "payment marked collected by admin",
+        actorUserId: actor.id,
+        note: "payment marked collected by staff",
       });
     } else if (booking) {
       publishBooking(booking.id, bookingEventNow("payment"));
     }
 
     await writeAudit({
-      actorUserId: admin.id,
+      actorUserId: actor.id,
       action: `payment.${parsed.data.to === "succeeded" ? "mark_collected" : "void"}`,
       entity: "payments",
       entityId: payment.id,

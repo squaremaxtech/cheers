@@ -14,7 +14,8 @@ import {
 } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import { getUserRow } from "@/lib/auth";
-import { formatCents } from "@/lib/constants";
+import { formatCents, stripeConfigured } from "@/lib/constants";
+import { freeAccessStatus } from "@/lib/membership";
 import { statusTone } from "@/lib/status";
 
 export const metadata: Metadata = { title: "Admin" };
@@ -110,9 +111,32 @@ export default async function AdminDashboard() {
   const alertCount = openAlerts?.n ?? 0;
   const liveCount = liveSessions?.n ?? 0;
 
+  // Membership gates chat AND booking; with Stripe dormant the launch window
+  // is the only thing granting either, so a lapse closes the funnel entirely.
+  const freeAccess = freeAccessStatus(stripeConfigured());
+
   return (
     <div className="space-y-8">
       <h1 className="font-display text-2xl text-ink">Platform overview</h1>
+
+      {freeAccess.needsAttention && (
+        <Link
+          href="/admin/settings"
+          className="card flex items-center justify-between gap-3 border-danger/60 bg-danger/5 p-4 hover:border-danger"
+        >
+          <p className="text-sm text-ink">
+            <Badge tone="danger">Access</Badge>
+            <span className="ml-3">
+              {freeAccess.until === null
+                ? "FREE_ACCESS_UNTIL is not set — nobody can message or book"
+                : freeAccess.active
+                  ? `Free access ends in ${freeAccess.daysLeft} day${freeAccess.daysLeft === 1 ? "" : "s"} — after that nobody can message or book`
+                  : "Free access has ended — nobody can message or book"}
+            </span>
+          </p>
+          <span className="shrink-0 text-sm text-brand">Open settings →</span>
+        </Link>
+      )}
 
       {/* Safety comes first, above revenue. An open alert is the only thing on
           this page that can still be made worse by being seen late. */}

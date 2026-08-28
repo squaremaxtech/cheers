@@ -5,12 +5,16 @@ import { db } from "@/db";
 import { bookings, users, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import AdminBookingActions from "@/components/admin/AdminBookingActions";
+import { getUserRow } from "@/lib/auth";
 import { formatCents, formatTime12 } from "@/lib/constants";
 import { statusTone } from "@/lib/status";
 
 export const metadata: Metadata = { title: "Bookings — Admin" };
 
 export default async function AdminBookingsPage() {
+  // Desk support may force-cancel; the other overrides are admin-only.
+  const viewer = await getUserRow();
+  const isAdmin = viewer?.role === "admin";
   const [rows, allWorkers] = await Promise.all([
     db
       .select({
@@ -75,6 +79,7 @@ export default async function AdminBookingsPage() {
                 bookingId={booking.id}
                 status={booking.status}
                 workers={allWorkers}
+                isAdmin={isAdmin}
               />
             </div>
           </div>

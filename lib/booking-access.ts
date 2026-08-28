@@ -38,20 +38,26 @@ export async function loadBookingAccess(
   }
   if (user.role === "admin") return { booking, worker, viewerRole: "staff" };
 
+  // A marketplace driver (users.role = 'driver') reaches a booking ONLY
+  // through a dispatch assignment. This is deliberately OUTSIDE the support
+  // branch: drivers were a support sub-role in v2 and are a top-level role
+  // since, so nesting it under support made every dispatched driver a
+  // stranger to the job they had been given.
+  if (isDriver(user)) {
+    const [assignment] = await db
+      .select({ id: bookingDrivers.id })
+      .from(bookingDrivers)
+      .where(
+        and(
+          eq(bookingDrivers.bookingId, booking.id),
+          eq(bookingDrivers.driverUserId, user.id)
+        )
+      );
+    // An unassigned driver is a stranger to this booking.
+    return assignment ? { booking, worker, viewerRole: "driver" } : null;
+  }
+
   if (user.role === "support") {
-    if (isDriver(user)) {
-      const [assignment] = await db
-        .select({ id: bookingDrivers.id })
-        .from(bookingDrivers)
-        .where(
-          and(
-            eq(bookingDrivers.bookingId, booking.id),
-            eq(bookingDrivers.driverUserId, user.id)
-          )
-        );
-      // An unassigned driver is a stranger to this booking.
-      return assignment ? { booking, worker, viewerRole: "driver" } : null;
-    }
     // Desk support and safety monitors both monitor; anything narrower than
     // isSafetyDesk here would silently lock a role out of an emergency.
     if (isSafetyDesk(user)) return { booking, worker, viewerRole: "staff" };

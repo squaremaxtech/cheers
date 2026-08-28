@@ -53,6 +53,21 @@ export async function requireStaff(): Promise<UserRow> {
   return requireRole("admin", "support");
 }
 
+// The complaint desk: admins and DESK support (never safety monitors, never
+// drivers — isModeratingStaff is the one predicate for that set). These are
+// the remedies support needs to answer a customer without waiting for the
+// owner: resolve a stuck cash payment, take a listing down, hide a profile,
+// cancel a booking.
+//
+// Deliberately NOT the whole admin surface. Money leaving the platform
+// (refunds, payouts), premium grants and account suspension stay requireAdmin
+// — a desk account is the one most likely to be left logged in.
+export async function requireDeskStaff(): Promise<UserRow> {
+  const user = await requireUser();
+  if (isModeratingStaff(user)) return user;
+  throw new GuardError("forbidden");
+}
+
 // Identity verifications (customers AND professionals): admins and support
 // supervisors review and decide. Plain customer support may look, drivers
 // get nothing.

@@ -18,6 +18,61 @@
 - **Not visually verified.** Claude cannot reach the owner's database, so the app was
   never run. All UI was reviewed by reading. See "First look" below.
 
+## 2026-08-28 — post-build bug sweep (owner-directed)
+
+A review pass over the five business pillars (customer↔worker booking, drivers,
+support, billing, premium tier). Everything below is in the working tree,
+unmigrated and uncommitted like the rest.
+
+**Bugs found and fixed**
+1. `lib/booking-access.ts` — a dispatched driver could never open the booking
+   they were assigned to. `isDriver(user)` (role `driver`) was checked inside
+   `if (user.role === "support")`, a leftover from when driver was a support
+   sub-role, so the branch was unreachable and every dispatched driver 404'd on
+   the link `/driver/rides` gives them. The `viewerRole === "driver"` rendering
+   rules (no pricing, no PIN, no controls) were dead code as a result.
+2. `lib/workers.ts attachPrimaryPhotos` — selected every photo with no premium
+   rail, so a photo tagged to a PREMIUM gig could be the card image shown on the
+   home page, /favorites or a job-offer list to someone with no premium access.
+   It now takes the viewer and applies the same predicate as
+   `lib/gigs.ts gigPhotoMap` (untagged always visible; tagged inherits its gig).
+3. `lib/workers.ts getPublicWorkers` — hard-coded `gigs.premium = false`, so a
+   professional offering ONLY premium services was invisible in every
+   people-list even to a premium member. Now takes a required `PremiumViewer`.
+   Callers: `app/(public)/page.tsx`, `app/(customer)/requests/[id]/page.tsx`.
+
+**Owner decisions taken this session**
+- **Support = the complaint desk.** New `requireDeskStaff()` guard (admins +
+  desk support, never monitors/drivers). Desk support may now resolve a stuck
+  cash payment, take a gig down/restore it, hide/unhide a profile and
+  force-cancel a booking. Refunds, payouts, premium grants, account suspension
+  and the accept/decline/complete/reassign overrides stay `requireAdmin`, and
+  those controls are no longer RENDERED for support — previously every remedy
+  button on the admin pages was visible to them and failed on click.
+- **Free-access cliff surfaced, not automated.** No manual membership grant was
+  added (owner's call). Instead `freeAccessStatus()` drives a red banner on
+  `/admin` and `/admin/settings` from 30 days out, and whenever the window is
+  lapsed or unset while Stripe is dormant, because in that state the membership
+  gate silently closes booking, quotes and job posts platform-wide with no way
+  to pay through it. `env.example` carries the same warning.
+  **This remains the single biggest operational risk — keep FREE_ACCESS_UNTIL
+  ahead of today until Stripe is live.**
+- **Transport stays rider-initiated.** The flow the owner described already
+  existed end-to-end: the booking room offers "Need a lift to this booking?" to
+  the customer and the worker → `/rides/new?bookingId=…` (access-checked
+  dropoff prefill) → `requestRide` → drivers bid. The gap was the alert:
+  `publishDriverBoard()` only reaches drivers with the board page open, so
+  `notifyDriversOfNewRide()` (lib/drivers.ts) now fans a request out in-app +
+  push to every approved active driver, mirroring `notifyWorkersOfNewJob`.
+  Staff dispatch (`assignDriver`/`booking_drivers`) was KEPT — it has no UI,
+  but it is the access grant the safety escalation ladder relies on, and fix 1
+  makes it work if it is ever wired up.
+
+**Still open**
+- No UI calls `assignDriver`/`unassignDriver` (safety-desk dispatch).
+- No manual/comp membership grant exists (deliberate — see above).
+- Nothing has been run against a database; none of this is visually verified.
+
 ## How the build was done (2026-08-27 → 28)
 Three rounds of Opus agents with disjoint file ownership, orchestrated by a Fable session:
 1. **A1** server rules & gates (`actions/`, `lib/`, `schemas/`, `types.ts`, `app/api/`),

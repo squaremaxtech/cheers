@@ -16,7 +16,11 @@ import {
 import { BOOKING_DURATIONS_MINUTES } from "@/lib/constants";
 import { refundBookingPayments } from "@/lib/refunds";
 import { bookingEventNow, publishBooking } from "@/lib/realtime";
-import { guardErrorMessage, requireUser } from "@/lib/guards";
+import {
+  guardErrorMessage,
+  isModeratingStaff,
+  requireUser,
+} from "@/lib/guards";
 import type { ActionResult, BookingRow, TimeSlot, UserRow } from "@/types";
 import { MEMBERSHIP_REQUIRED, hasMemberAccess } from "@/lib/membership";
 import { notify, notifyAdmins } from "@/lib/notify";
@@ -57,7 +61,11 @@ async function loadBookingFor(user: UserRow, bookingId: string) {
   const isCustomer = booking.customerId === user.id;
   const isWorker = worker?.userId === user.id;
   const isAdmin = user.role === "admin";
-  return { booking, worker, isCustomer, isWorker, isAdmin };
+  // Desk support share the admin override ONLY where a complaint needs it
+  // (cancelBooking). Accepting, declining, completing and reassigning stay
+  // keyed on isAdmin.
+  const isStaff = isModeratingStaff(user);
+  return { booking, worker, isCustomer, isWorker, isAdmin, isStaff };
 }
 
 async function notifyBookingParties(
@@ -367,11 +375,11 @@ export async function cancelBooking(input: unknown): Promise<ActionResult<undefi
 
     const ctx = await loadBookingFor(user, parsed.data.bookingId);
     if (!ctx) return err(ERR.notFound);
-    if (!ctx.isCustomer && !ctx.isWorker && !ctx.isAdmin) return err(ERR.forbidden);
-    if (!canTransition(ctx.booking.status, "cancelled", ctx.isAdmin)) {
+    if (!ctx.isCustomer && !ctx.isWorker && !ctx.isStaff) return err(ERR.forbidden);
+    if (!canTransition(ctx.booking.status, "cancelled", ctx.isStaff)) {
       return err("This booking can no longer be cancelled.");
     }
-    if (ctx.isCustomer && !ctx.isAdmin && !customerCanCancel(ctx.booking)) {
+    if (ctx.isCustomer && !ctx.isStaff && !customerCanCancel(ctx.booking)) {
       return err("Bookings can only be cancelled at least 5 hours before the start time.");
     }
 
@@ -385,7 +393,7 @@ export async function cancelBooking(input: unknown): Promise<ActionResult<undefi
       actorUserId: user.id,
       note: parsed.data.reason,
     });
-    if (ctx.isAdmin && !ctx.isCustomer && !ctx.isWorker) {
+    if (ctx.isStaff && !ctx.isCustomer && !ctx.isWorker) {
       await writeAudit({
         actorUserId: user.id,
         action: "booking.force_cancel",

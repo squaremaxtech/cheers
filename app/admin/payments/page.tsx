@@ -5,12 +5,16 @@ import { bookings, payments, payouts, rides, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import PaymentAdminActions from "@/components/admin/PaymentAdminActions";
 import PayoutControls from "@/components/admin/PayoutControls";
+import { getUserRow } from "@/lib/auth";
 import { formatCents } from "@/lib/constants";
 import { payoutContribution } from "@/lib/payouts";
 
 export const metadata: Metadata = { title: "Payments — Admin" };
 
 export default async function AdminPaymentsPage() {
+  // Desk support read this page; refunds and payouts are admin-only.
+  const viewer = await getUserRow();
+  const isAdmin = viewer?.role === "admin";
   const [paymentRows, payoutRows, uncovered] = await Promise.all([
     // A payment belongs to a booking OR a ride (bookingId is nullable) —
     // left-join both so ride card payments show up too once Stripe is live.
@@ -203,6 +207,7 @@ export default async function AdminPaymentsPage() {
                     <PaymentAdminActions
                       paymentId={payment.id}
                       status={payment.status}
+                      isAdmin={isAdmin}
                     />
                   </td>
                 </tr>
@@ -281,7 +286,9 @@ export default async function AdminPaymentsPage() {
       <div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-xl text-ink">Weekly payouts</h2>
-          <PayoutControls defaultStart={defaultStart} defaultEnd={defaultEnd} />
+          {isAdmin && (
+            <PayoutControls defaultStart={defaultStart} defaultEnd={defaultEnd} />
+          )}
         </div>
         <div className="card mt-4 overflow-x-auto p-2">
           <table className="w-full min-w-[640px] text-sm">
@@ -336,6 +343,7 @@ export default async function AdminPaymentsPage() {
                         <PaymentAdminActions
                           payoutId={payout.id}
                           payoutOwed={owes}
+                          isAdmin={isAdmin}
                         />
                       )}
                     </td>

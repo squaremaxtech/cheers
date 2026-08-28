@@ -1,4 +1,15 @@
-import { and, asc, desc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { db } from "@/db";
 import { favorites, gigs, users, workerMedia, workers } from "@/db/schema";
 import type {
@@ -40,11 +51,17 @@ export function publicWorkerConditions(): SQL[] {
 // Worker cards for surfaces that list PEOPLE rather than gigs (home
 // featured, favorites). Browse itself is gig-centric — see lib/gigs.ts.
 //
-// Only workers with at least one live NON-PREMIUM gig appear: a professional
-// who offers premium services exclusively does not exist for the public.
-export async function getPublicWorkers(opts?: {
-  limit?: number;
-}): Promise<PublicWorkerWithPhoto[]> {
+// Only workers with at least one live gig THIS VIEWER may see appear: a
+// professional who offers premium services exclusively does not exist for the
+// public, and does appear for a premium member — the same rail the gig
+// queries and the public profile use (plan §1.3). The viewer is required so
+// no caller can fall into a permissive default by accident.
+export async function getPublicWorkers(
+  viewer: PremiumViewer,
+  opts?: {
+    limit?: number;
+  }
+): Promise<PublicWorkerWithPhoto[]> {
   const rows = await db
     .select(publicWorkerColumns)
     .from(workers)
@@ -59,7 +76,7 @@ export async function getPublicWorkers(opts?: {
             .where(
               and(
                 eq(gigs.workerId, workers.id),
-                eq(gigs.premium, false),
+                ...(viewer.canSeePremium ? [] : [eq(gigs.premium, false)]),
                 // = publicGigConditions() from lib/gigs.ts, inlined to keep
                 // this module free of a circular import.
                 eq(gigs.active, true),
@@ -71,7 +88,7 @@ export async function getPublicWorkers(opts?: {
     )
     .orderBy(desc(workers.avgRating), asc(workers.stageName))
     .limit(opts?.limit ?? 60);
-  return attachPrimaryPhotos(rows);
+  return attachPrimaryPhotos(rows, viewer);
 }
 
 // One customer's saved professionals (/favorites). Favourites are saved at
@@ -94,7 +111,7 @@ export async function getFavoriteWorkers(
     )
     .orderBy(desc(favorites.createdAt));
   if (rows.length === 0 || viewer.canSeePremium) {
-    return attachPrimaryPhotos(rows);
+    return attachPrimaryPhotos(rows, viewer);
   }
 
   // Live vs viewer-visible gig counts per saved worker. The gig conditions
@@ -125,11 +142,17 @@ export async function getFavoriteWorkers(
     if (!count || Number(count.live) === 0) return true; // still setting up
     return Number(count.visible) > 0;
   });
-  return attachPrimaryPhotos(visible);
+  return attachPrimaryPhotos(visible, viewer);
 }
 
+// The card image for a list of professionals. Media tagged to a gig inherits
+// that gig's visibility, so a photo attached to a PREMIUM service is hidden
+// from a viewer who may not see the service; untagged portfolio media is
+// always visible. Same predicate as lib/gigs.ts gigPhotoMap — without it a
+// premium listing leaks as a picture on an otherwise standard card.
 export async function attachPrimaryPhotos(
-  rows: PublicWorker[]
+  rows: PublicWorker[],
+  viewer: PremiumViewer
 ): Promise<PublicWorkerWithPhoto[]> {
   if (rows.length === 0) return [];
   const media = await db
@@ -139,10 +162,14 @@ export async function attachPrimaryPhotos(
       sortOrder: workerMedia.sortOrder,
     })
     .from(workerMedia)
+    .leftJoin(gigs, eq(workerMedia.gigId, gigs.id))
     .where(
       and(
         inArray(workerMedia.workerId, rows.map((r) => r.id)),
-        eq(workerMedia.type, "photo")
+        eq(workerMedia.type, "photo"),
+        ...(viewer.canSeePremium
+          ? []
+          : [or(isNull(workerMedia.gigId), eq(gigs.premium, false))])
       )
     )
     .orderBy(asc(workerMedia.sortOrder));

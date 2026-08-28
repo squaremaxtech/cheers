@@ -21,6 +21,7 @@ import { formatCents } from "@/lib/constants";
 import {
   guardErrorMessage,
   requireAdmin,
+  requireDeskStaff,
   requireVerificationReviewer,
 } from "@/lib/guards";
 import { notify } from "@/lib/notify";
@@ -197,7 +198,7 @@ export async function adminSetGigSuspended(
   input: unknown
 ): Promise<ActionResult<undefined>> {
   try {
-    const admin = await requireAdmin();
+    const actor = await requireDeskStaff();
     const parsed = adminGigSuspendSchema.safeParse(input);
     if (!parsed.success) return err(ERR.badRequest);
 
@@ -217,7 +218,7 @@ export async function adminSetGigSuspended(
       .set({ suspended: parsed.data.suspended, updatedAt: new Date() })
       .where(eq(gigs.id, gig.id));
     await writeAudit({
-      actorUserId: admin.id,
+      actorUserId: actor.id,
       action: parsed.data.suspended ? "gig.takedown" : "gig.restore",
       entity: "gigs",
       entityId: gig.id,
@@ -327,9 +328,16 @@ export async function updateGigCategory(
 // There is no approval flag: professionals publish themselves (plan §2.1).
 export async function adminUpdateWorker(input: unknown): Promise<ActionResult<undefined>> {
   try {
-    const admin = await requireAdmin();
+    const actor = await requireDeskStaff();
     const parsed = adminUpdateWorkerSchema.safeParse(input);
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
+    // Hiding a profile is a desk remedy and reversible; SUSPENDING the
+    // account is a sanction and stays with the owner.
+    if (parsed.data.suspended !== undefined && actor.role !== "admin") {
+      return err(
+        "Only an admin can suspend or reinstate a professional. Hide the profile instead, or escalate."
+      );
+    }
 
     const [worker] = await db
       .select()
@@ -360,7 +368,7 @@ export async function adminUpdateWorker(input: unknown): Promise<ActionResult<un
       .set({ ...updates, slug, updatedAt: new Date() })
       .where(eq(workers.id, worker.id));
     await writeAudit({
-      actorUserId: admin.id,
+      actorUserId: actor.id,
       action: "worker.admin_update",
       entity: "workers",
       entityId: worker.id,

@@ -12,10 +12,14 @@ export default function AdminWorkerActions({
   workerId,
   suspended,
   active,
+  isAdmin,
 }: {
   workerId: string;
   suspended: boolean;
   active: boolean;
+  // Hiding is a desk remedy; suspending the account is an owner sanction, so
+  // desk support never sees that button (the action refuses it too).
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -42,27 +46,29 @@ export default function AdminWorkerActions({
       >
         {active ? "Hide" : "Unhide"}
       </button>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => {
-          if (
-            suspended ||
-            window.confirm(
-              "Suspend this professional? Their profile disappears immediately."
-            )
-          ) {
-            update({ suspended: !suspended });
-          }
-        }}
-        className={`btn border px-2.5 py-1 text-xs ${
-          suspended
-            ? "border-success/40 text-success"
-            : "border-danger/40 text-danger"
-        }`}
-      >
-        {suspended ? "Reinstate" : "Suspend"}
-      </button>
+      {isAdmin && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (
+              suspended ||
+              window.confirm(
+                "Suspend this professional? Their profile disappears immediately."
+              )
+            ) {
+              update({ suspended: !suspended });
+            }
+          }}
+          className={`btn border px-2.5 py-1 text-xs ${
+            suspended
+              ? "border-success/40 text-success"
+              : "border-danger/40 text-danger"
+          }`}
+        >
+          {suspended ? "Reinstate" : "Suspend"}
+        </button>
+      )}
     </div>
   );
 }

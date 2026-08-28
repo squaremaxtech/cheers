@@ -30,6 +30,7 @@ import {
 } from "@/lib/constants";
 import { isModeratingStaff } from "@/lib/guards";
 import { effectiveJobStatus } from "@/lib/jobs";
+import { viewerPremium } from "@/lib/premium";
 import {
   attachPrimaryPhotos,
   publicWorkerColumns,
@@ -95,7 +96,10 @@ export default async function JobRequestPage(props: PageProps<"/requests/[id]">)
       : Promise.resolve(null),
   ]);
 
-  const photos = await attachPrimaryPhotos(offerRows.map((o) => o.worker));
+  const photos = await attachPrimaryPhotos(
+    offerRows.map((o) => o.worker),
+    viewerPremium(user)
+  );
   const photoByWorker = new Map(photos.map((p) => [p.id, p.photoUrl]));
   const offers: CustomerOffer[] = offerRows.map((o) => ({
     id: o.id,
