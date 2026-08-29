@@ -5,11 +5,11 @@ export default function SiteFooter() {
     <footer className="hairline-top mt-auto">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-10 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="font-display text-lg font-extrabold tracking-tight text-brand">
-            Cheers
+          <p className="font-display text-lg tracking-tight text-gold">
+            CheersJA
           </p>
           <p className="mt-1 text-xs text-faint">
-            Jamaica&apos;s premium freelance platform.
+            Jamaica&apos;s events &amp; entertainment marketplace.
           </p>
         </div>
         <nav className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted">

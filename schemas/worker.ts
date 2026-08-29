@@ -57,6 +57,10 @@ export const workerProfileSchema = z.object({
   parish: z.enum(JAMAICA_PARISHES),
   city: clearableString(80),
   baseRateCents: z.coerce.number().int().min(0).max(10_000_000),
+  // NOTE: how the professional wants to be paid is NOT part of the profile.
+  // It is a list (worker_payment_methods) with a per-gig allowlist, managed
+  // on /worker/earnings — see schemas/payment-method.ts. The legacy
+  // workers.payment_instructions column still exists but nothing writes it.
 });
 
 // Creating a profile also records legal acceptance — the checkbox is

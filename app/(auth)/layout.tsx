@@ -9,9 +9,9 @@ export default function AuthLayout({
     <div className="flex min-h-screen flex-col items-center justify-center px-5 py-12">
       <Link
         href="/"
-        className="mb-10 font-display text-2xl font-extrabold tracking-tight text-brand"
+        className="mb-10 font-display text-2xl tracking-tight text-gold"
       >
-        Cheers
+        CheersJA
       </Link>
       {children}
     </div>

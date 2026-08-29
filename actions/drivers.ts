@@ -19,7 +19,7 @@ import type { ActionResult } from "@/types";
 // Anyone can register as a driver, but the profile stays OFF the site until
 // staff approves it (drivers.verified) — and approval requires the reviewed
 // ID + licence (driver_verifications), a face photo and vehicle photos.
-// Swapped for Stripe Identity automation once Stripe is live.
+// An automated identity provider could replace the manual review later.
 
 export async function createDriverProfile(
   input: unknown

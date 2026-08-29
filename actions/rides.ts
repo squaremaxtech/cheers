@@ -467,7 +467,7 @@ export async function completeRide(input: unknown): Promise<ActionResult<undefin
   return driverTransition(input, "completed", {
     type: "ride_completed",
     title: (r) => `Ride ${r.code} complete`,
-    body: "Thanks for riding with Cheers. Leave your driver a rating from the ride room.",
+    body: "Thanks for riding with CheersJA. Leave your driver a rating from the ride room.",
   });
 }
 

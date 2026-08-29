@@ -14,6 +14,7 @@ import {
   transitionBooking,
 } from "@/lib/bookings";
 import { BOOKING_DURATIONS_MINUTES } from "@/lib/constants";
+import { accrueBookingFee } from "@/lib/billing";
 import { refundBookingPayments } from "@/lib/refunds";
 import { bookingEventNow, publishBooking } from "@/lib/realtime";
 import {
@@ -231,6 +232,10 @@ export async function createBooking(
       gigId: gig.id,
       serviceName: gig.title,
       monitored: gig.safetyMonitored,
+      // Snapshotted alongside `monitored`: this job runs on the cadence the
+      // professional chose for this gig TODAY, whatever they change it to
+      // later.
+      checkinIntervalMinutes: gig.checkinIntervalMinutes,
       date: data.date,
       startTime: data.startTime,
       durationMinutes: data.durationMinutes,
@@ -556,6 +561,11 @@ export async function completeBooking(input: unknown): Promise<ActionResult<unde
       actorUserId: user.id,
       note: parsed.data.note,
     });
+    // The platform's 5% is not taken out of the job — the professional
+    // collected the whole amount directly — so it accrues here onto their
+    // monthly statement. Never throws, safe to call twice, and runBilling()
+    // sweeps anything missed.
+    await accrueBookingFee(ctx.booking);
 
     await notifyBookingParties(ctx.booking, {
       type: "review_request",
@@ -618,7 +628,7 @@ export async function reassignBooking(input: unknown): Promise<ActionResult<unde
       userId: newWorker.userId,
       type: "booking_reassigned",
       title: "A booking was assigned to you",
-      body: `Booking ${ctx.booking.code} on ${ctx.booking.date} was reassigned to you by the Cheers team.`,
+      body: `Booking ${ctx.booking.code} on ${ctx.booking.date} was reassigned to you by the CheersJA team.`,
     });
     await notifyBookingParties({ ...ctx.booking, workerId: newWorker.id }, {
       type: "booking_reassigned",

@@ -12,7 +12,6 @@ import {
   escalationLadder,
   isOverdueAlertKind,
   safetyAlertLabel,
-  smsEnabled,
   type EscalationAudience,
 } from "@/lib/constants";
 import { notify } from "@/lib/notify";
@@ -23,7 +22,7 @@ import {
 } from "@/lib/safety/contacts";
 import { sendPush } from "@/lib/safety/push";
 import { usersWithVerifiedPhone } from "@/lib/safety/risk";
-import { sendSms } from "@/lib/safety/sms";
+import { sendSms, smsConfigured } from "@/lib/safety/sms";
 import { MINUTE_MS, recordEvent } from "@/lib/safety/session";
 import type { SafetyAlertKind, SafetyAlertRow } from "@/types";
 
@@ -360,7 +359,9 @@ async function dispatch(
     });
     await logAttempts(alert.id, stage, "push", ids.map((userId) => ({ userId })));
     await logAttempts(alert.id, stage, "email", ids.map((userId) => ({ userId })));
-    if (smsEnabled()) await sendSmsToUsers(ids, `${title} — ${body}`, alert.id, stage);
+    if (smsConfigured()) {
+      await sendSmsToUsers(ids, `${title} — ${body}`, alert.id, stage);
+    }
     return;
   }
 

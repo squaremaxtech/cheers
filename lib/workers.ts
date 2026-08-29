@@ -11,7 +11,18 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { db } from "@/db";
-import { favorites, gigs, users, workerMedia, workers } from "@/db/schema";
+import {
+  favorites,
+  feeInvoices,
+  gigs,
+  users,
+  workerMedia,
+  workers,
+} from "@/db/schema";
+import {
+  FEE_BLOCK_MIN_ATTEMPTS,
+  FEE_GRACE_DAYS,
+} from "@/lib/payments/config";
 import type {
   PremiumViewer,
   PublicWorker,
@@ -41,11 +52,40 @@ export const publicWorkerColumns = {
 // idVerified reads users.id_verified_at.
 export const publicWorkerUserJoin = eq(workers.userId, users.id);
 
+// Unpaid commission pauses a professional's listings — the SQL twin of
+// lib/billing.ts workerBillingBlocked(), which is the authority on the rule
+// but is async and per-worker, so it cannot run inside a query builder. Keep
+// the two in step: a FAILED statement, at least FEE_BLOCK_MIN_ATTEMPTS
+// declines, unpaid for longer than the grace period. Never a single decline,
+// and never a statement we have not tried to charge.
+//
+// This is the platform's only lever for a fee it does not hold: the customer
+// pays the professional directly, so the commission is a debt, and the
+// listings are the collateral.
+function commissionCurrent(): SQL {
+  // The cutoff is computed here rather than in SQL so the grace period travels
+  // as a timestamp parameter: "$n * interval" leaves Postgres guessing at the
+  // parameter type, and the async twin in lib/billing.ts already works this way.
+  const cutoff = new Date(Date.now() - FEE_GRACE_DAYS * 86_400_000);
+  return sql`NOT EXISTS (
+    SELECT 1 FROM ${feeInvoices}
+    WHERE ${feeInvoices.workerId} = ${workers.id}
+      AND ${feeInvoices.status} = 'failed'
+      AND ${feeInvoices.attempts} >= ${FEE_BLOCK_MIN_ATTEMPTS}
+      AND ${feeInvoices.dueAt} <= ${cutoff}
+  )`;
+}
+
 // A worker the public may see, book or message: switched on by the worker
-// (active) and not suspended by an admin. Professionals publish themselves —
-// there is no approval queue and nothing waits on the business owner.
+// (active), not suspended by an admin, and not paused for unpaid commission.
+// Professionals publish themselves — there is no approval queue and nothing
+// waits on the business owner.
 export function publicWorkerConditions(): SQL[] {
-  return [eq(workers.active, true), eq(workers.suspended, false)];
+  return [
+    eq(workers.active, true),
+    eq(workers.suspended, false),
+    commissionCurrent(),
+  ];
 }
 
 // Worker cards for surfaces that list PEOPLE rather than gigs (home

@@ -173,12 +173,12 @@ export default function PushSetup({ vapidKey }: { vapidKey: string | null }) {
 
       {isIOS && !standalone && (
         <div className="rounded-xl border border-gold/30 bg-gold/5 p-3 text-xs text-muted">
-          <p className="font-medium text-gold-deep">Install Cheers first</p>
+          <p className="font-medium text-gold-deep">Install CheersJA first</p>
           <p className="mt-1">
-            On iPhone, notifications only work once Cheers is on your home
+            On iPhone, notifications only work once CheersJA is on your home
             screen. Tap the Share button, then{" "}
             <strong className="text-ink">Add to Home Screen</strong>, and open
-            Cheers from there.
+            CheersJA from there.
           </p>
         </div>
       )}

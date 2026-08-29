@@ -175,7 +175,7 @@ export async function pingWorker(input: unknown): Promise<ActionResult<undefined
     await notify({
       userId: session.workerUserId,
       type: "safety_ping",
-      title: "Safety check from the Cheers team",
+      title: "Safety check from the CheersJA team",
       body:
         parsed.data.message ??
         "Just checking in — tap I'm OK in your booking to confirm you're fine.",

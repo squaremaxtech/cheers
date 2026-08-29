@@ -4,8 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import SosButton from "@/components/bookings/SosButton";
-import { endSafetySession, respondToCheckin } from "@/actions/safety";
-import { HEARTBEAT_SECONDS } from "@/lib/constants";
+import {
+  endSafetySession,
+  respondToCheckin,
+  snoozeCheckin,
+} from "@/actions/safety";
+import {
+  CHECKIN_SNOOZE_MINUTES,
+  checkinIntervalLabel,
+  HEARTBEAT_SECONDS,
+} from "@/lib/constants";
 import type { SafetyClientState } from "@/types";
 
 // THE SAFETY BAR — the worker's single, permanent safety surface.
@@ -209,6 +217,34 @@ export default function SafetyBar({
     return () => clearTimeout(timer);
   }, [answer, online, queued]);
 
+  // --- Snooze: "I'm on stage, ask me later" -----------------------------------
+  // Deliberately a plain text control, never a button: it must not compete
+  // with "I'm OK" and must never be mistaken for the SOS. It moves the next
+  // check-in and nothing else — get-home-safe, the overrun and arrival
+  // deadlines, the heartbeat and the SOS all keep running.
+  const snooze = useCallback(async () => {
+    setBusy(true);
+    const res = await snoozeCheckin({ bookingId });
+    setBusy(false);
+    if (res.ok) {
+      setState((s) => ({
+        ...s,
+        checkinDue: false,
+        checkinOverdue: false,
+        nextCheckInAt: res.data.nextCheckInAt,
+        snoozesRemaining: res.data.remaining,
+      }));
+      toast.success(
+        res.data.remaining > 0
+          ? `Snoozed — next check-in in ${formatHours(CHECKIN_SNOOZE_MINUTES)}. ${res.data.remaining} left.`
+          : `Snoozed — next check-in in ${formatHours(CHECKIN_SNOOZE_MINUTES)}. That was your last one.`
+      );
+      router.refresh();
+    } else {
+      toast.error(res.error);
+    }
+  }, [bookingId, router]);
+
   const finish = useCallback(
     async (reason: "left_visit" | "home_safe") => {
       setBusy(true);
@@ -257,6 +293,17 @@ export default function SafetyBar({
   const secondsToCheckIn = nextCheckIn
     ? Math.max(0, Math.round((nextCheckIn.getTime() - now) / 1000))
     : null;
+  // The cadence chosen for this gig, already resolved by the server. Shown
+  // continuously so a professional never has to wonder how often they are
+  // about to be interrupted — and so "no prompt for four hours" reads as the
+  // arrangement rather than as the system having forgotten them.
+  const periodic = state.checkinIntervalMinutes > 0;
+  const cadenceLabel = periodic
+    ? checkinIntervalLabel(state.checkinIntervalMinutes)
+    : "Start and end only";
+  // Nothing to push out when there is no periodic check-in, and nothing left
+  // to push once the cap is spent.
+  const canSnooze = periodic && state.snoozesRemaining > 0;
 
   // --- Overdue takeover ---------------------------------------------------------
   // Past the grace point the bar is not enough: a full-screen prompt with one
@@ -264,7 +311,7 @@ export default function SafetyBar({
   // nothing. Nobody should have to guess whether help is already coming.
   if (overdue) {
     return (
-      <div className="fixed inset-0 z-40 flex flex-col justify-end bg-ink/40 backdrop-blur-sm">
+      <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60 backdrop-blur-sm">
         <div className="mx-auto w-full max-w-md space-y-4 p-5 pb-8">
           <div className="rounded-2xl border border-warn bg-surface p-6 text-center shadow-2xl">
             <p className="text-sm font-medium uppercase tracking-wider text-warn">
@@ -294,6 +341,18 @@ export default function SafetyBar({
             >
               I need help
             </button>
+            {canSnooze && (
+              <button
+                type="button"
+                className="mt-3 text-xs text-muted underline"
+                disabled={busy}
+                onClick={() => void snooze()}
+              >
+                Can&apos;t answer right now — snooze{" "}
+                {formatHours(CHECKIN_SNOOZE_MINUTES)} ({state.snoozesRemaining}{" "}
+                left)
+              </button>
+            )}
             {showHelp && <HelpPanel note={helpNote} onNote={setHelpNote} onSend={answer} busy={busy} />}
           </div>
           <SosButton bookingId={bookingId} hasCancelPin={hasCancelPin} size="large" />
@@ -318,12 +377,22 @@ export default function SafetyBar({
               <span className="text-faint">· {state.monitorName} watching</span>
             )}
           </span>
-          {secondsToCheckIn !== null && !due && (
+          {secondsToCheckIn !== null && !due ? (
             <span className="shrink-0 text-faint">
               Next check-in {formatCountdown(secondsToCheckIn)}
             </span>
+          ) : (
+            !periodic && (
+              <span className="shrink-0 text-faint">{cadenceLabel}</span>
+            )
           )}
         </div>
+        {/* The arrangement, stated plainly. A performer who set "start and end
+            only" must be able to see that the quiet is deliberate — and
+            everyone else must be able to see how often they'll be asked. */}
+        {periodic && (
+          <p className="pb-2 text-xs text-faint">Check-ins: {cadenceLabel}</p>
+        )}
 
         {/* Actions — the check-in dominates when due, recedes when not */}
         <div className="flex items-stretch gap-2">
@@ -359,6 +428,17 @@ export default function SafetyBar({
           >
             I need help
           </button>
+          {canSnooze && (
+            <button
+              type="button"
+              className="text-xs text-muted underline"
+              disabled={busy}
+              onClick={() => void snooze()}
+            >
+              Snooze {formatHours(CHECKIN_SNOOZE_MINUTES)} (
+              {state.snoozesRemaining} left)
+            </button>
+          )}
           {state.sessionState === "heading_home" ? (
             <button
               type="button"
@@ -438,6 +518,14 @@ function HelpPanel({
       </p>
     </div>
   );
+}
+
+// "2 hours" / "90 minutes" — the snooze length in words, since the control
+// says what it does rather than making anyone divide by sixty.
+function formatHours(minutes: number): string {
+  if (minutes % 60 !== 0) return `${minutes} minutes`;
+  const hours = minutes / 60;
+  return hours === 1 ? "1 hour" : `${hours} hours`;
 }
 
 function formatCountdown(seconds: number): string {

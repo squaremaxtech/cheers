@@ -30,15 +30,16 @@ export default async function HomePage() {
       {/* Hero */}
       <section className="panel-brand">
         <div className="mx-auto flex max-w-4xl flex-col items-center px-5 py-20 text-center sm:py-28">
-          <p className="text-xs uppercase tracking-[0.3em] text-white/70">
-            Jamaica&apos;s first premium freelance platform
+          <p className="text-xs uppercase tracking-[0.3em] text-gold-soft">
+            Jamaica&apos;s events &amp; entertainment marketplace
           </p>
-          <h1 className="font-display mt-6 text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl">
-            Hire trusted professionals across Jamaica.
+          <h1 className="font-display mt-6 text-4xl leading-tight tracking-tight text-ink sm:text-5xl">
+            Book the people who make the night.
           </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-white/80">
-            From electricians and DJs to cleaners, photographers and tutors —
-            compare rated professionals, message them, and book in minutes.
+          <p className="mt-5 max-w-2xl text-base leading-7 text-muted">
+            DJs, MCs, sound and lighting, live performers, caterers, bartenders,
+            décor, photographers, event security and staging — compare rated
+            professionals, message them, and lock in your date.
           </p>
 
           {/* Search — a plain GET form, so results are shareable URLs and the
@@ -49,14 +50,14 @@ export default async function HomePage() {
             className="mt-10 flex w-full max-w-2xl flex-col gap-3 sm:flex-row"
           >
             <label htmlFor="home-q" className="sr-only">
-              What do you need done?
+              Who do you need for your event?
             </label>
             <input
               id="home-q"
               name="q"
               type="search"
               className="input flex-1"
-              placeholder="What do you need done?"
+              placeholder="DJ, caterer, sound engineer…"
             />
             <label htmlFor="home-category" className="sr-only">
               Category
@@ -79,15 +80,18 @@ export default async function HomePage() {
             </button>
           </Form>
 
-          <div className="mt-6 flex flex-col items-center gap-x-6 gap-y-2 text-sm text-white/80 sm:flex-row">
-            <Link href="/browse" className="underline-offset-4 hover:underline">
+          <div className="mt-6 flex flex-col items-center gap-x-6 gap-y-2 text-sm text-muted sm:flex-row">
+            <Link
+              href="/browse"
+              className="underline-offset-4 hover:text-ink hover:underline"
+            >
               Browse every service →
             </Link>
             <Link
               href="/requests/new"
-              className="underline-offset-4 hover:underline"
+              className="underline-offset-4 hover:text-ink hover:underline"
             >
-              Post a job and let professionals come to you →
+              Post your event and let the crew come to you →
             </Link>
           </div>
         </div>
@@ -98,7 +102,7 @@ export default async function HomePage() {
         <section className="mx-auto max-w-6xl px-5 py-16">
           <div className="mb-6">
             <h2 className="font-display text-2xl tracking-tight text-ink">
-              Browse by category
+              Build your line-up
             </h2>
             <p className="mt-1 text-sm text-muted">
               Every service is listed, priced and delivered by the professional
@@ -133,11 +137,10 @@ export default async function HomePage() {
         <div className="mb-8 flex items-end justify-between gap-4">
           <div>
             <h2 className="font-display text-2xl tracking-tight text-ink">
-              Top-rated professionals
+              Top-rated talent
             </h2>
             <p className="mt-1 text-sm text-muted">
-              Rated by the customers who hired them, across all fourteen
-              parishes.
+              Rated by the hosts who booked them, across all fourteen parishes.
             </p>
           </div>
           <Link
@@ -149,8 +152,8 @@ export default async function HomePage() {
         </div>
         {featured.length === 0 ? (
           <p className="text-sm text-faint">
-            Professionals are publishing their first services now — check back
-            shortly.
+            Event professionals are publishing their first services now — check
+            back shortly.
           </p>
         ) : (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -171,18 +174,18 @@ export default async function HomePage() {
             {[
               {
                 step: "01",
-                title: "Search",
-                body: "Filter by category, parish, price and rating — or post the job you need done, name your budget, and let professionals send you offers.",
+                title: "Find your crew",
+                body: "Filter by category, parish, price and rating — or post your event, name your budget, and let DJs, caterers and crews send you offers.",
               },
               {
                 step: "02",
                 title: "Message & book",
-                body: "Ask questions, agree the details, then pick a date, time and location. The professional confirms and the booking is set.",
+                body: "Ask about set times, rider, power and space, agree the details, then lock the date, time and venue. They confirm and the booking is set.",
               },
               {
                 step: "03",
-                title: "Meet safely, get it done",
-                body: "A private PIN starts the job, timed check-ins run while it is under way, and an SOS button reaches your trusted contacts and the Cheers team.",
+                title: "Show up, run the night",
+                body: "A private PIN starts the job on site, timed check-ins run while it is under way, and an SOS button reaches trusted contacts and the CheersJA team.",
               },
             ].map((item) => (
               <div key={item.step} className="card p-6">
@@ -197,7 +200,7 @@ export default async function HomePage() {
           <p className="mt-6 text-sm leading-6 text-muted">
             Browsing is always free. A{" "}
             <Link href="/membership" className="text-brand hover:underline">
-              Cheers Membership
+              CheersJA Membership
             </Link>{" "}
             unlocks messaging and booking —{" "}
             {launchFree
@@ -212,24 +215,27 @@ export default async function HomePage() {
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-16 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-xl">
             <h2 className="font-display text-2xl tracking-tight text-ink sm:text-3xl">
-              Offer your services on Cheers
+              Get booked on CheersJA
             </h2>
             <p className="mt-3 text-sm leading-7 text-muted">
-              Free to join. You set your own prices, you choose the work you
-              take, and your listings go live the moment you publish them.
-              Payouts land weekly, and a {PLATFORM_FEE_PERCENT}% platform fee is
-              the only cut we take.
+              For DJs, MCs, engineers, performers, caterers, bar and décor teams
+              and everyone else on the crew. Free to join. You set your own
+              rates, you choose the gigs you take, and your listings go live the
+              moment you publish them. Your customer pays you directly — cash,
+              bank transfer or Lynk — and you keep 100% of it, tips included.
+              Our {PLATFORM_FEE_PERCENT}% commission never comes out of the job:
+              it is billed to your card once a month.
             </p>
             <ul className="mt-5 grid gap-2 text-sm text-muted sm:grid-cols-2">
               <li>Free to join</li>
-              <li>You set your prices</li>
-              <li>You keep control of your schedule</li>
-              <li>Weekly payouts</li>
+              <li>You set your rates</li>
+              <li>You keep control of your calendar</li>
+              <li>Paid directly — you keep 100%</li>
             </ul>
           </div>
           <div className="flex shrink-0 flex-col items-start gap-3 lg:items-center">
             <Link href="/worker/onboarding" className="btn-primary px-8 py-3">
-              Start offering services
+              List your services
             </Link>
             <Link
               href="/login"
@@ -245,7 +251,8 @@ export default async function HomePage() {
       <section className="hairline-top">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-8">
           <p className="text-sm text-muted">
-            Need a ride? Name your fare and drivers accept or counter.
+            Getting your guests home? Name your fare and drivers accept or
+            counter.
           </p>
           <Link href="/drivers" className="text-sm text-brand hover:underline">
             See drivers →

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Manrope } from "next/font/google";
+import { Geist, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
 
@@ -8,13 +8,12 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
-// Display face for headings and the wordmark. Manrope carries the light,
-// professional voice the serif no longer fits; only the three heading weights
-// are downloaded.
-const manrope = Manrope({
+// Display face for headings and the wordmark. Playfair Display is the serif
+// that carries the dark, evening-out voice of the brand; body copy stays on
+// Geist. Exposed as --font-display, which globals.css reads.
+const playfair = Playfair_Display({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["600", "700", "800"],
   display: "swap",
 });
 
@@ -25,11 +24,11 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: {
-    default: "Cheers — Jamaica's Premium Freelance Platform",
-    template: "%s · Cheers",
+    default: "CheersJA — Jamaica's Events & Entertainment Marketplace",
+    template: "%s · CheersJA",
   },
   description:
-    "Hire trusted professionals across Jamaica — electricians, DJs, cleaners, photographers, tutors and more. Browse, message, and book in minutes.",
+    "Book the people who make an event happen — DJs, MCs, sound and lighting, performers, caterers, bartenders, décor, photographers, event security and staging, right across Jamaica.",
 };
 
 export default function RootLayout({
@@ -40,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${manrope.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${playfair.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
         <Providers>{children}</Providers>

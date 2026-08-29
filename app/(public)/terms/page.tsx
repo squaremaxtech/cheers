@@ -16,11 +16,11 @@ const TERMS_SECTIONS: { id: string; title: string }[] = [
   { id: "definitions", title: "1. Definitions" },
   { id: "eligibility", title: "2. Acceptance, eligibility and age" },
   { id: "accounts", title: "3. Accounts and security" },
-  { id: "what-cheers-is", title: "4. What Cheers is — and what it is not" },
+  { id: "what-cheers-is", title: "4. What CheersJA is — and what it is not" },
   { id: "membership", title: "5. Membership" },
-  { id: "listings", title: "6. Listings, profiles and premium" },
+  { id: "listings", title: "6. Listings, profiles and visibility" },
   { id: "bookings", title: "7. Bookings" },
-  { id: "payments", title: "8. Payments, fees and tips" },
+  { id: "payments", title: "8. Payments, commission and tips" },
   { id: "cancellation-summary", title: "9. Cancellation and refunds" },
   { id: "quotes-and-jobs", title: "10. Quotes, job requests and matching" },
   { id: "verification", title: "11. Identity verification" },
@@ -93,12 +93,12 @@ export default function TermsPage() {
       <div className="mt-6 space-y-5 text-sm leading-7 text-muted">
         <p>
           These Terms are a contract between you and the company that operates
-          the Cheers platform in Jamaica (&ldquo;Cheers&rdquo;,
+          the CheersJA platform in Jamaica (&ldquo;CheersJA&rdquo;,
           &ldquo;we&rdquo;, &ldquo;us&rdquo;). Our registered legal name,
           company number and registered office are set out in section 24. By
           creating an account, ticking the acceptance box, or using the
           platform, you agree to these Terms. If you do not agree, do not use
-          Cheers.
+          CheersJA.
         </p>
         <p>
           This page also carries the{" "}
@@ -177,12 +177,12 @@ export default function TermsPage() {
         <Section id="definitions" title="1. Definitions">
           <ul className="list-disc space-y-2 pl-5">
             <li>
-              <strong>Platform</strong> — the Cheers website, app, emails, push
+              <strong>Platform</strong> — the CheersJA website, app, emails, push
               messages and SMS messages, and every service we make available
               through them.
             </li>
             <li>
-              <strong>Account</strong> — your Cheers login, identified by your
+              <strong>Account</strong> — your CheersJA login, identified by your
               email address.
             </li>
             <li>
@@ -214,8 +214,15 @@ export default function TermsPage() {
               described in section 5.
             </li>
             <li>
-              <strong>Premium</strong> — the tier we curate, described in
-              section 6.
+              <strong>Commission</strong> — the {PLATFORM_FEE_PERCENT}% CheersJA
+              charges a Professional on a completed booking, described in
+              section 8. It is charged to the Professional&apos;s card and is
+              never taken out of what a Customer pays them.
+            </li>
+            <li>
+              <strong>Restricted listing</strong> — a Gig we make visible and
+              bookable only to Customers we have invited, described in section
+              6.
             </li>
             <li>
               <strong>Monitored booking</strong> — a booking whose gig has
@@ -234,7 +241,7 @@ export default function TermsPage() {
           <ol className="list-decimal space-y-2 pl-5">
             <li>
               <strong>
-                You must be 18 or older to use Cheers — to hold an account, to
+                You must be 18 or older to use CheersJA — to hold an account, to
                 book, to offer services, or to drive.
               </strong>{" "}
               There is no under-18 tier and no parental or guardian route onto
@@ -247,7 +254,7 @@ export default function TermsPage() {
               law of the place you are in.
             </li>
             <li>
-              You must not use Cheers if we have previously suspended or
+              You must not use CheersJA if we have previously suspended or
               terminated your account, unless we tell you in writing that you
               may return.
             </li>
@@ -272,12 +279,13 @@ export default function TermsPage() {
             </li>
             <li>
               You sign in by emailed magic link or by Google. Anyone with access
-              to your email inbox can access your Cheers account — keep it
+              to your email inbox can access your CheersJA account — keep it
               secure.
             </li>
             <li>
               Keep your name, phone number and profile details accurate and
-              current. Bookings, safety escalation and payouts depend on them.
+              current. Bookings, safety escalation and — for Professionals — the
+              payment details Customers use to pay you all depend on them.
             </li>
             <li>
               Tell us immediately at{" "}
@@ -299,11 +307,11 @@ export default function TermsPage() {
 
         <Section
           id="what-cheers-is"
-          title="4. What Cheers is — and what it is not"
+          title="4. What CheersJA is — and what it is not"
         >
           <ol className="list-decimal space-y-2 pl-5">
             <li>
-              <strong>Cheers is a venue and an intermediary.</strong> We provide
+              <strong>CheersJA is a venue and an intermediary.</strong> We provide
               a marketplace where independent Professionals publish services and
               Customers find, contact and engage them, plus tools for
               scheduling, messaging, payment records and safety.
@@ -311,15 +319,24 @@ export default function TermsPage() {
             <li>
               <strong>We are not a party to the service contract.</strong> When
               a Customer books a Professional, the contract for that service is
-              between the Customer and the Professional. Cheers is not the
+              between the Customer and the Professional. CheersJA is not the
               provider, the buyer, the employer, the supervisor, or the
               guarantor of that service.
+            </li>
+            <li>
+              <strong>We are not a party to the payment either.</strong> The
+              Customer pays the Professional directly. CheersJA never receives,
+              holds, escrows or forwards the money for a job and never pays a
+              Professional out; we record the payment and nothing more. Our own
+              revenue is a Membership charged to a Customer&apos;s card and a{" "}
+              {PLATFORM_FEE_PERCENT}% commission charged to a
+              Professional&apos;s card — see section 8.
             </li>
             <li>
               <strong>
                 No employment, agency, partnership or joint venture
               </strong>{" "}
-              is created between Cheers and any Professional, Customer or Driver
+              is created between CheersJA and any Professional, Customer or Driver
               by these Terms or by use of the Platform. Professionals are
               independent contractors running their own businesses.
             </li>
@@ -349,17 +366,18 @@ export default function TermsPage() {
             </li>
             <li>
               <strong>We may act to protect users, but we are not obliged to.</strong>{" "}
-              Nothing in these Terms creates a duty on Cheers to monitor
+              Nothing in these Terms creates a duty on CheersJA to monitor
               listings, messages, meetings or users, or to intervene in any
               dispute.
             </li>
             <li>
               <strong>Rides.</strong> The ride marketplace works the same way:
               independent Drivers offer rides, the fare is agreed between the
-              Rider and the Driver, and Cheers is not a party to that
+              Rider and the Driver, and CheersJA is not a party to that
               arrangement. Driver approval is the one part of the Platform that
-              is staff-gated and requires documents (section 11). There is
-              currently no platform fee on rides.
+              is staff-gated and requires documents (section 11). Fares are paid
+              directly to the Driver and there is currently no commission on
+              rides.
             </li>
           </ol>
         </Section>
@@ -398,14 +416,18 @@ export default function TermsPage() {
               <strong>Price and billing.</strong> Membership is a recurring
               monthly subscription. The current price is{" "}
               {formatCents(membershipPriceCents())} per month and is shown on
-              the membership page before you pay. Billing is handled by Stripe.
-              We do not see or store your card number.
+              the membership page before you pay. Cards are processed by our
+              payment gateway, PowerTranz (First Atlantic Commerce). We do not
+              see or store your card number — we hold only a gateway token that
+              lets us charge that card for Membership and, in a
+              Professional&apos;s case, commission.
             </li>
             <li>
               <strong>Auto-renewal.</strong> Membership renews automatically
-              each month until you cancel. By subscribing you authorise Stripe
-              to charge your payment method on each renewal at the then-current
-              price.
+              each month until you cancel. By joining you authorise CheersJA to
+              charge the card you have on file on each renewal at the
+              then-current price. If a renewal is declined we retry it daily,
+              and after three consecutive failures the Membership is cancelled.
             </li>
             <li>
               <strong>Cancellation.</strong> You may cancel at any time from the
@@ -432,14 +454,17 @@ export default function TermsPage() {
               renewal.
             </li>
             <li>
-              Membership fees are Cheers&apos; own revenue. They are not part of
-              any Professional&apos;s earnings and never enter payout
-              calculations.
+              Membership fees are CheersJA&apos; own revenue. They are not part
+              of any Professional&apos;s earnings, and no part of a Membership
+              fee is passed to a Professional.
             </li>
           </ol>
         </Section>
 
-        <Section id="listings" title="6. Listings, professional profiles and premium services">
+        <Section
+          id="listings"
+          title="6. Listings, professional profiles and visibility"
+        >
           <ol className="list-decimal space-y-2 pl-5">
             <li>
               <strong>Publishing.</strong> A Professional may publish up to
@@ -461,27 +486,26 @@ export default function TermsPage() {
               not an offer.
             </li>
             <li>
-              <strong>Premium tier.</strong> Some Customers hold premium access
-              and some Professionals hold premium provider status. Premium
-              listings are visible and bookable only to Customers with premium
-              access.
+              <strong>Restricted listings.</strong> Some Gigs are offered only
+              to invited members: they are visible and bookable only to
+              Customers we have invited, and only Professionals we have invited
+              may publish them.
               <ul className="mt-2 list-disc space-y-2 pl-5">
                 <li>
-                  Premium access and premium provider status are granted by
-                  Cheers at our sole discretion. There is no application, no
-                  fee, no self-serve route and no entitlement to be granted
-                  either.
+                  An invitation of either kind is granted by CheersJA at our
+                  sole discretion. There is no application, no fee, no
+                  self-serve route and no entitlement to be invited.
                 </li>
                 <li>
-                  We may revoke either at any time, for any reason, without
-                  notice and without compensation. On revocation of provider
-                  status, that Professional&apos;s premium listings are
+                  We may withdraw either at any time, for any reason, without
+                  notice and without compensation. Where we withdraw a
+                  Professional&apos;s invitation, their restricted listings are
                   deactivated.
                 </li>
                 <li>
-                  The premium tier changes visibility only. It does not change
-                  these Terms, the platform fee, the safety rules or the refund
-                  rules.
+                  A restriction changes who can see and book a listing, and
+                  nothing else. It does not change these Terms, the commission,
+                  the safety rules or the cancellation rules.
                 </li>
               </ul>
             </li>
@@ -568,90 +592,123 @@ export default function TermsPage() {
           </ol>
         </Section>
 
-        <Section id="payments" title="8. Payments, fees and tips">
+        <Section id="payments" title="8. Payments, commission and tips">
           <ol className="list-decimal space-y-2 pl-5">
             <li>
-              <strong>Two payment methods: cash or card.</strong> Which are
-              available depends on what is enabled at the time; card payment is
-              offered only when card processing is configured on the Platform.
+              <strong>The Customer pays the Professional directly.</strong> The
+              price of a gig is paid by the Customer straight to the
+              Professional — in cash at the meeting, by bank transfer, by Lynk,
+              or by another method the two of them agree. CheersJA does not
+              collect, receive, hold, escrow, forward or handle that money at
+              any point, and <strong>there is no payout</strong>: nothing is ever
+              paid out to a Professional, because nothing ever passes through
+              us. The Platform only records that a payment happened.
             </li>
             <li>
-              <strong>Cash.</strong> Cash bookings are paid directly by the
-              Customer to the Professional at the meeting. Cheers does not
-              collect, hold, escrow or handle that money at any point. The
-              Professional keeps the cash they collect and records the
-              collection (with tip and an optional proof photo) in the app. Any
-              dispute about whether cash was paid, how much, or in what currency
-              is between the Customer and the Professional; we can show them the
-              record and may assist, but we are not a party to it and hold no
+              <strong>CheersJA is not a party to that payment.</strong> It is
+              part of the contract between the Customer and the Professional. We
+              are not the merchant of record, the seller, the payee, an agent
+              for collection, or a payment service for it, and we accept no
+              liability for a job payment that is not made, is made late, is
+              sent to the wrong account, is short, or is disputed. Any dispute
+              about whether a payment was made, how much, or in what currency is
+              between the Customer and the Professional; we can show them the
+              record and may assist, but we are not an arbitrator and hold no
               funds to apply to it.
             </li>
             <li>
-              <strong>Card.</strong> Card payments are processed by Stripe.
-              Cheers is the merchant of record for card payments taken on the
-              Platform: the charge appears from Cheers, we receive the funds,
-              and we settle the Professional&apos;s share through the weekly
-              payout described below. We do not receive or store your card
-              number; Stripe does. Chargebacks and card-network disputes are
-              raised against Cheers and are handled by us; we may recover from a
-              Professional any amount charged back on a booking they performed,
-              and may set it off against their payouts.
+              <strong>Payment details a Professional publishes.</strong> A
+              Professional may enter payment instructions — a bank account, a
+              Lynk number and the like — which the Platform shows to the
+              Customer of a confirmed booking. By entering them the Professional
+              warrants that the details are their own, that they are entitled to
+              receive money into them, and that they are accurate and kept
+              current. CheersJA does not verify them and is not responsible for
+              money sent to details a Professional gave incorrectly or a
+              Customer entered incorrectly.
             </li>
             <li>
-              <strong>Platform fee — {PLATFORM_FEE_PERCENT}%.</strong> Cheers
-              charges a platform fee of {PLATFORM_FEE_PERCENT}% of the service
-              price plus add-ons on every gig booking. The fee is calculated
-              when the booking is created and fixed at that moment. It applies
-              whether the booking is paid in cash or by card.{" "}
-              <strong>Tips are never charged a fee.</strong> There is currently
-              no platform fee on rides.
+              <strong>Recording a payment.</strong> A Customer may mark a
+              payment as sent; the Professional confirms it with the method, the
+              amount and any tip, and that confirmation is the Platform&apos;s
+              record. Records must be truthful. A false payment record, a false
+              completion, or a false claim of non-payment or non-delivery is
+              fraud and a breach of these Terms.
+            </li>
+            <li>
+              <strong>Commission — {PLATFORM_FEE_PERCENT}%.</strong> CheersJA
+              charges the <em>Professional</em> a commission of{" "}
+              {PLATFORM_FEE_PERCENT}% of the service price plus add-ons on every
+              completed gig booking, calculated when the booking is created and
+              fixed at that moment.{" "}
+              <strong>
+                It is not deducted from what the Customer pays — the Professional
+                keeps all of that.
+              </strong>{" "}
+              It accrues on the Professional&apos;s monthly statement and is
+              charged to the card they keep on file (Independent Professional
+              Agreement, section 6). <strong>Tips are never charged
+              commission</strong>, Customers are never charged commission, and
+              there is currently no commission on rides.
+            </li>
+            <li>
+              <strong>The only card charges CheersJA makes.</strong> We charge a
+              card for exactly two things: a Customer&apos;s Membership, and a
+              Professional&apos;s commission. Both are processed by our payment
+              gateway, PowerTranz (First Atlantic Commerce); we hold a gateway
+              token, never your card number. A chargeback or card-network
+              dispute can therefore only concern one of those two charges. Where
+              an amount we charged you is reversed or charged back it remains
+              payable, and we may recover it as a debt.
+            </li>
+            <li>
+              <strong>Unpaid commission pauses listings.</strong> Where a
+              Professional&apos;s commission statement remains unpaid after
+              repeated failed charges and the grace period has passed, CheersJA
+              may hide or pause that Professional&apos;s listings until it
+              clears, and may recover the amount owed. This is our only
+              enforcement mechanism, precisely because we never hold a
+              Professional&apos;s money.
             </li>
             <li>
               <strong>Currency.</strong> Amounts on the Platform are displayed
-              and card-charged in the Platform&apos;s configured currency,
-              currently United States dollars. Cash is settled between the
-              Customer and the Professional in the currency they agree,
-              ordinarily Jamaican dollars.
+              in the Platform&apos;s configured currency, currently United
+              States dollars, and Membership and commission are charged in it.
+              The job itself is settled between the Customer and the
+              Professional in the currency they agree, ordinarily Jamaican
+              dollars.
             </li>
             <li>
-              <strong>Tips.</strong> Tipping is optional. A Customer may add a
-              tip when choosing a payment method, or hand a cash tip at the
-              meeting. Tips go to the Professional in full. Card tips are passed
-              through in the weekly payout; cash tips are already in the
-              Professional&apos;s hands and are not counted again.
+              <strong>Tips.</strong> Tipping is optional and is paid directly to
+              the Professional along with the price. Tips go to the Professional
+              in full: CheersJA never receives any part of a tip and never
+              charges commission on one.
             </li>
             <li>
-              <strong>Payouts and net settlement.</strong> Cheers pays
-              Professionals weekly, by manual bank transfer, on a
-              net-settlement basis. For a card-paid booking, the Professional is
-              credited the price plus add-ons less the {PLATFORM_FEE_PERCENT}%
-              fee, plus 100% of any card tip. For a cash-paid booking, the
-              Professional already holds the money, so the{" "}
-              {PLATFORM_FEE_PERCENT}% fee is debited from their settlement. A
-              week with more cash than card therefore produces a negative
-              settlement — an amount the Professional owes Cheers. Negative
-              balances are payable to Cheers and may be set off against future
-              payouts.
-            </li>
-            <li>
-              <strong>Taxes.</strong> Prices are the Professional&apos;s own.
-              Each Professional is responsible for their own income tax, GCT and
-              any other tax or statutory contribution arising from their
-              earnings, and for issuing any receipt or invoice a Customer
-              requires. Cheers does not withhold tax and makes no representation
-              about a Professional&apos;s tax position.
+              <strong>Taxes and collection.</strong> Prices are the
+              Professional&apos;s own. Each Professional is responsible for
+              collecting their own fees from their Customers, and for their own
+              income tax, GCT and any other tax or statutory contribution
+              arising from their earnings, and for issuing any receipt or
+              invoice a Customer requires. CheersJA does not collect on a
+              Professional&apos;s behalf, does not withhold tax, and makes no
+              representation about a Professional&apos;s tax position.
             </li>
             <li>
               <strong>Records.</strong> The Platform keeps a payment record for
-              each booking: amount, tip, platform fee, method, status and —
-              where card was used — the processor&apos;s transaction reference.
-              These records are available to the Customer, the Professional and
-              platform staff.
+              each booking: amount, tip, commission, method, status and any
+              reference the parties entered. These records are available to the
+              Customer, the Professional and platform staff. They record what
+              the parties told us; they are not proof that money moved, because
+              we never see the money.
             </li>
             <li>
-              <strong>No credit or stored value.</strong> Cheers does not extend
-              credit, lend, hold customer funds on deposit, or operate a wallet
-              or stored-value balance.
+              <strong>
+                No credit, stored value or money transmission.
+              </strong>{" "}
+              CheersJA does not extend credit, lend, hold customer funds on
+              deposit, operate a wallet or stored-value balance, or transmit
+              money on anyone&apos;s behalf.
             </li>
           </ol>
         </Section>
@@ -668,10 +725,11 @@ export default function TermsPage() {
             further down this page, which forms part of these Terms. In short: a
             Customer may cancel a booking only {CANCEL_MIN_HOURS} or more hours
             before the scheduled start; Professionals and administrators may
-            cancel at any time with a reason recorded; card payments are
-            refunded automatically and cash is refunded between the Customer and
-            the Professional. Membership is separate and is governed by section
-            5.
+            cancel at any time with a reason recorded; and because CheersJA
+            never holds the money for a job, any refund of a payment already
+            made is arranged directly between the Customer and the Professional,
+            with our help if it stalls. Membership is separate and is governed
+            by section 5.
           </p>
         </Section>
 
@@ -739,7 +797,7 @@ export default function TermsPage() {
             <li>
               <strong>The badge is not a warranty.</strong> It means only that
               at the time of review a document was submitted and appeared to
-              match the account name. It is not a statement by Cheers that the
+              match the account name. It is not a statement by CheersJA that the
               person is honest, safe, skilled, qualified, licensed, insured,
               solvent, or free of a criminal record.{" "}
               <strong>
@@ -771,7 +829,7 @@ export default function TermsPage() {
         >
           <ol className="list-decimal space-y-2 pl-5">
             <li>
-              Cheers provides safety tools on monitored bookings: a meeting PIN,
+              CheersJA provides safety tools on monitored bookings: a meeting PIN,
               a duress PIN, automated timed check-ins, heartbeat and location
               monitoring, an SOS button, trusted-contact notifications and
               tracking links, and an escalation ladder that pages contacts and
@@ -805,7 +863,7 @@ export default function TermsPage() {
                 In an emergency, contact the emergency services first.
               </strong>{" "}
               In Jamaica: police <strong>119</strong>; fire and ambulance{" "}
-              <strong>110</strong>. Do not rely on Cheers to summon help.
+              <strong>110</strong>. Do not rely on CheersJA to summon help.
             </li>
             <li>
               You are responsible for your own safety, for judging whether to
@@ -814,7 +872,7 @@ export default function TermsPage() {
             </li>
             <li>
               Nothing in this section or in the Safety Policy creates a duty of
-              care in Cheers to rescue, respond to, monitor or protect any user.
+              care in CheersJA to rescue, respond to, monitor or protect any user.
             </li>
           </ol>
         </Section>
@@ -865,7 +923,7 @@ export default function TermsPage() {
           <ol className="list-decimal space-y-2 pl-5">
             <li>You keep ownership of everything you upload.</li>
             <li>
-              <strong>Licence.</strong> You grant Cheers a non-exclusive,
+              <strong>Licence.</strong> You grant CheersJA a non-exclusive,
               worldwide, royalty-free, sub-licensable licence to host, store,
               reproduce, resize, adapt for display, distribute and publicly
               display your Content for the purposes of operating, securing,
@@ -896,7 +954,7 @@ export default function TermsPage() {
               <strong>Removal.</strong> We may remove any Content without notice
               where we consider it breaches these Terms, and we will remove
               Content on a valid complaint from a rights holder. If you believe
-              your rights are infringed by Content on Cheers, write to{" "}
+              your rights are infringed by Content on CheersJA, write to{" "}
               <a
                 href={`mailto:${CONTACT_EMAILS.support}`}
                 className="underline underline-offset-2 hover:text-ink"
@@ -922,7 +980,7 @@ export default function TermsPage() {
           <h3 className="pt-2 font-medium text-ink">Prohibited services</h3>
           <p>
             You must not offer, request, book, advertise or facilitate on
-            Cheers:
+            CheersJA:
           </p>
           <ol className="list-decimal space-y-2 pl-5">
             <li>
@@ -958,7 +1016,7 @@ export default function TermsPage() {
             </li>
             <li>
               Gambling, lending, money transmission, currency exchange,
-              cryptocurrency services, or anything that would make Cheers a
+              cryptocurrency services, or anything that would make CheersJA a
               party to a regulated financial activity.
             </li>
             <li>
@@ -1006,16 +1064,18 @@ export default function TermsPage() {
               , or manipulate ratings in any way.
             </li>
             <li>
-              <strong>Circumvent the Platform or its fees.</strong> Do not steer
-              a Customer you met on Cheers off-platform to avoid the fee; do not
-              move an existing Cheers booking to a private cash arrangement to
-              avoid the fee; do not share payment handles, alternative booking
-              links or off-platform contact details for that purpose; do not
-              misreport a payment method or a price to reduce the fee. It is not
-              a breach for two people who already know each other to work
-              together off the Platform, nor for a Professional to give their
-              own contact details after a booking has been completed and paid
-              for.
+              <strong>Circumvent the Platform or its commission.</strong> Do not
+              steer a Customer you met on CheersJA off-platform to avoid the
+              commission; do not move an existing CheersJA booking to a private
+              arrangement to avoid it; do not use payment details, alternative
+              booking links or off-platform contact details for that purpose; do
+              not misreport a payment, a method or a price to reduce the
+              commission. Giving a Customer your bank or Lynk details so they
+              can pay you for a booking made here is expected, not a breach —
+              that is how Professionals are paid. Nor is it a breach for two
+              people who already know each other to work together off the
+              Platform, or for a Professional to give their own contact details
+              after a booking has been completed and paid for.
             </li>
             <li>
               Share, publish or misuse anyone else&apos;s personal information —
@@ -1046,7 +1106,7 @@ export default function TermsPage() {
               marketplace.
             </li>
             <li>
-              Bring a weapon to a Cheers booking, attend under the influence of
+              Bring a weapon to a CheersJA booking, attend under the influence of
               alcohol or drugs in a way that affects the service or
               anyone&apos;s safety, or bring uninvited people to a meeting.
             </li>
@@ -1089,8 +1149,8 @@ export default function TermsPage() {
               <strong>Moderation.</strong> We may, at our discretion and without
               prior notice: hide or deactivate a listing; take down a review;
               remove an image or a message; restrict a feature; cancel a
-              booking; hold a payout pending investigation; or place an account
-              under review.
+              booking; pause a Professional&apos;s listings pending
+              investigation; or place an account under review.
             </li>
             <li>
               <strong>Suspension and termination.</strong> We may suspend or
@@ -1104,9 +1164,11 @@ export default function TermsPage() {
               <strong>Effect of termination.</strong> Your listings come down;
               pending bookings are cancelled and payments handled under the
               Cancellation &amp; Refund Policy; your Membership is cancelled and
-              is not refunded; any amount you owe Cheers remains payable; any
-              payout owed to you is paid, less amounts owed and less any amount
-              withheld pending investigation of fraud or a chargeback.
+              is not refunded; and any amount you owe CheersJA — including
+              commission already accrued on completed bookings — remains payable
+              and may be charged to the card you have on file or recovered as a
+              debt. We owe you nothing at termination, because we never held any
+              of your money.
             </li>
             <li>
               <strong>Closing your own account.</strong> You may close your
@@ -1145,12 +1207,12 @@ export default function TermsPage() {
 
         <Section id="intellectual-property" title="17. Intellectual property">
           <p>
-            The Cheers name, logo, wordmark, interface, design, copy, database
-            and software belong to Cheers or its licensors. These Terms give you
+            The CheersJA name, logo, wordmark, interface, design, copy, database
+            and software belong to CheersJA or its licensors. These Terms give you
             a limited, personal, revocable, non-transferable licence to use the
             Platform as intended, and nothing else. Do not copy, frame, modify,
             distribute, or create derivative works from the Platform, and do not
-            use the Cheers name or marks without our written permission.
+            use the CheersJA name or marks without our written permission.
           </p>
         </Section>
 
@@ -1206,7 +1268,7 @@ export default function TermsPage() {
           <ol className="list-decimal space-y-2 pl-5">
             <li>
               <strong>
-                Cheers is not liable for the acts or omissions of any user.
+                CheersJA is not liable for the acts or omissions of any user.
               </strong>{" "}
               This includes any injury, death, loss, damage, theft, assault,
               harassment, property damage, defective or incomplete work,
@@ -1227,11 +1289,12 @@ export default function TermsPage() {
               out of or in connection with these Terms, the Platform, or any
               booking — in contract, tort (including negligence), statute or
               otherwise — is limited to the total fees you actually paid to
-              Cheers in the twelve months immediately before the event giving
-              rise to the claim (platform fees and Membership fees), or the
-              minimum floor amount stated in section 24 if that is greater.
-              Money a Customer pays a Professional in cash is not a fee paid to
-              Cheers.
+              CheersJA in the twelve months immediately before the event giving
+              rise to the claim (commission and Membership fees), or the minimum
+              floor amount stated in section 24 if that is greater. Money a
+              Customer pays a Professional for a job is not a fee paid to
+              CheersJA — we never receive it — and is not counted towards this
+              cap.
             </li>
             <li>
               Each provision of this section is severable. If a limitation is
@@ -1243,7 +1306,7 @@ export default function TermsPage() {
 
         <Section id="indemnity" title="20. Indemnity">
           <p>
-            You will indemnify and hold harmless Cheers, its directors,
+            You will indemnify and hold harmless CheersJA, its directors,
             officers, employees and contractors against any claim, demand, loss,
             liability, damages, fine, cost and expense (including reasonable
             legal fees) arising out of or connected with: your use of the
@@ -1272,7 +1335,7 @@ export default function TermsPage() {
               rights.
             </li>
             <li>
-              <strong>With Cheers — talk to us first.</strong> Before starting
+              <strong>With CheersJA — talk to us first.</strong> Before starting
               proceedings against us, write to{" "}
               <a
                 href={`mailto:${CONTACT_EMAILS.support}`}
@@ -1291,7 +1354,7 @@ export default function TermsPage() {
             </li>
             <li>
               <strong>Jurisdiction.</strong> The courts of Jamaica have
-              exclusive jurisdiction, and you and Cheers submit to them. Nothing
+              exclusive jurisdiction, and you and CheersJA submit to them. Nothing
               prevents either party from applying for urgent injunctive relief
               in any competent court.
             </li>
@@ -1302,7 +1365,7 @@ export default function TermsPage() {
             </li>
             <li>
               <strong>Time limit.</strong> To the extent permitted by law, any
-              claim against Cheers must be brought within one year of the event
+              claim against CheersJA must be brought within one year of the event
               giving rise to it.
             </li>
           </ol>
@@ -1338,7 +1401,7 @@ export default function TermsPage() {
               they incorporate (Privacy Policy, Community Guidelines, Safety
               Policy, Cancellation &amp; Refund Policy, and for Professionals
               the Independent Professional Agreement), are the whole agreement
-              between you and Cheers about the Platform.
+              between you and CheersJA about the Platform.
             </li>
             <li>
               <strong>Severability.</strong> If a provision is unenforceable, it
@@ -1368,7 +1431,7 @@ export default function TermsPage() {
               action.
             </li>
             <li>
-              <strong>Third parties.</strong> Nobody other than you and Cheers
+              <strong>Third parties.</strong> Nobody other than you and CheersJA
               may enforce these Terms.
             </li>
             <li>
@@ -1427,24 +1490,24 @@ export default function TermsPage() {
         <Document
           id="professional-agreement"
           title="Independent Professional Agreement"
-          intro="This Agreement applies to every Professional who publishes a profile or a gig on Cheers. You accept it when you create a professional profile. It sits alongside the Terms of Service above, which continue to apply to you in full."
+          intro="This Agreement applies to every Professional who publishes a profile or a gig on CheersJA. You accept it when you create a professional profile. It sits alongside the Terms of Service above, which continue to apply to you in full."
         >
           <h3 className="pt-2 font-medium text-ink">1. Independent status</h3>
           <ol className="list-decimal space-y-2 pl-5">
             <li>
               You are an <strong>independent contractor</strong> running your
               own business. You are not an employee, agent, partner or joint
-              venturer of Cheers, and nothing in this Agreement creates any of
+              venturer of CheersJA, and nothing in this Agreement creates any of
               those relationships.
             </li>
             <li>
               You are not entitled to wages, holiday pay, sick pay, redundancy,
               pension, statutory contributions or any other employment benefit
-              from Cheers.
+              from CheersJA.
             </li>
             <li>
               You decide whether, when and how much to work, which requests to
-              accept, and how the work is performed. Cheers does not supervise,
+              accept, and how the work is performed. CheersJA does not supervise,
               direct or control the work.
             </li>
             <li>
@@ -1496,7 +1559,7 @@ export default function TermsPage() {
               keeping them current.
             </li>
             <li>
-              <strong>Cheers does not check any of them.</strong> We do not run
+              <strong>CheersJA does not check any of them.</strong> We do not run
               background checks, criminal-record checks, licence checks,
               insurance checks or reference checks. Publishing in a category is
               not a statement by us that you are qualified for it.
@@ -1536,8 +1599,8 @@ export default function TermsPage() {
             <li>
               Start the session by entering the meeting PIN the Customer gives
               you, and mark the booking complete after the service. Records must
-              be truthful — a false cash-collection record or a false completion
-              is fraud.
+              be truthful — a false payment record or a false completion is
+              fraud.
             </li>
             <li>
               Do not send someone else to do the work in your place without the
@@ -1560,9 +1623,11 @@ export default function TermsPage() {
               it, or add it to a marketing list.
             </li>
             <li>
-              <strong>Do not steer Cheers Customers off-platform to avoid the
-              platform fee</strong>, and do not move an existing Cheers booking
-              to a private arrangement for that purpose.
+              <strong>Do not steer CheersJA Customers off-platform to avoid the
+              commission</strong>, and do not move an existing CheersJA booking
+              to a private arrangement for that purpose. Giving a Customer your
+              bank or Lynk details so they can pay you for a booking made here
+              is expected and encouraged — that is how you get paid.
             </li>
             <li>
               You may block a Customer at any time. The block is silent and
@@ -1571,52 +1636,70 @@ export default function TermsPage() {
           </ol>
 
           <h3 className="pt-2 font-medium text-ink">
-            6. Platform fee, payouts and negative settlement
+            6. You are paid directly; we charge commission to your card
           </h3>
           <ol className="list-decimal space-y-2 pl-5">
             <li>
-              Cheers charges a platform fee of{" "}
-              <strong>{PLATFORM_FEE_PERCENT}% of the service price plus
-              add-ons</strong>{" "}
-              on every gig booking, calculated when the booking is created and
-              fixed at that moment. It applies to cash and card bookings alike.{" "}
-              <strong>Tips are never charged a fee and are yours in full.</strong>
+              <strong>Your Customer pays you directly</strong> — cash, bank
+              transfer, Lynk or another method you agree — and{" "}
+              <strong>you keep 100% of it, tips included</strong>. CheersJA
+              never receives, holds, escrows or forwards that money, so there is
+              no payout and nothing is ever withheld from your work. You confirm
+              the payment in the app; that record is the Platform&apos;s record.
             </li>
             <li>
-              <strong>Cash bookings.</strong> The Customer pays you directly at
-              the meeting and you keep the cash. Cheers never holds that money.
-              Record the collection in the app.
+              <strong>Collecting is your job.</strong> You are responsible for
+              collecting your own fees from your Customers. CheersJA does not
+              collect on your behalf, does not guarantee that a Customer pays,
+              and is not liable to you for a payment a Customer does not make,
+              makes late or makes short. We can show both sides the record and
+              will help where we reasonably can.
             </li>
             <li>
-              <strong>Card bookings.</strong> Cheers receives the funds as
-              merchant of record and settles your share in the weekly payout.
+              <strong>Your payment details are your own.</strong> The bank
+              account, Lynk number or other instructions you publish through the
+              Platform are shown to the Customer of a confirmed booking. You
+              warrant that they are your own, that you are entitled to receive
+              money into them, and that you will keep them accurate. We do not
+              verify them and we are not responsible for money sent to details
+              you gave incorrectly.
             </li>
             <li>
-              <strong>Weekly net settlement.</strong> Payouts are made weekly by
-              manual bank transfer on a net basis: card bookings credit you the
-              price plus add-ons less the {PLATFORM_FEE_PERCENT}% fee, plus 100%
-              of card tips; cash bookings debit you the {PLATFORM_FEE_PERCENT}%
-              fee, because you already hold the money.
+              <strong>Commission — {PLATFORM_FEE_PERCENT}%.</strong> CheersJA
+              charges you{" "}
+              <strong>
+                {PLATFORM_FEE_PERCENT}% of the service price plus add-ons
+              </strong>{" "}
+              on every completed gig booking, calculated when the booking is
+              created and fixed at that moment.{" "}
+              <strong>
+                It is never deducted from what your Customer pays you.
+              </strong>{" "}
+              <strong>Tips are never charged commission and are yours in
+              full.</strong>
+            </li>
+            <li>
+              <strong>Monthly statement, charged to your card.</strong>{" "}
+              Commission accrues on a statement for the month the job was
+              completed in. The statement closes at the end of the month and is
+              charged to the card you keep on file a few days later. Keep a
+              working card on file: it is the only way we are paid. A declined
+              charge is retried, and after repeated failures the statement is
+              left for a person to deal with.
             </li>
             <li>
               <strong>
-                A week with more cash than card produces a negative settlement —
-                an amount you owe Cheers.
+                Unpaid commission pauses your listings until it clears.
               </strong>{" "}
-              Negative balances are payable to Cheers and may be set off against
-              future payouts.
+              Where a statement is unpaid after repeated failed charges and the
+              grace period has passed, we may hide or pause your listings. The
+              amount stays payable and may be recovered as a debt. You are shown
+              the state of your statement in the app and notified when a charge
+              fails, so this is never a surprise.
             </li>
             <li>
-              We may recover from you any amount charged back on a booking you
-              performed, and may set it off against your payouts.
-            </li>
-            <li>
-              We may hold a payout while we investigate suspected fraud, a
-              chargeback or a serious complaint.
-            </li>
-            <li>
-              Keep your payout bank details accurate. We are not responsible for
-              a payment sent to details you gave us incorrectly.
+              Where an amount we charged your card is reversed or charged back,
+              it remains payable and we may recover it.
             </li>
           </ol>
 
@@ -1625,10 +1708,11 @@ export default function TermsPage() {
             <li>
               You are responsible for your own income tax, GCT and every other
               tax or statutory contribution arising from your earnings, and for
-              registering where you are required to.
+              registering where you are required to. You are paid gross, in
+              full, by your Customer.
             </li>
             <li>
-              Cheers does not withhold tax, does not file on your behalf, and
+              CheersJA does not withhold tax, does not file on your behalf, and
               makes no representation about your tax position.
             </li>
             <li>
@@ -1678,8 +1762,9 @@ export default function TermsPage() {
             <li>
               On termination your listings come down, pending bookings are
               cancelled under the Cancellation &amp; Refund Policy, and any
-              payout owed to you is paid less any amount you owe Cheers and less
-              anything withheld pending an investigation.
+              commission you have already accrued remains payable and may be
+              charged to your card or recovered as a debt. Nothing is owed to
+              you by us, because we never held any of your money.
             </li>
           </ol>
 
@@ -1709,7 +1794,7 @@ export default function TermsPage() {
         <Document
           id="cancellation"
           title="Cancellation & Refund Policy"
-          intro="This policy applies to gig bookings made through Cheers. Membership is separate and is governed by section 5 of the Terms."
+          intro="This policy applies to gig bookings made through CheersJA. Membership is separate and is governed by section 5 of the Terms."
         >
           <h3 className="pt-2 font-medium text-ink">
             1. When a Customer can cancel
@@ -1766,24 +1851,32 @@ export default function TermsPage() {
           <h3 className="pt-2 font-medium text-ink">
             3. What happens to the money
           </h3>
-          <p>On any cancellation the Platform handles payment automatically:</p>
+          <p>
+            <strong>
+              CheersJA holds no money for a booking, so it cannot refund one.
+            </strong>{" "}
+            Every job payment goes straight from the Customer to the
+            Professional, which means a refund can only ever be made by the
+            person who was paid. On a cancellation:
+          </p>
           <ul className="list-disc space-y-2 pl-5">
             <li>
-              <strong>Payment still pending</strong> — nothing has been
-              collected. The expected payment is voided and no money moves.
+              <strong>Payment still pending</strong> — nothing has been paid.
+              The expected payment is voided and no money moves.
             </li>
             <li>
-              <strong>Card payment already taken</strong> — refunded in full
-              (including any card tip) through Stripe, automatically. Refunds
-              typically reach the card within 5 to 10 business days, depending
-              on the bank. If an automatic refund fails, the cancellation raises
-              an internal task and our team processes it by hand.
+              <strong>Payment already made</strong> — however it was made, cash,
+              bank transfer or Lynk, the money is with the Professional. The
+              refund is made directly by the Professional to the Customer, in
+              full unless the two of them agree otherwise. Both sides are
+              notified of exactly this, and the cancellation raises an internal
+              task so our team can step in and help if it stalls. Failing to
+              return money for a booking that did not happen is a breach of
+              these Terms and may end the account.
             </li>
             <li>
-              <strong>Cash already collected</strong> — Cheers holds no cash, so
-              the refund is made directly by the Professional to the Customer.
-              The cancellation raises an internal task so our team can help if
-              the two cannot agree.
+              <strong>Membership</strong> is not a booking payment and is
+              unaffected — see section 5 below.
             </li>
           </ul>
 
@@ -1807,8 +1900,8 @@ export default function TermsPage() {
               with the booking code. We can show both sides the payment and
               booking record and may act under section 16 of the Terms, but the
               contract for the service is between the Customer and the
-              Professional: we are not an arbitrator and we hold no funds to
-              apply to a dispute over cash.
+              Professional: we are not an arbitrator, and we hold no funds of
+              either party to apply to the dispute.
             </li>
             <li>
               Chargeback abuse and false claims of non-payment or non-delivery
@@ -1831,7 +1924,7 @@ export default function TermsPage() {
         <Document
           id="safety"
           title="Safety Policy"
-          intro="This is a summary of how the Cheers safety system works and what we expect from you. Read it with section 12 of the Terms, which sets out the limits of what these tools can do."
+          intro="This is a summary of how the CheersJA safety system works and what we expect from you. Read it with section 12 of the Terms, which sets out the limits of what these tools can do."
         >
           <h3 className="pt-2 font-medium text-ink">
             1. What is switched on, and when
@@ -1953,7 +2046,7 @@ export default function TermsPage() {
               </strong>
             </li>
             <li>
-              Nothing here creates a duty of care in Cheers to rescue, respond
+              Nothing here creates a duty of care in CheersJA to rescue, respond
               to, monitor or protect any user.
             </li>
           </ol>

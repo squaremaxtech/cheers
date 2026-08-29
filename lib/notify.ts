@@ -20,7 +20,7 @@ function emailBody(opts: { body: string; meta?: Record<string, string> }): strin
   if (!url) return `<p>${opts.body}</p>`;
   return `<p>${opts.body}</p>
     <p style="margin-top:24px;">
-      <a href="${url}" style="background:#0b6b4a;color:#ffffff;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:bold;">${label}</a>
+      <a href="${url}" style="background:#d6b25e;color:#0c0a09;padding:10px 22px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:bold;">${label}</a>
     </p>`;
 }
 
@@ -52,7 +52,7 @@ export async function notify(opts: {
     if (user?.email) {
       await sendEmail({
         to: user.email,
-        subject: `Cheers — ${opts.title}`,
+        subject: `CheersJA — ${opts.title}`,
         html: emailLayout(opts.title, emailBody(opts)),
       });
     }
@@ -89,7 +89,7 @@ async function notifyMany(
     recipients.map((a) =>
       sendEmail({
         to: a.email,
-        subject: `Cheers — ${opts.title}`,
+        subject: `CheersJA — ${opts.title}`,
         html: emailLayout(opts.title, emailBody(opts)),
       })
     )

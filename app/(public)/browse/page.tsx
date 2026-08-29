@@ -50,7 +50,7 @@ export default async function BrowsePage(props: PageProps<"/browse">) {
           <h1 className="font-display text-3xl text-ink">Browse gigs</h1>
           <p className="mt-1 text-sm text-muted">
             {results.length}
-            {premiumOnly ? " premium" : ""} available across Jamaica
+            {premiumOnly ? " invitation-only" : ""} available across Jamaica
           </p>
         </div>
         <Link

@@ -13,7 +13,7 @@ export default function VerifyPage() {
       </p>
       <div className="mt-6 space-y-2 text-xs leading-5 text-faint">
         <p>
-          You must be 18 or older to use Cheers —{" "}
+          You must be 18 or older to use CheersJA —{" "}
           <Link href="/terms#eligibility" className="text-brand hover:underline">
             eligibility
           </Link>

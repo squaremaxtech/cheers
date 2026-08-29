@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { bookingEvents, bookings } from "@/db/schema";
+import { bookingEvents, bookings, gigs } from "@/db/schema";
 import { lockWorkerSchedule, slotConflictError } from "@/lib/availability";
 import {
   CANCEL_MIN_HOURS,
@@ -50,6 +50,25 @@ export function customerCanCancel(booking: BookingRow): boolean {
   return hoursUntil >= CANCEL_MIN_HOURS;
 }
 
+// The check-in cadence a new booking should carry. An explicit value from the
+// caller always wins (including an explicit null, which means "platform
+// default"); only an OMITTED option falls back to the gig. A booking with no
+// gig behind it — there is no professional's preference to honour — stays null.
+async function resolveCheckinSnapshot(opts: {
+  gigId: string | null;
+  checkinIntervalMinutes?: number | null;
+}): Promise<number | null> {
+  if (opts.checkinIntervalMinutes !== undefined) {
+    return opts.checkinIntervalMinutes;
+  }
+  if (!opts.gigId) return null;
+  const [gig] = await db
+    .select({ minutes: gigs.checkinIntervalMinutes })
+    .from(gigs)
+    .where(eq(gigs.id, opts.gigId));
+  return gig?.minutes ?? null;
+}
+
 // Race-safe booking creation, shared by direct booking (actions/bookings.ts)
 // and quote acceptance (actions/quotes.ts): the per-worker advisory lock
 // serializes concurrent submissions, so the availability/overlap re-check
@@ -61,6 +80,15 @@ export async function claimBookingSlot(opts: {
   gigId: string | null;
   serviceName: string;
   monitored: boolean;
+  // Snapshot of gigs.checkin_interval_minutes — how often the worker is asked
+  // to check in on THIS job. Null = the platform default; 0 = start and end
+  // only. Snapshotted for the same reason `monitored` is: editing the gig next
+  // month must never silently re-time a job already on the calendar.
+  //
+  // Pass it explicitly. Omitting it with a gigId set falls back to reading the
+  // gig here rather than defaulting the professional's choice away — a caller
+  // that forgets should get the right cadence, not the platform's.
+  checkinIntervalMinutes?: number | null;
   date: string;
   startTime: string;
   durationMinutes: number;
@@ -77,6 +105,9 @@ export async function claimBookingSlot(opts: {
   eventNote?: string;
 }): Promise<{ conflict?: string; booking?: BookingRow }> {
   const safetyPin = generatePin();
+  // Resolved before the transaction so the worker's schedule lock is held for
+  // no longer than the slot check and the insert actually need.
+  const checkinIntervalMinutes = await resolveCheckinSnapshot(opts);
   return db.transaction(
     async (tx): Promise<{ conflict?: string; booking?: BookingRow }> => {
       await lockWorkerSchedule(tx, opts.workerId);
@@ -96,6 +127,7 @@ export async function claimBookingSlot(opts: {
           gigId: opts.gigId,
           serviceName: opts.serviceName,
           monitored: opts.monitored,
+          checkinIntervalMinutes,
           date: opts.date,
           startTime: opts.startTime,
           durationMinutes: opts.durationMinutes,

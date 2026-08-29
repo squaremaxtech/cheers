@@ -1,11 +1,11 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { CONTACT_EMAILS, PLATFORM_FEE_PERCENT } from "@/lib/constants";
+import { PLATFORM_FEE_PERCENT } from "@/lib/constants";
 
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Cheers is Jamaica's premium freelance platform — independent professionals list their own services and prices, and customers hire them directly.",
+    "CheersJA is Jamaica's events and entertainment marketplace — DJs, MCs, sound, lighting, catering, bar, décor and event security list their own services and prices, and hosts book them directly.",
 };
 
 function Section({
@@ -29,20 +29,22 @@ export default function AboutPage() {
   return (
     <div className="mx-auto max-w-3xl px-5 py-16">
       <h1 className="font-display text-3xl tracking-tight text-ink">
-        About Cheers
+        About CheersJA
       </h1>
       <p className="mt-4 text-base leading-7 text-muted">
-        Cheers is Jamaica&apos;s premium freelance platform. Independent
-        professionals publish their own services, prices and photos —
-        electricians, DJs, cleaners, caterers, photographers, tutors, movers,
-        mechanics, security and more — and customers search, compare, message
-        and book them directly, across all fourteen parishes.
+        CheersJA is Jamaica&apos;s events and entertainment marketplace — the
+        people who make an event happen, in one place. DJs, MCs and hosts,
+        sound engineers and lighting technicians, live performers and dancers,
+        caterers, bartenders, décor and staging teams, photographers and
+        videographers, event security and equipment rentals publish their own
+        services, rates and photos, and hosts search, compare, message and book
+        them directly, across all fourteen parishes.
       </p>
 
       <div className="mt-12 space-y-10">
-        <Section title="What Cheers is — and what it is not">
+        <Section title="What CheersJA is — and what it is not">
           <p>
-            Cheers is the venue, not the service provider. We run the
+            CheersJA is the venue, not the service provider. We run the
             marketplace: the listings, the search, the messaging, the booking
             calendar, the payments rail and the safety tools. The work itself is
             agreed between you and the professional you hire.
@@ -109,18 +111,23 @@ export default function AboutPage() {
 
         <Section title="How money works">
           <p>
-            You can pay cash or, where online payments are switched on, by card.
-            Cash is settled directly between you and the professional; card
-            payments run through our payments provider.
+            You pay your professional directly — cash, bank transfer or Lynk —
+            for the price you agreed. CheersJA never receives, holds or forwards
+            that money; the app records the payment so both of you have the same
+            history, and nothing more.
           </p>
           <p>
-            Cheers takes a {PLATFORM_FEE_PERCENT}% platform fee on every booking
-            — the same on cash and card. Tips go 100% to the professional.
-            Professionals are paid out weekly for completed work, net of the
-            fee.
+            The professional keeps 100% of what you pay them, tips included. Our
+            revenue is a {PLATFORM_FEE_PERCENT}% commission on completed work,
+            which is never taken out of the job — it builds up on the
+            professional&apos;s monthly statement and is charged to their card.
+            Unpaid commission pauses their listings until it clears. The other
+            thing we charge for is the customer membership, also by card.
           </p>
           <p>
-            Cancellation terms, refunds and the full fee rules are in the{" "}
+            Because we hold nothing, a cancelled booking that has already been
+            paid is refunded between the two of you directly — we will help if
+            it stalls. Cancellation terms and the full fee rules are in the{" "}
             <Link
               href="/terms#cancellation"
               className="text-brand hover:underline"
@@ -133,36 +140,23 @@ export default function AboutPage() {
 
         <Section title="Membership">
           <p>
-            Browsing and searching Cheers is always free. A Cheers Membership is
-            what unlocks messaging a professional and placing a booking. If you
-            already have a confirmed booking with someone, you can always
-            message them about it — coordinating work you have paid for is never
-            behind a paywall. Professionals never need a membership.
-          </p>
-        </Section>
-
-        <Section title="Premium services">
-          <p>
-            Some services are offered to premium members only, and they are
-            invisible to everyone else. Access is granted by us, not bought — if
-            you would like to be considered, contact us at{" "}
-            <a
-              href={`mailto:${CONTACT_EMAILS.hello}`}
-              className="text-brand hover:underline"
-            >
-              {CONTACT_EMAILS.hello}
-            </a>
-            .
+            Browsing and searching CheersJA is always free. A CheersJA
+            Membership is what unlocks messaging a professional and placing a
+            booking. If you already have a confirmed booking with someone, you
+            can always message them about it — coordinating work you have paid
+            for is never behind a paywall. Professionals never need a
+            membership.
           </p>
         </Section>
 
         <Section title="Rides">
           <p>
-            Cheers also connects riders with independent drivers. You name the
-            fare for your route, drivers accept it or counter, and fares are
-            paid in cash in the car. Drivers are the one part of the platform we
-            check before they go live — licence and vehicle documents are
-            reviewed by staff.{" "}
+            CheersJA also connects riders with independent drivers — useful when
+            the party is over and the guests need to get home. You name the fare
+            for your route, drivers accept it or counter, and fares are paid in
+            cash in the car. Drivers are the one part of the platform we check
+            before they go live — licence and vehicle documents are reviewed by
+            staff.{" "}
             <Link href="/drivers" className="text-brand hover:underline">
               See drivers
             </Link>
@@ -170,19 +164,22 @@ export default function AboutPage() {
           </p>
         </Section>
 
-        <Section title="For professionals">
+        <Section title="For event professionals">
           <p>
-            Joining is free. Your profile, your services, your prices, your
-            schedule — you keep control of all of it, and nothing you publish
-            waits on us to approve it. We handle discovery, messaging, bookings,
-            payouts and the safety tooling so you can concentrate on the work.
+            Joining is free. Your profile, your services, your rates, your
+            calendar — you keep control of all of it, and nothing you publish
+            waits on us to approve it. You are paid directly by the customer and
+            keep 100% of the job and the tip; our {PLATFORM_FEE_PERCENT}%
+            commission is charged to your card at the end of the month instead
+            of coming out of your work. We handle discovery, messaging, bookings
+            and the safety tooling so you can concentrate on the show.
           </p>
           <p>
             <Link
               href="/worker/onboarding"
               className="text-brand hover:underline"
             >
-              Offer your services on Cheers →
+              Get booked on CheersJA →
             </Link>
           </p>
         </Section>

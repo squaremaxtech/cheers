@@ -60,7 +60,7 @@ export async function requireStaff(): Promise<UserRow> {
 // cancel a booking.
 //
 // Deliberately NOT the whole admin surface. Money leaving the platform
-// (refunds, payouts), premium grants and account suspension stay requireAdmin
+// (refunds, fee invoices), premium grants and account suspension stay requireAdmin
 // — a desk account is the one most likely to be left logged in.
 export async function requireDeskStaff(): Promise<UserRow> {
   const user = await requireUser();

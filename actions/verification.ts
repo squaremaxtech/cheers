@@ -134,7 +134,7 @@ export async function completeCustomerOnboarding(
       await notify({
         userId: user.id,
         type: "customer_onboarded",
-        title: "Welcome to Cheers",
+        title: "Welcome to CheersJA",
         body: "Your account is ready — browse professionals across Jamaica, message them and book in minutes. Adding a Verified ID badge is optional and can be done anytime from your dashboard.",
       });
     }

@@ -12,6 +12,7 @@ const nav: NavItem[] = [
   { href: "/admin/workers", label: "Professionals" },
   { href: "/admin/drivers", label: "Drivers" },
   { href: "/admin/gigs", label: "Gigs" },
+  { href: "/admin/catalog", label: "Catalog" },
   { href: "/admin/promote", label: "Promote" },
   { href: "/admin/verifications", label: "Verifications" },
   { href: "/admin/bookings", label: "Bookings" },
@@ -41,13 +42,16 @@ export default async function AdminLayout({
   if (isDriver(user)) redirect("/driver");
   if (isSafetyMonitor(user)) redirect("/safety");
 
-  // Granting premium is an owner decision, not a desk task: /admin/promote
-  // is admin-only (the page redirects, the actions requireAdmin), so support
-  // never sees the link either.
+  // Two surfaces are owner decisions rather than desk tasks and are admin-only
+  // (each page redirects, each action requireAdmin), so support never sees the
+  // link either: /admin/promote grants the premium tier, and /admin/catalog
+  // owns the browse vocabulary every listing is filed under — and shows the
+  // hidden Premium category while it does.
+  const adminOnly = ["/admin/promote", "/admin/catalog"];
   const items =
     user.role === "admin"
       ? nav
-      : nav.filter((item) => item.href !== "/admin/promote");
+      : nav.filter((item) => !adminOnly.includes(item.href));
 
   return (
     <>

@@ -66,10 +66,10 @@ export default async function BookPage(props: PageProps<"/book/[slug]">) {
         {!member ? (
           <div className="card p-6">
             <h2 className="font-display text-lg text-ink">
-              Cheers Membership required
+              CheersJA Membership required
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              A Cheers Membership unlocks both sides of hiring on Cheers:
+              A CheersJA Membership unlocks both sides of hiring on CheersJA:
               messaging any professional, and booking them. It is the only
               thing standing between you and this booking.
             </p>

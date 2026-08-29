@@ -50,7 +50,7 @@ export default function PrivacyPage() {
 
       <div className="mt-6 space-y-5 text-sm leading-7 text-muted">
         <p>
-          This policy explains what personal information Cheers collects, why we
+          This policy explains what personal information CheersJA collects, why we
           hold it, who we share it with, how long we keep it, and what you can
           ask us to do with it. It applies to everyone whose information we hold
           — customers, professionals, drivers, trusted contacts and visitors. It
@@ -90,9 +90,9 @@ export default function PrivacyPage() {
       <div className="mt-12 space-y-10 text-sm leading-7 text-muted">
         <Section id="who-we-are" title="1. Who we are">
           <p>
-            Cheers is a marketplace where independent professionals in Jamaica
+            CheersJA is a marketplace where independent professionals in Jamaica
             publish services and customers find, message and book them. The
-            company that operates Cheers is the data controller for the
+            company that operates CheersJA is the data controller for the
             information described here under the{" "}
             <strong>Data Protection Act, 2020</strong>. Our registered legal
             name, company number and registered office are published in section
@@ -140,8 +140,11 @@ export default function PrivacyPage() {
               review and administration only.
             </li>
             <li>
-              The payout details you give us so we can send your weekly bank
-              transfer.
+              The <strong>payment instructions</strong> you write — a bank
+              account, a Lynk number and the like. CheersJA never uses them to
+              send you money, because we never hold any: we show them to the
+              customer of a confirmed booking so they can pay you directly. Do
+              not write anything there you are not willing to give a customer.
             </li>
           </ul>
 
@@ -165,20 +168,30 @@ export default function PrivacyPage() {
           <h3 className="pt-2 font-medium text-ink">Payments</h3>
           <ul className="list-disc space-y-2 pl-5">
             <li>
-              For each booking: the amount, any tip, the platform fee, the
-              method (cash or card), the status, and — for card payments — the
-              payment processor&apos;s transaction reference and your processor
-              customer identifier.
+              <strong>
+                We do not process the payment for a booking and never receive
+                the money for one.
+              </strong>{" "}
+              You pay your professional directly. What we hold is the record
+              they and you enter: the amount, any tip, the commission we will
+              charge the professional, the method (cash, bank transfer, Lynk or
+              other), the status, and any short reference or note either of you
+              adds.
             </li>
             <li>
-              For cash bookings: the professional&apos;s record of the
-              collection, including an optional proof photo.
+              <strong>Our own charges.</strong> For the two things we do charge
+              a card for — a customer&apos;s membership and a
+              professional&apos;s monthly commission — we keep the outcome, the
+              amount, the date and our payment gateway&apos;s transaction
+              reference, plus a gateway token for the card so it can be charged
+              again, and the card brand, last four digits and expiry so you can
+              recognise it.
             </li>
-            <li>Membership subscription and payout records.</li>
+            <li>Membership and commission statement records.</li>
             <li>
               <strong>
                 We never see or store your card number. Card details go straight
-                to Stripe.
+                to our payment gateway, PowerTranz (First Atlantic Commerce).
               </strong>
             </li>
           </ul>
@@ -270,8 +283,9 @@ export default function PrivacyPage() {
               <strong>From Google</strong>, if you choose to sign in with it.
             </li>
             <li>
-              <strong>From Stripe</strong> — whether a payment succeeded, failed
-              or was refunded, and the reference for it.
+              <strong>From our payment gateway</strong> — whether one of our own
+              charges (a membership or a commission statement) succeeded or
+              failed, the reference for it, and the masked card details.
             </li>
             <li>
               <strong>From your device</strong>, with your permission —
@@ -300,9 +314,9 @@ export default function PrivacyPage() {
               contract with you.
             </li>
             <li>
-              <strong>To take and record payments</strong> — card charges,
-              membership subscriptions, cash records, platform fees, weekly
-              payouts and refunds.
+              <strong>To record job payments and to take our own</strong> —
+              recording what a customer paid a professional directly, and
+              charging memberships and monthly commission statements to a card.
             </li>
             <li>
               <strong>To operate the safety system</strong> — meeting and duress
@@ -312,7 +326,7 @@ export default function PrivacyPage() {
             </li>
             <li>
               <strong>To communicate with you</strong> — booking updates, safety
-              alerts, payment and payout notices, and service messages about
+              alerts, payment and billing notices, and service messages about
               your account, by email, in-app notification and (where enabled)
               SMS or push.
             </li>
@@ -353,9 +367,11 @@ export default function PrivacyPage() {
               address they are asked to go to.
             </li>
             <li>
-              <strong>Stripe</strong> — our payment processor, for card payments
-              and memberships. Stripe handles card details directly; we receive
-              only the outcome and a reference.
+              <strong>PowerTranz (First Atlantic Commerce)</strong> — our card
+              gateway, used only for memberships and professionals&apos;
+              commission. It handles card details directly; we receive the
+              outcome, a reference and a token. It is never involved in the
+              payment for a booking, because we never take one.
             </li>
             <li>
               <strong>Our email, SMS and push providers</strong> — to deliver
@@ -393,7 +409,7 @@ export default function PrivacyPage() {
               legal claim.
             </li>
             <li>
-              <strong>A buyer of the business</strong> — if Cheers is sold or
+              <strong>A buyer of the business</strong> — if CheersJA is sold or
               reorganised, as part of that transaction and on notice to you.
             </li>
           </ul>
@@ -448,7 +464,8 @@ export default function PrivacyPage() {
               the review is decided (section 6).
             </li>
             <li>
-              <strong>Booking, payment, fee and payout records</strong> are kept
+              <strong>Booking, payment, commission and billing records</strong>{" "}
+              are kept
               after a booking ends and after an account closes, because we need
               them for accounting and tax, to answer disputes and chargebacks,
               and to defend legal claims.
@@ -637,7 +654,7 @@ export default function PrivacyPage() {
 
         <Section id="transfers" title="12. Information that leaves Jamaica">
           <p>
-            Some of the providers we rely on — our payment processor, our email,
+            Some of the providers we rely on — our card gateway, our email,
             SMS and push delivery services, and our hosting and database
             providers — operate outside Jamaica. Using them means your
             information may be stored or processed abroad. We use established
@@ -648,7 +665,7 @@ export default function PrivacyPage() {
 
         <Section id="children" title="13. Under-18s">
           <p>
-            Cheers is for adults. You must be 18 or older to hold an account. We
+            CheersJA is for adults. You must be 18 or older to hold an account. We
             do not knowingly collect personal information from anyone under 18;
             if we learn that an account belongs to someone under 18 we close it
             and delete the information we do not have to keep. If you believe a

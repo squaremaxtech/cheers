@@ -24,7 +24,7 @@ export default async function WorkerOnboardingPage() {
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="font-display text-2xl text-ink">
-        Offer your services on Cheers
+        Offer your services on CheersJA
       </h1>
       <p className="mt-2 text-sm leading-6 text-muted">
         Your display name is what customers see; your legal name stays private

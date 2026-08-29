@@ -14,7 +14,7 @@ import {
 } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import { getUserRow } from "@/lib/auth";
-import { formatCents, stripeConfigured } from "@/lib/constants";
+import { formatCents } from "@/lib/constants";
 import { freeAccessStatus } from "@/lib/membership";
 import { statusTone } from "@/lib/status";
 
@@ -111,9 +111,9 @@ export default async function AdminDashboard() {
   const alertCount = openAlerts?.n ?? 0;
   const liveCount = liveSessions?.n ?? 0;
 
-  // Membership gates chat AND booking; with Stripe dormant the launch window
+  // Membership gates chat AND booking; with card payments dormant the window
   // is the only thing granting either, so a lapse closes the funnel entirely.
-  const freeAccess = freeAccessStatus(stripeConfigured());
+  const freeAccess = freeAccessStatus();
 
   return (
     <div className="space-y-8">

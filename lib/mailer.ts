@@ -23,7 +23,7 @@ function cleanFrom(raw: string): string {
 export const mailFrom = cleanFrom(
   process.env.EMAIL_FROM ??
     process.env.SMTP_FROM ??
-    `Cheers <${smtpConfig.auth.user ?? ""}>`
+    `CheersJA <${smtpConfig.auth.user ?? ""}>`
 );
 
 const transporter = nodemailer.createTransport(smtpConfig);
@@ -50,24 +50,27 @@ export async function sendEmail(opts: {
   }
 }
 
-// Minimal branded wrapper for all notification emails. Light theme: a white
-// card on the page background, a deep-green header band, dark body text.
-// Table-free, inline styles only, no web fonts and no rgba() — the safest
-// subset across Gmail, Outlook and Apple Mail.
+// Minimal branded wrapper for all notification emails. Dark theme, matching
+// the site: a #171412 card on the near-black page ground, a gold wordmark and
+// warm off-white body text. Table-free, inline styles only, no web fonts and
+// no rgba() — the safest subset across Gmail, Outlook and Apple Mail. The
+// colours are literal because an email cannot read globals.css; they track
+// --color-base / --color-surface / --color-hairline / --color-gold /
+// --color-ink / --color-muted / --color-faint.
 export function emailLayout(title: string, bodyHtml: string): string {
   return `
-  <div style="background:#f7f6f2;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-    <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e5e2da;border-radius:12px;overflow:hidden;">
-      <div style="background:#0b6b4a;padding:20px 32px;">
-        <p style="color:#ffffff;font-size:20px;font-weight:bold;margin:0;">Cheers</p>
-        <p style="color:#cfe4da;font-size:12px;margin:4px 0 0;">Jamaica's premium freelance platform</p>
+  <div style="background:#0c0a09;padding:32px 16px;font-family:Georgia,'Times New Roman',serif;">
+    <div style="max-width:560px;margin:0 auto;background:#171412;border:1px solid #2c2724;border-radius:12px;overflow:hidden;">
+      <div style="border-bottom:1px solid #2c2724;padding:20px 32px;">
+        <p style="color:#d6b25e;font-size:20px;letter-spacing:2px;margin:0;">CHEERSJA</p>
+        <p style="color:#a89f94;font-size:12px;margin:6px 0 0;">Jamaica's events &amp; entertainment marketplace</p>
       </div>
       <div style="padding:28px 32px;">
-        <h1 style="color:#16140f;font-size:20px;font-weight:bold;margin:0 0 16px;">${title}</h1>
-        <div style="color:#3a352e;font-size:15px;line-height:1.6;">${bodyHtml}</div>
+        <h1 style="color:#faf7f2;font-size:20px;margin:0 0 16px;">${title}</h1>
+        <div style="color:#a89f94;font-size:15px;line-height:1.6;">${bodyHtml}</div>
       </div>
-      <div style="border-top:1px solid #e5e2da;padding:16px 32px;">
-        <p style="color:#8a8478;font-size:12px;margin:0;">Cheers &middot; Jamaica</p>
+      <div style="border-top:1px solid #2c2724;padding:16px 32px;">
+        <p style="color:#6b6259;font-size:12px;margin:0;">CheersJA &middot; Jamaica</p>
       </div>
     </div>
   </div>`;

@@ -7,11 +7,14 @@ import SafetySettings from "@/components/safety/SafetySettings";
 import TrustedContacts from "@/components/safety/TrustedContacts";
 import {
   CHECKIN_GRACE_MINUTES,
+  CHECKIN_INTERVAL_OPTIONS,
+  CHECKIN_SNOOZE_MINUTES,
+  CHECKIN_SNOOZES_PER_SESSION,
   GET_HOME_SAFE_MINUTES,
   HEARTBEAT_GRACE_MINUTES,
-  smsEnabled,
   WELLNESS_CHECK_INTERVAL_MINUTES,
 } from "@/lib/constants";
+import { smsConfigured } from "@/lib/safety/sms";
 import { getWorkerContext } from "@/lib/worker-context";
 
 export const metadata: Metadata = { title: "Safety" };
@@ -49,9 +52,17 @@ export default async function WorkerSafetyPage() {
         </h2>
         <ul className="space-y-2 text-sm text-muted">
           <li>
-            <strong className="text-ink">Every {WELLNESS_CHECK_INTERVAL_MINUTES} minutes</strong>{" "}
-            we ask you to tap &ldquo;I&apos;m OK&rdquo;. You can answer straight
-            from the notification.
+            <strong className="text-ink">On the cadence you chose</strong> we ask
+            you to tap &ldquo;I&apos;m OK&rdquo;. You can answer straight from
+            the notification. Each of your gigs sets its own rhythm — you
+            can&apos;t answer a prompt mid-set, and you shouldn&apos;t have to.
+          </li>
+          <li>
+            <strong className="text-ink">
+              Mid-job you can snooze {CHECKIN_SNOOZE_MINUTES / 60} hours
+            </strong>{" "}
+            — up to {CHECKIN_SNOOZES_PER_SESSION} times a visit. It moves the
+            next check-in only. Everything below still runs on time.
           </li>
           <li>
             <strong className="text-ink">
@@ -75,6 +86,42 @@ export default async function WorkerSafetyPage() {
         <p className="text-xs text-faint">
           You never have to reach a button for us to notice something is wrong.
           Silence is enough.
+        </p>
+      </section>
+
+      {/* The cadence is a per-GIG setting, edited on the gig itself. This
+          panel exists so a professional can see every option and what each
+          one costs them in interruptions before they go and pick one. */}
+      <section className="card space-y-4 p-6">
+        <div>
+          <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
+            How often we check in
+          </h2>
+          <p className="mt-1 text-xs text-faint">
+            Set per gig, on the gig itself — a six-hour stage set and a
+            one-to-one house call should not be interrupted at the same rate.
+            Gigs with nothing chosen use the platform default of{" "}
+            {WELLNESS_CHECK_INTERVAL_MINUTES} minutes. The cadence is copied
+            onto each booking when it is made, so changing a gig never re-times
+            a job already on your calendar.
+          </p>
+        </div>
+        <ul className="space-y-2">
+          {CHECKIN_INTERVAL_OPTIONS.map((option) => (
+            <li
+              key={option.minutes}
+              className="rounded-xl border border-hairline p-3"
+            >
+              <p className="text-sm text-ink">{option.label}</p>
+              <p className="mt-0.5 text-xs text-faint">{option.hint}</p>
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-faint">
+          Whatever you choose, the parts that save lives never switch off: the
+          PIN-verified start, your emergency PIN, the SOS, your phone&apos;s
+          heartbeat, the arrival and overrun deadlines and the get-home-safe
+          check all run on every monitored booking.
         </p>
       </section>
 
@@ -110,7 +157,7 @@ export default async function WorkerSafetyPage() {
           </p>
         </div>
         <TrustedContacts
-          smsEnabled={smsEnabled()}
+          smsEnabled={smsConfigured()}
           contacts={contacts.map((c) => ({
             id: c.id,
             name: c.name,

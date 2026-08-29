@@ -9,7 +9,7 @@ import type { DriverBrowseFilters } from "@/types";
 export const metadata: Metadata = {
   title: "Drivers",
   description:
-    "Verified drivers across Jamaica. Name your price for any route — drivers accept or counter, and you pay cash in the car.",
+    "Verified drivers across Jamaica — get the crew loaded in and your guests home. Name your price for any route: drivers accept or counter, and you pay cash in the car.",
 };
 
 function firstParam(v: string | string[] | undefined): string | undefined {

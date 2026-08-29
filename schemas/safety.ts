@@ -63,6 +63,14 @@ export const checkinResponseSchema = z.object({
   note: z.string().trim().max(300).optional(),
 });
 
+// "I'm on stage, ask me later". No payload beyond the booking: how far the
+// clock moves and how many snoozes a session gets are platform policy
+// (CHECKIN_SNOOZE_MINUTES / CHECKIN_SNOOZES_PER_SESSION), never a client's
+// choice — a client-supplied duration is a client-supplied silence.
+export const snoozeCheckinSchema = z.object({
+  bookingId,
+});
+
 export const sosCancelSchema = z.object({
   bookingId,
   // Present when the worker has set a personal cancel code; absent means they

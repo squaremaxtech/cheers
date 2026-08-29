@@ -9,6 +9,14 @@ import { JAMAICA_PARISHES, LANGUAGES } from "@/lib/constants";
 // canSeePremium comes from the server (lib/premium.ts). When it is false the
 // Premium chip is not rendered at all: a standard viewer must see no trace
 // that the tier exists, and lib/gigs.ts ignores ?premium=1 for them anyway.
+//
+// The hidden Premium CATEGORY never belongs in this dropdown for anybody:
+// lib/gigs.ts getGigCategories() already strips it for viewers who cannot see
+// premium, and premium viewers reach the tier through the chip below rather
+// than through the taxonomy. The filter below is the belt to that braces —
+// whatever a caller passes in, the category never appears here.
+const PREMIUM_CATEGORY_SLUG = "premium"; // mirrors lib/gigs.ts (server-only)
+
 export default function GigFilters({
   categories,
   canSeePremium = false,
@@ -16,6 +24,9 @@ export default function GigFilters({
   categories: { slug: string; name: string }[];
   canSeePremium?: boolean;
 }) {
+  const browseCategories = categories.filter(
+    (c) => c.slug !== PREMIUM_CATEGORY_SLUG
+  );
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -58,7 +69,7 @@ export default function GigFilters({
           onChange={(e) => setParam("category", e.target.value)}
         >
           <option value="">Any</option>
-          {categories.map((c) => (
+          {browseCategories.map((c) => (
             <option key={c.slug} value={c.slug}>
               {c.name}
             </option>

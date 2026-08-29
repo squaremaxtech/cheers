@@ -520,3 +520,155 @@ rota + drills · optional Capacitor wrapper for true background location.
 5. **Native wrapper?** The web spine gets you ~85% of the safety value. The last
    15% — background location, hardware SOS, guaranteed delivery — needs Capacitor.
    Worth deciding early so Phase 1 is built to be wrapped.
+
+---
+
+## PART H — Per-gig check-in cadence, snooze, and the SMS providers
+
+Added 2026-08-28. Everything in Parts A–G still holds; this part records the
+three changes that came out of running the system against real event work.
+
+### H1. The cadence is the professional's, not the platform's
+
+The original design asked **every** worker to check in every 30 minutes on
+**every** monitored job. That is right for a one-to-one house call and wrong
+for a six-hour stage set: a DJ mid-set, an MC on the mic or a lighting tech up
+a truss cannot answer a prompt, so the platform was manufacturing missed
+check-ins — and a monitor who sees false alarms all night stops believing the
+real one. An alarm system that cries wolf is worse than none.
+
+So the cadence is chosen **per gig** and **snapshotted per booking**:
+
+| Layer | Column / function | Meaning |
+|---|---|---|
+| Gig | `gigs.checkin_interval_minutes` (smallint, nullable) | the professional's choice for this kind of work |
+| Booking | `bookings.checkin_interval_minutes` (smallint, nullable) | snapshot at booking time — editing the gig next month never re-times a job already on the calendar |
+| Session | `resolveCheckinMinutes()` (`lib/constants.ts`) | `null` → platform default (`WELLNESS_CHECK_INTERVAL_MINUTES`); `0` → **no periodic check-ins** |
+
+Presets only (`CHECKIN_INTERVAL_OPTIONS`): 30 / 60 / 120 / 240 minutes, or
+**0 = start and end only**. Never a free-text box — a text box invites "9999"
+and switches monitoring off by accident.
+
+**What `0` does and does not switch off.** It removes the *periodic nudge* and
+nothing else. `nextCheckInAt` is simply `null`, and the scheduler's due-check-in
+sweep filters on `isNotNull(nextCheckInAt)` — so a null deadline is **nothing
+is due**, never **overdue**. Every other protection is independent of
+`nextCheckInAt` and still runs on a "start and end only" job: the PIN-verified
+start, the duress PIN, the heartbeat, the no-arrival deadline, the overrun
+deadline, get-home-safe, and the SOS.
+
+One place computes a periodic deadline — `nextCheckInFor()` in
+`lib/safety/session.ts` — and both writers (`startOnSite`, `answerCheckin`) go
+through it. `chaseUnansweredCheckins` additionally joins the booking and
+retires any stray pending check-in on a zero-cadence session as *answered*
+rather than *missed*: structurally one cannot exist, and this is the one place
+in the codebase where a future bug would page a family at 3am about a
+performer who was told they would never be interrupted.
+
+### H2. Snooze — "I'm on stage, ask me later"
+
+A relief valve that keeps the cover instead of trading it away. Live on the
+worker's safety bar as a plain text control — never a button, never anything
+that could be mistaken for the check-in or the SOS.
+
+- Pushes `nextCheckInAt` out by `CHECKIN_SNOOZE_MINUTES` (2 hours).
+- Capped at `CHECKIN_SNOOZES_PER_SESSION` (3) per session, counted from the
+  append-only `safety_events` trail (`kind = 'checkin_snoozed'`) rather than a
+  column — the desk sees every snooze in the same timeline as everything else,
+  and there is no second counter to drift out of step.
+- Pressing it **is contact**: it refreshes `lastHeartbeatAt`, clears an
+  `unresponsive` flag, and closes any pending check-in as answered — otherwise
+  that row would still time out minutes later and page the desk about someone
+  who had just told us they were fine.
+- Worker-only, on their own booking. A customer or a staff account can never
+  quiet someone else's clock.
+- It moves the **periodic check-in only**. `getHomeDueAt`, `expectedArrivalAt`,
+  `expectedEndAt`, the heartbeat, the SOS and the duress PIN are untouched by
+  every write in `snoozeCheckin()`.
+- Past the cap it refuses politely and points at "I'm OK", which takes a
+  second.
+
+### H3. SMS is pluggable, and Twilio is the Jamaican answer
+
+`smsEnabled()` in `lib/constants.ts` gates the original generic sender
+(`{to,text}` JSON + bearer token). Almost no real provider speaks that shape —
+Twilio, the one the platform will actually use, is form-encoded with HTTP basic
+auth. So `lib/safety/sms.ts` now owns the provider question:
+
+```
+SMS_PROVIDER=generic|twilio     # default generic — an existing deployment is unchanged
+SMS_PROVIDER_URL=               # generic adapter
+SMS_PROVIDER_TOKEN=             # generic adapter
+TWILIO_ACCOUNT_SID=             # twilio adapter (Console → Account Info)
+TWILIO_AUTH_TOKEN=              # twilio adapter — a live spending credential, server-side only
+TWILIO_FROM_NUMBER=             # twilio adapter — an SMS-capable number in E.164
+```
+
+`smsConfigured()` (in `lib/safety/sms.ts`, **not** constants) is the question
+every caller now asks; `smsEnabled()` stays exactly as it was and is read only
+as the generic adapter's gate. Adding a third provider never touches
+`lib/constants.ts`.
+
+The four guarantees are unchanged: never throws, returns only what the provider
+accepted, one bad number never stops the others, and with nothing configured it
+honestly delivers nothing rather than pretending. Each send additionally
+carries an 8-second timeout so a hanging provider cannot stall the ladder.
+
+**Getting the Twilio credentials.** Sign up at twilio.com/try-twilio (a trial
+can only text numbers you have verified until a card is added); the Account SID
+and Auth Token are on the Console home page under Account Info; buy an
+SMS-capable number under Phone Numbers. A US (+1) long code is cheapest and
+delivers to Jamaica fine.
+
+**Roughly what it costs** (Twilio list prices — verify before relying on them):
+the number rents at about **US$1.15/month**, and outbound SMS to Jamaica runs
+about **US$0.09 per segment**, where a safety text is one or two segments
+(`smsLine()` caps every message at 300 characters). An escalation that texts
+three people costs a few US cents. The monthly number rental, not the traffic,
+is the line item.
+
+**Jamaican numbers are normalised to E.164 before every send** — one helper,
+`toE164()`, used for every target. Providers silently reject anything else,
+which in this system means a trusted contact who *looks* configured and is
+never actually reached. Jamaica is NANP country code 1 with two area codes,
+876 (original) and 658 (the 2018 overlay):
+
+| Typed | Sent |
+|---|---|
+| `876-555-0123`, `(876) 555 0123` | `+18765550123` |
+| `658 555 0123` | `+16585550123` |
+| `555-0123` (7 digits, local) | `+18765550123` — 876 assumed; a 658 line must dial its area code, as overlay dialling requires locally anyway |
+| `1 876 555 0123` | `+18765550123` |
+| `+44 20 7946 0000`, `0044…` | passed through as `+442079460000` |
+| 8–9 digits, or anything unparseable | **null — not sent.** Never "send it and hope" |
+
+Accepted sends are logged to `escalations` with the number actually dialled,
+not the string somebody typed.
+
+**Phase two: WhatsApp Business, same Twilio account.** More Jamaicans read
+WhatsApp than SMS, it costs the recipient nothing on most plans, and it
+delivers over data when a phone has no credit — which is exactly the phone a
+safety system needs to reach. It reuses `TWILIO_ACCOUNT_SID` /
+`TWILIO_AUTH_TOKEN`; what changes is a WhatsApp-enabled sender
+(`whatsapp:+1…`) and the rule that a business-initiated message must use a
+**template Meta approved in advance**. Approval takes days, so the safety
+templates have to be submitted long before the night they are needed. Freeform
+messages are only allowed inside a 24-hour window the recipient opened. That
+maps onto the existing adapter as a third `SMS_PROVIDER` value plus a template
+id per message kind.
+
+### H4. Where the ladder is (still) independent of check-ins
+
+Confirmed against the new cadence — none of these read `nextCheckInAt`:
+
+| Path | Trigger | Where |
+|---|---|---|
+| SOS | worker/customer action | `actions/safety.ts` `raiseSafetyAlert` |
+| Duress PIN | wrong-but-valid PIN at the door | `actions/safety.ts` `startServiceWithPin` |
+| No arrival | `expectedArrivalAt` + `ARRIVAL_GRACE_MINUTES` | `lib/safety/scheduler.ts` `lateArrivals` |
+| Overrun | `expectedEndAt` (start + duration + `OVERRUN_GRACE_MINUTES`) | `lib/safety/scheduler.ts` `overruns` |
+| Get-home overdue | `getHomeDueAt` | `lib/safety/scheduler.ts` `getHomeOverdue` |
+| Heartbeat loss | `lastHeartbeatAt` + `HEARTBEAT_GRACE_MINUTES` | `lib/safety/scheduler.ts` `lostHeartbeats` |
+
+A gig set to "start and end only", and a session that has been snoozed to its
+cap, both escalate on every one of these exactly as before.

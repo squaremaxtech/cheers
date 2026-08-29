@@ -14,9 +14,11 @@ import {
   drivers,
   gigAddons,
   gigCategories,
+  gigPaymentMethods,
   gigs,
   identityVerifications,
   users,
+  workerPaymentMethods,
   workers,
 } from "./schema";
 
@@ -72,9 +74,14 @@ const accounts: Account[] = [
 ];
 
 // Maxx's gigs (Fiverr model): each row is a listing with its own price,
-// duration and add-ons. A mix of fixed-price and one quote-mode gig, plus the
-// one premium listing only premium customers can see. Upserted by
-// (workerId, slug).
+// duration and add-ons. Exactly five, spread across the event taxonomy — a
+// mix of fixed-price and one quote-mode gig, plus the one premium listing
+// only premium customers can see. Upserted by (workerId, slug).
+//
+// checkinIntervalMinutes is the per-gig safety cadence (CHECKIN_INTERVAL_OPTIONS
+// in lib/constants.ts): null = the platform default, 0 = start and end only.
+// It changes ONLY the periodic prompt — SOS, the duress PIN, PIN-verified
+// start and get-home-safe run on every monitored booking regardless.
 const workerGigs: {
   slug: string;
   title: string;
@@ -83,6 +90,7 @@ const workerGigs: {
   priceCents: number;
   durationMinutes: number;
   safetyMonitored: boolean;
+  checkinIntervalMinutes: number | null;
   premium: boolean;
   tags: string[];
   description: string;
@@ -90,15 +98,18 @@ const workerGigs: {
   addons?: { name: string; priceCents: number; description?: string }[];
 }[] = [
   {
+    // The 4-hour cadence demo: a DJ mid-set cannot answer a prompt every hour,
+    // so the gig asks for about one check per set.
     slug: "wedding-party-dj-set",
     title: "Wedding & Party DJ Set",
-    categorySlug: "events-entertainment",
+    categorySlug: "djs-music",
     pricingMode: "fixed",
     priceCents: 30_000,
     durationMinutes: 240,
     safetyMonitored: true,
+    checkinIntervalMinutes: 240,
     premium: false,
-    tags: ["dj", "wedding", "reception", "dancehall", "soca"],
+    tags: ["dancehall", "soca", "open-format", "wedding", "party"],
     description:
       "Four hours of music read from the room — dancehall, soca, R&B and throwbacks, with the first dance and speeches cued exactly where you want them. I bring controller, microphones and cabling; the venue provides speakers, or add the sound system below.",
     sortOrder: 0,
@@ -111,13 +122,14 @@ const workerGigs: {
   {
     slug: "mc-host-corporate-events",
     title: "MC / Host for corporate events",
-    categorySlug: "events-entertainment",
+    categorySlug: "mcs-hosts",
     pricingMode: "fixed",
     priceCents: 20_000,
     durationMinutes: 180,
     safetyMonitored: true,
+    checkinIntervalMinutes: 120,
     premium: false,
-    tags: ["mc", "host", "corporate", "awards", "conference"],
+    tags: ["mc", "corporate-host", "awards-night", "corporate"],
     description:
       "Professional hosting for launches, award ceremonies, staff functions and conferences. I write the run sheet with you, keep every segment on time, and handle introductions, sponsor mentions and prize giveaways.",
     sortOrder: 1,
@@ -129,16 +141,17 @@ const workerGigs: {
   {
     // Quote-mode: the customer describes the venue, Maxx prices the rig. Also
     // the unmonitored-booking demo (a delivery/setup job — no check-in
-    // machinery needed).
+    // machinery needed, so the cadence is moot and stays on the default).
     slug: "sound-system-rental-setup",
     title: "Sound system rental & setup",
-    categorySlug: "music-performance",
+    categorySlug: "sound-stage",
     pricingMode: "quote",
     priceCents: 12_000, // "from" figure; 0 would read as "ask"
     durationMinutes: 120,
     safetyMonitored: false,
+    checkinIntervalMinutes: null,
     premium: false,
-    tags: ["sound system", "pa hire", "speakers", "setup"],
+    tags: ["pa-hire", "sound-engineer", "wireless-mics", "outdoor"],
     description:
       "Speakers, subs, mixer, microphones and cabling delivered, set up and tested — then collected after. Tell me the venue size, the guest count and whether power is available and I'll send you a firm price.",
     sortOrder: 2,
@@ -148,21 +161,42 @@ const workerGigs: {
     ],
   },
   {
+    slug: "event-lighting-package",
+    title: "Event lighting package",
+    categorySlug: "lighting-visuals",
+    pricingMode: "fixed",
+    priceCents: 45_000,
+    durationMinutes: 240,
+    safetyMonitored: true,
+    checkinIntervalMinutes: 120,
+    premium: false,
+    tags: ["uplighting", "moving-heads", "haze", "wedding", "private-party"],
+    description:
+      "Room wash, moving heads over the dance floor and a haze machine to make the beams read — rigged, focused to your colours and operated live for the night. Load-in, tear-down and all cabling included.",
+    sortOrder: 3,
+    addons: [
+      { name: "Monogram / name in light", priceCents: 7_000 },
+      { name: "Dance-floor truss", priceCents: 12_000 },
+    ],
+  },
+  {
     // The premium rail (REFACTOR-PLAN §1): invisible to everyone except
     // premium customers and staff. Only a premium provider may publish one —
-    // premiumProviderAt is set on the worker profile below.
+    // premiumProviderAt is set on the worker profile below — and its category
+    // is ALWAYS the hidden Premium one (actions/gigs.ts forces it).
     slug: "premium-event-package",
     title: "Premium event package",
-    categorySlug: "events-entertainment",
+    categorySlug: "premium",
     pricingMode: "fixed",
     priceCents: 90_000,
     durationMinutes: 360,
     safetyMonitored: true,
+    checkinIntervalMinutes: 240,
     premium: true,
-    tags: ["premium", "full service", "events", "production"],
+    tags: ["full-production", "turnkey", "vip", "corporate", "all-night"],
     description:
       "The full production for a flagship event: planning call, DJ and MC for six hours, sound system, lighting and a second operator on the floor. One team, one price, nothing to coordinate on the day.",
-    sortOrder: 3,
+    sortOrder: 4,
     addons: [
       { name: "Second DJ / MC", priceCents: 25_000 },
       { name: "Stage and dance-floor lighting", priceCents: 18_000 },
@@ -206,6 +240,41 @@ const workerProfile = {
   premiumProviderAt: new Date(),
   active: true,
 };
+
+// How Maxx takes money from customers — DIRECTLY. CheersJA never receives a
+// cent of it; these are the instructions a customer reads once their booking
+// is confirmed, and they pay against them themselves.
+//
+// Two of them on purpose, so the demo can show the per-gig restriction below:
+// with only one there is nothing to choose between. Upserted by
+// (workerId, label).
+const paymentMethodSeeds: {
+  kind: "cash" | "bank" | "lynk" | "other";
+  label: string;
+  details: string;
+  sortOrder: number;
+}[] = [
+  {
+    kind: "bank",
+    label: "NCB — main account",
+    details:
+      "NCB savings 351094882 — Maxwell Wedderburn, Half-Way Tree branch. Send the receipt in chat.",
+    sortOrder: 0,
+  },
+  {
+    kind: "lynk",
+    label: "Lynk",
+    details: "Lynk 876-555-0177 (Maxx Events)",
+    sortOrder: 1,
+  },
+];
+
+// The one gig with an ALLOWLIST, so the restriction is visible in the demo: a
+// six-hour flagship production settles by bank transfer, not by Lynk. Every
+// other gig has no rows at all, which means it accepts every active method —
+// the default (lib/payment-methods.ts methodsForGig).
+const BANK_ONLY_GIG_SLUG = "premium-event-package";
+const BANK_METHOD_LABEL = "NCB — main account";
 
 // Demo gigs from the pre-v3 seed. They carry the old positioning, so a re-run
 // takes them off the marketplace (deactivated, never deleted — a gig may have
@@ -384,6 +453,7 @@ async function seedWorkerProfile(userId: string): Promise<void> {
   }
 
   const categories = await db.select().from(gigCategories);
+  const gigIdBySlug = new Map<string, string>();
   for (const gig of workerGigs) {
     const category = categories.find((c) => c.slug === gig.categorySlug);
     if (!category) {
@@ -404,6 +474,7 @@ async function seedWorkerProfile(userId: string): Promise<void> {
       priceCents: gig.priceCents,
       durationMinutes: gig.durationMinutes,
       safetyMonitored: gig.safetyMonitored,
+      checkinIntervalMinutes: gig.checkinIntervalMinutes,
       premium: gig.premium,
       sortOrder: gig.sortOrder,
       active: true,
@@ -423,6 +494,7 @@ async function seedWorkerProfile(userId: string): Promise<void> {
         .where(eq(gigs.id, row.id));
       console.log(`  refreshed gig ${gig.slug}`);
     }
+    gigIdBySlug.set(gig.slug, row.id);
     for (const addon of gig.addons ?? []) {
       const [existing] = await db
         .select({ id: gigAddons.id })
@@ -458,6 +530,49 @@ async function seedWorkerProfile(userId: string): Promise<void> {
       .returning({ id: gigs.id });
     if (retired.length > 0) {
       console.log(`  retired pre-v3 demo gig ${slug} (deactivated)`);
+    }
+  }
+
+  // --- how customers pay Maxx, and which gig takes which -------------------
+  const methodIdByLabel = new Map<string, string>();
+  for (const method of paymentMethodSeeds) {
+    const [existing] = await db
+      .select({ id: workerPaymentMethods.id })
+      .from(workerPaymentMethods)
+      .where(
+        and(
+          eq(workerPaymentMethods.workerId, worker.id),
+          eq(workerPaymentMethods.label, method.label)
+        )
+      );
+    if (existing) {
+      methodIdByLabel.set(method.label, existing.id);
+      continue;
+    }
+    const [created] = await db
+      .insert(workerPaymentMethods)
+      .values({ workerId: worker.id, ...method })
+      .returning({ id: workerPaymentMethods.id });
+    methodIdByLabel.set(method.label, created.id);
+    console.log(`  payment method: ${method.label} (${method.kind})`);
+  }
+
+  // Pin the premium package to the bank account. Existing rows are left
+  // alone — a re-run must not undo a restriction someone changed by hand.
+  const bankOnlyGigId = gigIdBySlug.get(BANK_ONLY_GIG_SLUG);
+  const bankMethodId = methodIdByLabel.get(BANK_METHOD_LABEL);
+  if (bankOnlyGigId && bankMethodId) {
+    const [restricted] = await db
+      .select({ methodId: gigPaymentMethods.methodId })
+      .from(gigPaymentMethods)
+      .where(eq(gigPaymentMethods.gigId, bankOnlyGigId));
+    if (!restricted) {
+      await db
+        .insert(gigPaymentMethods)
+        .values({ gigId: bankOnlyGigId, methodId: bankMethodId });
+      console.log(
+        `  ${BANK_ONLY_GIG_SLUG} restricted to "${BANK_METHOD_LABEL}" only`
+      );
     }
   }
 

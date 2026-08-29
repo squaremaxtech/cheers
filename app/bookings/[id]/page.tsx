@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
 import {
@@ -28,20 +28,23 @@ import { loadBookingAccess } from "@/lib/booking-access";
 import { customerCanCancel } from "@/lib/bookings";
 import {
   CHECKIN_GRACE_MINUTES,
+  CHECKIN_SNOOZES_PER_SESSION,
+  checkinIntervalLabel,
   formatCents,
   formatTime12,
   safetyAlertLabel,
-  stripeConfigured,
-  WELLNESS_CHECK_INTERVAL_MINUTES,
 } from "@/lib/constants";
 import { canSeePinInline } from "@/lib/guards";
+import { methodsForBooking } from "@/lib/payment-methods";
 import {
+  checkinMinutesFor,
+  countSnoozes,
   pendingCheckin,
   sessionForBooking,
   sessionHealth,
 } from "@/lib/safety/session";
 import { statusTone } from "@/lib/status";
-import type { SafetyClientState } from "@/types";
+import type { SafetyClientState, WorkerPaymentMethodRow } from "@/types";
 
 export const metadata: Metadata = { title: "Booking" };
 
@@ -65,9 +68,10 @@ export default async function BookingRoomPage(
     alerts,
     locations,
     existingReview,
-    pendingCash,
+    jobPayment,
     session,
     workerRow,
+    payableMethods,
   ] = await Promise.all([
       db
         .select()
@@ -97,17 +101,25 @@ export default async function BookingRoomPage(
           .where(eq(reviews.bookingId, booking.id))
           .then((rows) => rows[0] ?? null)
         : Promise.resolve(null),
-      viewerRole === "customer"
+      // The money state of this booking. There is no card checkout: the
+      // customer pays the professional directly, so all that exists here is
+      // the customer's "I've paid" claim and the professional's confirmation.
+      viewerRole === "customer" || viewerRole === "worker"
         ? db
-          .select({ id: payments.id, tipCents: payments.tipCents })
+          .select({
+            id: payments.id,
+            method: payments.method,
+            status: payments.status,
+            note: payments.cashProofUrl,
+          })
           .from(payments)
           .where(
             and(
               eq(payments.bookingId, booking.id),
-              eq(payments.method, "cash"),
-              eq(payments.status, "pending")
+              inArray(payments.status, ["pending", "succeeded"])
             )
           )
+          .orderBy(desc(payments.createdAt))
           .then((rows) => rows[0] ?? null)
         : Promise.resolve(null),
     sessionForBooking(booking.id),
@@ -116,10 +128,31 @@ export default async function BookingRoomPage(
       .from(workers)
       .where(eq(workers.id, booking.workerId))
       .then((rows) => rows[0] ?? null),
+    // How this booking may be paid: the gig's allowlist if it has one,
+    // otherwise every active method (lib/payment-methods.ts). Bank account
+    // numbers and phone numbers — fetched ONLY for this booking's own
+    // customer, and ONLY once the booking is confirmed. Every other viewer
+    // (the worker, a driver, the safety desk) and every earlier status gets
+    // an empty list, so the details are never even loaded.
+    viewerRole === "customer" &&
+    (booking.status === "confirmed" || booking.status === "in_progress")
+      ? methodsForBooking(booking)
+      : Promise.resolve<WorkerPaymentMethodRow[]>([]),
   ]);
 
-  const checkin = session ? await pendingCheckin(session.id) : null;
+  const paymentRecorded = jobPayment?.status === "succeeded";
+  const paymentClaim =
+    jobPayment && jobPayment.status === "pending"
+      ? { method: jobPayment.method, note: jobPayment.note }
+      : null;
+
+  const [checkin, snoozesUsed] = session
+    ? await Promise.all([pendingCheckin(session.id), countSnoozes(session.id)])
+    : [null, 0];
   const sessionOpen = Boolean(session && session.state !== "ended");
+  // The professional's chosen cadence for this job, snapshotted onto the
+  // booking when it was made. 0 = start and end only.
+  const checkinIntervalMinutes = checkinMinutesFor(booking);
 
   const total = booking.priceCents + booking.addonsCents;
   const live =
@@ -177,6 +210,8 @@ export default async function BookingRoomPage(
       : null,
     monitorName: null,
     alertOpen: openAlerts.length > 0,
+    checkinIntervalMinutes,
+    snoozesRemaining: Math.max(0, CHECKIN_SNOOZES_PER_SESSION - snoozesUsed),
   };
 
   return (
@@ -374,12 +409,17 @@ export default async function BookingRoomPage(
                     {lastCheck.status === "ok" ? "OK" : "requested help"})
                   </span>
                 )}
+                {/* The cadence is the professional's choice per gig — a
+                    six-hour stage set is not interrupted like a one-to-one
+                    house call. Whatever it is, the passive cover is the same. */}
                 <span className="mt-1 block text-xs text-faint">
-                  Professionals check in every{" "}
-                  {WELLNESS_CHECK_INTERVAL_MINUTES} minutes, and their phone
-                  signals us every minute in between. If either stops, the
-                  escalation ladder starts on its own — trusted contacts and the
-                  Cheers team are alerted without anyone having to notice.
+                  {checkinIntervalMinutes > 0
+                    ? `Check-ins on this booking: ${checkinIntervalLabel(checkinIntervalMinutes).toLowerCase()}.`
+                    : "This booking is checked at the start and the end rather than during the work."}{" "}
+                  Either way their phone signals us every minute throughout. If
+                  that stops — or a check-in goes unanswered — the escalation
+                  ladder starts on its own: trusted contacts and the CheersJA team
+                  are alerted without anyone having to notice.
                 </span>
               </div>
             )}
@@ -397,7 +437,7 @@ export default async function BookingRoomPage(
             {viewerRole === "customer" && (
               <p className="text-xs text-faint">
                 {booking.monitored
-                  ? "Every monitored Cheers booking has a PIN-verified start, timed check-ins, live location and a safety desk that is alerted automatically if anything is missed. In an emergency, always call 119."
+                  ? "Every monitored CheersJA booking has a PIN-verified start, timed check-ins, live location and a safety desk that is alerted automatically if anything is missed. In an emergency, always call 119."
                   : "This booking starts with a PIN check, and the SOS button and live location sharing are always available. In an emergency, always call 119."}
               </p>
             )}
@@ -447,13 +487,23 @@ export default async function BookingRoomPage(
           <BookingCustomerActions
             bookingId={booking.id}
             workerId={booking.workerId}
+            professionalName={worker.stageName}
             durationMinutes={booking.durationMinutes}
             status={booking.status}
             canCancel={customerCanCancel(booking)}
             serviceTotalCents={total}
-            stripeConfigured={stripeConfigured()}
-            cashPending={pendingCash !== null}
-            committedTipCents={pendingCash?.tipCents ?? 0}
+            // Narrowed to the four fields a customer may see — never the
+            // owning worker, never the active flag. Already empty unless this
+            // booking is confirmed and this viewer is its customer.
+            paymentMethods={payableMethods.map((m) => ({
+              id: m.id,
+              kind: m.kind,
+              label: m.label,
+              details: m.details,
+            }))}
+            committedTipCents={booking.tipCents}
+            paymentClaimed={paymentClaim !== null}
+            paymentRecorded={paymentRecorded}
           />
         )}
         {viewerRole === "worker" && (
@@ -466,6 +516,8 @@ export default async function BookingRoomPage(
                 bookingId={booking.id}
                 status={booking.status}
                 serviceTotalCents={total}
+                paymentClaim={paymentClaim}
+                paymentRecorded={paymentRecorded}
               />
             </div>
           </div>

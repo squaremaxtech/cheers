@@ -15,13 +15,13 @@ import { err, ok, ERR } from "@/lib/action-result";
 import { loadBookingAccess } from "@/lib/booking-access";
 import { transitionBooking } from "@/lib/bookings";
 import {
+  CHECKIN_SNOOZES_PER_SESSION,
   MAX_TRUSTED_CONTACTS,
   PIN_ATTEMPTS_PER_MINUTE,
   PIN_FAILURES_BEFORE_ALERT,
   PIN_LOCKOUT_MINUTES,
   PUSH_SUBSCRIBES_PER_HOUR,
   SOS_PER_HOUR,
-  smsEnabled,
   TRUSTED_CONTACTS_PER_DAY,
 } from "@/lib/constants";
 import { guardErrorMessage, requireUser } from "@/lib/guards";
@@ -35,6 +35,7 @@ import {
 import { raiseAlert } from "@/lib/safety/escalate";
 import { pinsMatch, hashPin } from "@/lib/safety/pins";
 import { isAllowedPushEndpoint, removeSubscription } from "@/lib/safety/push";
+import { smsConfigured } from "@/lib/safety/sms";
 import {
   answerCheckin,
   endSession,
@@ -44,6 +45,7 @@ import {
   minutesFromNow,
   recordEvent,
   sessionForBooking,
+  snoozeCheckin as snooze,
   startHeadingHome,
   startOnSite,
 } from "@/lib/safety/session";
@@ -58,6 +60,7 @@ import {
   raiseAlertSchema,
   removeTrustedContactSchema,
   setCancelPinSchema,
+  snoozeCheckinSchema,
   startServiceSchema,
   startTravelSchema,
   trustedContactSchema,
@@ -196,7 +199,10 @@ export async function startServiceWithPin(
       session = await ensureSession(access.booking, access.worker.userId, {
         state: "on_site",
       });
-      await startOnSite(session, user.id);
+      // The booking carries the check-in cadence the professional chose for
+      // this gig; startOnSite schedules the first prompt from it (and none at
+      // all on a "start and end only" job).
+      await startOnSite(session, user.id, access.booking);
 
       // A worker may go straight to the door without ever tapping "I'm on my
       // way". If THIS call created the session, the tracking token exists only
@@ -300,6 +306,7 @@ export async function respondToCheckin(
     const covert = parsed.data.covert === true;
     await answerCheckin({
       session,
+      booking: access.booking,
       status: parsed.data.status,
       method: parsed.data.method,
       covert,
@@ -339,6 +346,66 @@ export async function respondToCheckin(
     publishSafetyDesk();
     revalidatePath(`/bookings/${access.booking.id}`);
     return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// --- Snooze: "I'm on stage, ask me later" ------------------------------------------
+
+// A DJ four hours into a set, an MC on the mic, a lighting tech up a truss:
+// none of them can answer a prompt at that moment, and none of them are in
+// trouble. Before this, their only choices were to miss the check-in (and page
+// the desk for nothing) or to run the whole job with no periodic cover.
+//
+// This pushes the NEXT CHECK-IN out and nothing else. Get-home-safe, the
+// arrival and overrun deadlines, the heartbeat, the SOS and the duress PIN are
+// all untouched — see lib/safety/session.ts snoozeCheckin. Capped per session
+// so a job cannot be snoozed into permanent silence.
+export async function snoozeCheckin(
+  input: unknown
+): Promise<ActionResult<{ remaining: number; nextCheckInAt: string }>> {
+  try {
+    const user = await requireUser();
+    const parsed = snoozeCheckinSchema.safeParse(input);
+    if (!parsed.success) return err(ERR.badRequest);
+
+    const access = await loadBookingAccess(user, parsed.data.bookingId);
+    if (!access) return err(ERR.notFound);
+    // ONLY the worker on this booking. A customer or a staff account must
+    // never be able to quiet someone else's check-in clock.
+    if (access.viewerRole !== "worker") return err(ERR.forbidden);
+
+    const session = await sessionForBooking(access.booking.id);
+    if (!session || session.state === "ended") {
+      return err("There is no active safety session for this booking.");
+    }
+    // A double tap (or a retried request) must not spend two snoozes: the cap
+    // is counted from the event trail, which a racing pair could both read
+    // before either wrote.
+    if (!rateLimit(`snooze:${access.booking.id}`, 1, 5_000)) {
+      return err("Just a moment — that's already going through.");
+    }
+
+    const result = await snooze({
+      session,
+      booking: access.booking,
+      actorUserId: user.id,
+    });
+    if (!result.ok) {
+      return err(
+        result.reason === "no_cadence"
+          ? "This job has no periodic check-ins to snooze."
+          : `You've used all ${CHECKIN_SNOOZES_PER_SESSION} snoozes for this visit. Tap "I'm OK" when you can — it only takes a second.`
+      );
+    }
+
+    publishBooking(access.booking.id, bookingEventNow("safety"));
+    revalidatePath(`/bookings/${access.booking.id}`);
+    return ok({
+      remaining: result.remaining,
+      nextCheckInAt: result.nextCheckInAt.toISOString(),
+    });
   } catch (error) {
     return err(guardErrorMessage(error));
   }
@@ -655,7 +722,7 @@ export async function addTrustedContact(
     // contact added while SMS is unconfigured could never be verified and so
     // could never be notified — it would sit in the worker's list looking like
     // cover while being nothing at all. Say so now rather than at 2am.
-    if (!email && !smsEnabled()) {
+    if (!email && !smsConfigured()) {
       return err(
         "Text messaging isn't switched on yet, so we can only confirm contacts by email. Add an email address for this person."
       );
@@ -679,7 +746,7 @@ export async function addTrustedContact(
       contactName: parsed.data.name,
       email,
       phone,
-      workerName: user.name ?? "A Cheers worker",
+      workerName: user.name ?? "A CheersJA worker",
       token,
     });
 

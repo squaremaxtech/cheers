@@ -8,36 +8,54 @@ import {
   getBookingSlots,
   rescheduleBooking,
 } from "@/actions/bookings";
-import { chooseCashPayment, createBookingCheckout } from "@/actions/payments";
+import { confirmDirectPayment } from "@/actions/payments";
 import BookingCalendar from "@/components/bookings/BookingCalendar";
+import PaymentPanel from "@/components/bookings/PaymentPanel";
 import TimeSlotPicker from "@/components/bookings/TimeSlotPicker";
 import { formatCents } from "@/lib/constants";
-import type { BookingStatus, TimeSlot } from "@/types";
+import type {
+  BookingStatus,
+  CustomerPaymentMethod,
+  TimeSlot,
+} from "@/types";
 
 const TIP_PERCENTS = [0, 10, 15, 20] as const;
 
+// The customer's side of a booking.
+//
+// There is no card checkout here and there never will be: the job is paid
+// directly to the professional, and CheersJA only records that it happened. What
+// this screen does is confirm the booking, show the professional's own payment
+// details (only to this customer, only once confirmed), and let the customer
+// say they have paid so the professional can confirm it.
 export default function BookingCustomerActions({
   bookingId,
   workerId,
+  professionalName,
   durationMinutes,
   status,
   canCancel,
   serviceTotalCents,
-  stripeConfigured,
-  cashPending = false,
+  paymentMethods,
   committedTipCents = 0,
+  paymentClaimed = false,
+  paymentRecorded = false,
 }: {
   bookingId: string;
   workerId: string;
+  professionalName: string;
   durationMinutes: number;
   status: BookingStatus;
   canCancel: boolean;
   serviceTotalCents: number;
-  stripeConfigured: boolean;
-  // A confirmed cash-at-meeting booking whose cash hasn't been collected yet
-  // may still switch to card (until the session starts).
-  cashPending?: boolean;
+  // The ways THIS booking may be paid — the gig's allowlist if it has one,
+  // otherwise every active method the professional has (lib/payment-methods.ts
+  // methodsForGig). Passed only for this booking's customer, only once
+  // confirmed; empty at every other time.
+  paymentMethods: CustomerPaymentMethod[];
   committedTipCents?: number;
+  paymentClaimed?: boolean;
+  paymentRecorded?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -91,32 +109,21 @@ export default function BookingCustomerActions({
   }, [slotsKey, newDate, workerId, durationMinutes, bookingId]);
 
   const tipCents = Math.round((serviceTotalCents * tipPercent) / 100);
+  const dueCents = serviceTotalCents + committedTipCents;
   const cancellable =
     (status === "pending" || status === "accepted" || status === "confirmed") &&
     canCancel;
   const reschedulable =
     status === "pending" || status === "accepted" || status === "confirmed";
+  const owing =
+    (status === "confirmed" || status === "in_progress") && !paymentRecorded;
 
-  async function handlePayCard(chosenTipCents: number) {
+  async function handleConfirm() {
     setBusy(true);
-    const res = await createBookingCheckout({
-      bookingId,
-      tipCents: chosenTipCents,
-    });
-    if (res.ok) {
-      window.location.href = res.data.url;
-    } else {
-      setBusy(false);
-      toast.error(res.error);
-    }
-  }
-
-  async function handlePayCash() {
-    setBusy(true);
-    const res = await chooseCashPayment({ bookingId, tipCents });
+    const res = await confirmDirectPayment({ bookingId, tipCents });
     setBusy(false);
     if (res.ok) {
-      toast.success("Confirmed — pay cash at your meeting");
+      toast.success("Booking confirmed");
       router.refresh();
     } else {
       toast.error(res.error);
@@ -182,8 +189,8 @@ export default function BookingCustomerActions({
       {status === "accepted" && (
         <div>
           <p className="text-sm text-ink">
-            Accepted — choose how you&apos;d like to pay to confirm your
-            booking.
+            Accepted — confirm to lock in your booking. You&apos;ll pay{" "}
+            {professionalName} directly; CheersJA never holds your money.
           </p>
           <div className="mt-4">
             <p className="label">
@@ -197,7 +204,7 @@ export default function BookingCustomerActions({
                   onClick={() => setTipPercent(p)}
                   className={`btn px-4 py-2 text-xs ${
                     tipPercent === p
-                      ? "bg-brand text-white"
+                      ? "bg-brand text-base"
                       : "border border-hairline text-muted"
                   }`}
                 >
@@ -206,53 +213,39 @@ export default function BookingCustomerActions({
               ))}
             </div>
           </div>
-          <div className="mt-4 flex flex-col gap-2">
-            {stripeConfigured && (
-              <button
-                type="button"
-                onClick={() => handlePayCard(tipCents)}
-                disabled={busy}
-                className="btn-primary w-full"
-              >
-                {busy
-                  ? "Working…"
-                  : `Pay ${formatCents(serviceTotalCents + tipCents)} by card`}
-              </button>
-            )}
+          <div className="mt-4">
             <button
               type="button"
-              onClick={handlePayCash}
+              onClick={handleConfirm}
               disabled={busy}
-              className={stripeConfigured ? "btn-outline w-full" : "btn-primary w-full"}
+              className="btn-primary w-full"
             >
               {busy
                 ? "Working…"
-                : `Pay ${formatCents(serviceTotalCents + tipCents)} cash at meeting`}
+                : `Confirm booking — ${formatCents(serviceTotalCents + tipCents)} payable to ${professionalName}`}
             </button>
-            <p className="text-center text-xs text-faint">
-              Cash bookings confirm instantly — have the exact amount ready.
+            <p className="mt-2 text-center text-xs text-faint">
+              Their payment details appear here as soon as you confirm.
             </p>
           </div>
         </div>
       )}
 
-      {status === "confirmed" && cashPending && stripeConfigured && (
-        <div>
-          <p className="text-sm text-muted">
-            Paying cash at the meeting. Changed your mind? You can switch to
-            card any time before the session starts.
-          </p>
-          <button
-            type="button"
-            onClick={() => handlePayCard(committedTipCents)}
-            disabled={busy}
-            className="btn-outline mt-3"
-          >
-            {busy
-              ? "Working…"
-              : `Pay ${formatCents(serviceTotalCents + committedTipCents)} by card instead`}
-          </button>
-        </div>
+      {owing && (
+        <PaymentPanel
+          bookingId={bookingId}
+          professionalName={professionalName}
+          amountCents={dueCents}
+          methods={paymentMethods}
+          claimed={paymentClaimed}
+        />
+      )}
+
+      {paymentRecorded && status !== "pending" && (
+        <p className="text-sm text-success">
+          {professionalName} has confirmed your payment of{" "}
+          {formatCents(dueCents)}.
+        </p>
       )}
 
       <div className="flex flex-wrap gap-3">

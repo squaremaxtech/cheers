@@ -73,7 +73,7 @@ export async function generateMetadata(props: PageProps<"/workers/[slug]">) {
     description:
       worker.headline ??
       worker.bio?.slice(0, 155) ??
-      `Hire ${worker.stageName} on Cheers — trusted professionals across Jamaica.`,
+      `Hire ${worker.stageName} on CheersJA — trusted professionals across Jamaica.`,
   };
 }
 
@@ -295,7 +295,8 @@ export default async function WorkerProfilePage(
               />
             )}
             <p className="mt-3 text-center text-[11px] text-faint">
-              Secure payment · PIN-verified meetings · 5-hour free cancellation
+              Pay your professional directly · PIN-verified meetings · 5-hour
+              free cancellation
             </p>
           </div>
         </aside>

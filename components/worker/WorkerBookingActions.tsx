@@ -9,24 +9,41 @@ import {
   completeBooking,
   declineBooking,
 } from "@/actions/bookings";
-import { recordCashCollected } from "@/actions/payments";
-import FileUploadButton from "@/components/ui/FileUploadButton";
-import { formatCents } from "@/lib/constants";
+import { recordJobPayment } from "@/actions/payments";
+import { formatCents, PLATFORM_FEE_PERCENT } from "@/lib/constants";
+import {
+  JOB_PAYMENT_METHODS,
+  toJobPaymentMethod,
+  type JobPaymentMethod,
+} from "@/lib/payments/config";
 import type { ActionResult, BookingStatus } from "@/types";
 
+// The professional's side of a booking.
+//
+// The customer pays them directly and they keep every cent of it — recording
+// the payment here is the platform's record that the job was paid, nothing
+// more. There is no proof upload and no dispute flow behind it: their word is
+// the record, because CheersJA never held the money and cannot adjudicate it.
 export default function WorkerBookingActions({
   bookingId,
   status,
   serviceTotalCents,
+  paymentClaim = null,
+  paymentRecorded = false,
 }: {
   bookingId: string;
   status: BookingStatus;
   serviceTotalCents: number;
+  // What the customer said they did, if anything — a prompt, not proof.
+  paymentClaim?: { method: string; note: string | null } | null;
+  paymentRecorded?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [showCash, setShowCash] = useState(false);
-  const [proofUrl, setProofUrl] = useState("");
+  const [showPayment, setShowPayment] = useState(false);
+  const [method, setMethod] = useState<JobPaymentMethod>(
+    toJobPaymentMethod(paymentClaim?.method)
+  );
 
   async function run(fn: () => Promise<ActionResult<undefined>>, success: string) {
     setBusy(true);
@@ -40,29 +57,29 @@ export default function WorkerBookingActions({
     }
   }
 
-  async function handleCash(e: React.FormEvent<HTMLFormElement>) {
+  async function handlePayment(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!proofUrl) {
-      toast.error("Upload a photo of the collected cash / receipt first.");
-      return;
-    }
     const form = new FormData(e.currentTarget);
     setBusy(true);
-    const res = await recordCashCollected({
+    const res = await recordJobPayment({
       bookingId,
+      method,
       tipCents: Math.round(Number(form.get("tip") ?? 0) * 100),
-      proofUrl,
+      note: form.get("note"),
     });
     setBusy(false);
     if (res.ok) {
-      toast.success("Cash collection recorded");
-      setShowCash(false);
-      setProofUrl("");
+      toast.success("Payment recorded");
+      setShowPayment(false);
       router.refresh();
     } else {
       toast.error(res.error);
     }
   }
+
+  const canRecord =
+    !paymentRecorded &&
+    (status === "accepted" || status === "confirmed" || status === "in_progress");
 
   return (
     <div className="space-y-3">
@@ -88,16 +105,14 @@ export default function WorkerBookingActions({
           </>
         )}
 
-        {(status === "accepted" ||
-          status === "confirmed" ||
-          status === "in_progress") && (
+        {canRecord && (
           <button
             type="button"
-            className="btn-outline"
+            className={paymentClaim ? "btn-primary" : "btn-outline"}
             disabled={busy}
-            onClick={() => setShowCash((v) => !v)}
+            onClick={() => setShowPayment((v) => !v)}
           >
-            Record cash collected
+            Confirm payment received
           </button>
         )}
 
@@ -130,25 +145,63 @@ export default function WorkerBookingActions({
         )}
       </div>
 
-      {status === "confirmed" && (
-        <p className="text-xs text-muted">
-          If the customer is paying cash, collect it and record it here (photo
-          proof required). Enter the customer&apos;s PIN in the booking room to
-          start the session — completing is only possible after a
-          PIN-verified start and a recorded payment.
+      {paymentClaim && !paymentRecorded && (
+        <p className="text-xs text-warn">
+          The customer says they paid by{" "}
+          {JOB_PAYMENT_METHODS.find((m) => m.value === paymentClaim.method)
+            ?.label ?? paymentClaim.method}
+          {paymentClaim.note ? ` — “${paymentClaim.note}”` : ""}. Confirm it
+          once the money is actually in hand.
         </p>
       )}
 
-      {showCash && (
-        <form onSubmit={handleCash} className="space-y-3">
+      {status === "confirmed" && !paymentRecorded && (
+        <p className="text-xs text-muted">
+          The customer pays you directly — you keep every cent. Confirm it here
+          once it&apos;s in hand. Enter the customer&apos;s PIN in the booking
+          room to start the session; completing needs a PIN-verified start and
+          a recorded payment.
+        </p>
+      )}
+
+      {paymentRecorded && (
+        <p className="text-xs text-success">
+          Payment recorded. The {PLATFORM_FEE_PERCENT}% commission on this job
+          goes on your monthly statement — nothing is deducted from what you
+          were paid.
+        </p>
+      )}
+
+      {showPayment && canRecord && (
+        <form onSubmit={handlePayment} className="space-y-3">
           <p className="text-xs text-muted">
-            Collect {formatCents(serviceTotalCents)} plus any tip. The service
-            amount is fixed — enter only the tip you actually received.
+            You collected {formatCents(serviceTotalCents)} plus any tip. The
+            service amount is fixed — enter only the tip you actually received.
           </p>
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="w-24">
-              <label className="label">Tip ($)</label>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="label" htmlFor="pay-method">
+                How were you paid?
+              </label>
+              <select
+                id="pay-method"
+                className="input"
+                value={method}
+                onChange={(e) => setMethod(toJobPaymentMethod(e.target.value))}
+              >
+                {JOB_PAYMENT_METHODS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="pay-tip">
+                Tip ($)
+              </label>
               <input
+                id="pay-tip"
                 name="tip"
                 type="number"
                 min={0}
@@ -157,17 +210,22 @@ export default function WorkerBookingActions({
                 className="input"
               />
             </div>
-            <FileUploadButton
-              label={proofUrl ? "✓ Proof uploaded" : "Upload proof photo"}
-              accept="image/jpeg,image/png,image/webp"
-              className={proofUrl ? "btn-outline text-success" : "btn-outline"}
-              kind="receipt"
-              onUploaded={(url) => setProofUrl(url)}
-            />
-            <button type="submit" className="btn-primary" disabled={busy || !proofUrl}>
-              Record collection
-            </button>
+            <div>
+              <label className="label" htmlFor="pay-note">
+                Reference (optional)
+              </label>
+              <input
+                id="pay-note"
+                name="note"
+                className="input"
+                maxLength={300}
+                placeholder="Transfer ref, or a note"
+              />
+            </div>
           </div>
+          <button type="submit" className="btn-primary" disabled={busy}>
+            {busy ? "Saving…" : "Confirm payment received"}
+          </button>
         </form>
       )}
     </div>

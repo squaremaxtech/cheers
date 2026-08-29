@@ -5,19 +5,19 @@ import { CONTACT_EMAILS } from "@/lib/constants";
 export const metadata: Metadata = {
   title: "Contact",
   description:
-    "How to reach Cheers — general enquiries, account and booking support, and safety reports.",
+    "How to reach CheersJA — general enquiries, account and booking support, and safety reports.",
 };
 
 const inboxes = [
   {
     title: "General enquiries",
     email: CONTACT_EMAILS.hello,
-    body: "Partnerships, press, premium access requests and anything else that is not about a specific booking.",
+    body: "Venues, promoters, partnerships, press and anything else that is not about a specific booking.",
   },
   {
     title: "Support",
     email: CONTACT_EMAILS.support,
-    body: "Accounts, bookings, payments, membership, refunds, and privacy or data requests.",
+    body: "Accounts, bookings, payment records, membership and commission, help arranging a refund between two parties, and privacy or data requests.",
   },
   {
     title: "Safety",
@@ -31,10 +31,10 @@ export default function ContactPage() {
     <div className="mx-auto max-w-3xl px-5 py-16">
       <h1 className="font-display text-3xl tracking-tight text-ink">Contact</h1>
       <p className="mt-4 text-sm leading-7 text-muted">
-        Questions, feedback or a problem with a booking — email the right inbox
-        below and we will come back to you. In an emergency, call 119 (police)
-        or 110 (fire and ambulance) first; email is not monitored around the
-        clock.
+        Questions, feedback or a problem with an event booking — email the right
+        inbox below and we will come back to you. In an emergency, call 119
+        (police) or 110 (fire and ambulance) first; email is not monitored
+        around the clock.
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -53,17 +53,18 @@ export default function ContactPage() {
 
         <div className="card p-6">
           <h2 className="text-sm font-medium text-ink">
-            Want to offer your services?
+            Want to get booked?
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            Signup is open — there is no invitation and no approval step. Create
-            your profile, publish your services and prices, and you are live.
+            Signup is open to every kind of event professional — there is no
+            invitation and no approval step. Create your profile, publish your
+            services and rates, and you are live.
           </p>
           <Link
             href="/worker/onboarding"
             className="mt-3 inline-block text-sm text-brand hover:underline"
           >
-            Offer your services on Cheers →
+            Get booked on CheersJA →
           </Link>
         </div>
       </div>

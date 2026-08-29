@@ -18,10 +18,18 @@ export type GigCategoryItem = {
 // The browse taxonomy: rename, re-blurb, re-order or retire categories, and
 // add new ones. Retired categories disappear from filters/pickers; existing
 // gigs keep their assignment.
+//
+// The hidden Premium category is the exception: it may be renamed and
+// re-ordered like any other, but never retired. Every premium gig is filed
+// under it (lib/gigs.ts PREMIUM_CATEGORY_SLUG), so retiring it would strand
+// the premium rail — actions/admin.ts refuses it too, this just stops the
+// admin reaching for a button that cannot work.
 export default function GigCategoryManager({
   categories,
+  premiumCategoryId = null,
 }: {
   categories: GigCategoryItem[];
+  premiumCategoryId?: string | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -140,18 +148,24 @@ export default function GigCategoryManager({
               >
                 Save
               </button>
-              <button
-                type="button"
-                className={`btn border px-2.5 py-1.5 text-xs ${
-                  c.active
-                    ? "border-hairline text-muted hover:text-warn"
-                    : "border-warn/40 text-warn"
-                }`}
-                disabled={busy}
-                onClick={() => toggleActive(c.id, c.active)}
-              >
-                {c.active ? "Retire" : "Retired — reactivate"}
-              </button>
+              {c.id === premiumCategoryId ? (
+                <span className="text-xs text-faint">
+                  Locked — every premium service lives here
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className={`btn border px-2.5 py-1.5 text-xs ${
+                    c.active
+                      ? "border-hairline text-muted hover:text-warn"
+                      : "border-warn/40 text-warn"
+                  }`}
+                  disabled={busy}
+                  onClick={() => toggleActive(c.id, c.active)}
+                >
+                  {c.active ? "Retire" : "Retired — reactivate"}
+                </button>
+              )}
             </div>
           </form>
         ))}
@@ -172,7 +186,7 @@ export default function GigCategoryManager({
             required
             minLength={2}
             maxLength={60}
-            placeholder="e.g. Fitness & Coaching"
+            placeholder="e.g. Fireworks & Special Effects"
             className="input"
           />
         </div>
@@ -185,7 +199,7 @@ export default function GigCategoryManager({
             value={newBlurb}
             onChange={(e) => setNewBlurb(e.target.value)}
             maxLength={140}
-            placeholder="e.g. Personal trainers, yoga, nutrition"
+            placeholder="e.g. Pyrotechnics, cold sparks, confetti"
             className="input"
           />
         </div>

@@ -17,7 +17,7 @@ const SECTIONS: { id: string; title: string }[] = [
   { id: "respect", title: "4. Treat people with respect" },
   { id: "safety", title: "5. Take safety seriously" },
   { id: "honest-listings", title: "6. Honest listings and honest money" },
-  { id: "on-platform", title: "7. Keep bookings and payments on Cheers" },
+  { id: "on-platform", title: "7. Keep bookings and payments on CheersJA" },
   { id: "reviews", title: "8. Honest reviews" },
   { id: "privacy", title: "9. Other people's privacy" },
   { id: "content", title: "10. Photos and content" },
@@ -53,7 +53,7 @@ export default function GuidelinesPage() {
 
       <div className="mt-6 space-y-5 text-sm leading-7 text-muted">
         <p>
-          Cheers works because people show up, do good work, pay what they
+          CheersJA works because people show up, do good work, pay what they
           agreed and treat each other decently. These Guidelines say what that
           means in practice. They form part of the{" "}
           <Link
@@ -93,7 +93,7 @@ export default function GuidelinesPage() {
       <div className="mt-12 space-y-10 text-sm leading-7 text-muted">
         <Section id="who-this-applies-to" title="1. Who this applies to">
           <p>
-            Everyone with a Cheers account: customers, independent
+            Everyone with a CheersJA account: customers, independent
             professionals, drivers and platform staff. You must be{" "}
             <strong>18 or older</strong> to be here at all.
           </p>
@@ -129,7 +129,7 @@ export default function GuidelinesPage() {
 
         <Section id="lawful-services" title="3. Keep it lawful">
           <p>
-            Some things are never allowed on Cheers, however they are worded.
+            Some things are never allowed on CheersJA, however they are worded.
             Do not offer, request, book, advertise or arrange:
           </p>
           <ul className="list-disc space-y-2 pl-5">
@@ -251,7 +251,7 @@ export default function GuidelinesPage() {
             </li>
             <li>
               Do not misrepresent your qualifications, licensing, insurance or
-              experience, and do not imply Cheers has checked them. We do not
+              experience, and do not imply CheersJA has checked them. We do not
               run background, licence or reference checks — the{" "}
               <strong>Verified ID badge</strong> means only that a document was
               submitted and appeared to match the account name.
@@ -261,31 +261,43 @@ export default function GuidelinesPage() {
               person&apos;s payment method.
             </li>
             <li>
-              Record cash collections truthfully. A false collection record, a
-              false completion, a false claim of non-payment or non-delivery, or
-              chargeback abuse is fraud.
+              Record payments truthfully. You are paid directly and CheersJA
+              never sees the money, so the record in the app is the only record
+              — a false payment record, a false completion, a false claim of
+              non-payment or non-delivery, or chargeback abuse is fraud.
+            </li>
+            <li>
+              Publish payment details that are genuinely your own. The bank
+              account, Lynk number or other details a professional gives a
+              customer must belong to that professional, and must be kept
+              accurate.
             </li>
             <li>
               Pay what you agreed, in the way you agreed, at the time you
-              agreed.
+              agreed. That includes the commission CheersJA charges your card —
+              keep a working card on file.
             </li>
           </ul>
         </Section>
 
         <Section
           id="on-platform"
-          title="7. Keep bookings and payments on Cheers"
+          title="7. Keep bookings and payments on CheersJA"
         >
           <ul className="list-disc space-y-2 pl-5">
             <li>
-              Do not steer a customer you met on Cheers off the platform to
-              avoid the {PLATFORM_FEE_PERCENT}% fee, and do not move an existing
-              Cheers booking to a private arrangement for that reason.
+              Do not steer a customer you met on CheersJA off the platform to
+              avoid the {PLATFORM_FEE_PERCENT}% commission, and do not move an
+              existing CheersJA booking to a private arrangement for that
+              reason.
             </li>
             <li>
-              Do not share payment handles, rival booking links or off-platform
-              contact details for that purpose, and do not misreport a payment
-              method or price to reduce the fee.
+              You are paid directly, so giving a customer your bank or Lynk
+              details for a booking made here is exactly right. What is not
+              allowed is using those details, rival booking links or
+              off-platform contacts to take the booking itself off CheersJA, or
+              misreporting a payment, a method or a price to reduce the
+              commission.
             </li>
             <li>
               This is not about policing your life: it is fine for two people
@@ -294,11 +306,11 @@ export default function GuidelinesPage() {
               booking has been completed and paid for.
             </li>
             <li>
-              Keep booking conversations in Cheers chat. It is the record that
+              Keep booking conversations in CheersJA chat. It is the record that
               protects both sides if something goes wrong.
             </li>
             <li>
-              Do not use Cheers to recruit for, advertise or promote another
+              Do not use CheersJA to recruit for, advertise or promote another
               marketplace.
             </li>
           </ul>
@@ -443,8 +455,8 @@ export default function GuidelinesPage() {
               Listings publish immediately and we moderate afterwards. Depending
               on what happened we may hide or deactivate a listing, take down a
               review, remove an image or a message, restrict a feature, cancel a
-              booking, hold a payout while we investigate, or place an account
-              under review.
+              booking, pause a professional&apos;s listings while we
+              investigate, or place an account under review.
             </li>
             <li>
               Serious breaches — anything unlawful, sexual services, fraud,

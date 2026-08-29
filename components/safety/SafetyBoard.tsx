@@ -10,7 +10,11 @@ import {
   resolveSafetyAlert,
   revealMeetingPin,
 } from "@/actions/safety-desk";
-import { safetyAlertLabel } from "@/lib/constants";
+import {
+  checkinIntervalLabel,
+  resolveCheckinMinutes,
+  safetyAlertLabel,
+} from "@/lib/constants";
 import type { SafetyBoardEntry, SafetyHealth } from "@/types";
 
 const healthStyles: Record<SafetyHealth, { border: string; dot: string; label: string }> = {
@@ -113,6 +117,15 @@ function BoardCard({
   const checkinIn = entry.nextCheckInAt
     ? Math.round((new Date(entry.nextCheckInAt).getTime() - now) / 1000)
     : null;
+  // The cadence this job was booked on, resolved. Zero is a deliberate
+  // choice ("start and end only" — a performer mid-set), not a fault: a
+  // monitor must be able to read a card with no check-in pending and know
+  // whether the silence is the job or the problem.
+  const cadenceMinutes = resolveCheckinMinutes(entry.checkinIntervalMinutes);
+  const cadenceLabel =
+    cadenceMinutes === 0
+      ? "Start & end only"
+      : checkinIntervalLabel(cadenceMinutes);
 
   async function run(fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) {
     setBusy(true);
@@ -145,6 +158,9 @@ function BoardCard({
             </span>
           </p>
           <p className="mt-1 truncate text-xs text-muted">{entry.address}</p>
+          <p className="mt-0.5 text-xs text-faint">
+            Check-ins: {cadenceLabel}
+          </p>
         </div>
         <span
           className={`shrink-0 rounded px-2 py-1 text-xs font-medium ${
@@ -168,8 +184,20 @@ function BoardCard({
         />
         <Stat
           label="Next check-in"
-          value={checkinIn === null ? "—" : checkinIn <= 0 ? `${formatAge(-checkinIn)} late` : formatAge(checkinIn)}
-          tone={checkinIn !== null && checkinIn <= 0 ? "bad" : "normal"}
+          value={
+            cadenceMinutes === 0
+              ? "None"
+              : checkinIn === null
+                ? "—"
+                : checkinIn <= 0
+                  ? `${formatAge(-checkinIn)} late`
+                  : formatAge(checkinIn)
+          }
+          tone={
+            cadenceMinutes > 0 && checkinIn !== null && checkinIn <= 0
+              ? "bad"
+              : "normal"
+          }
         />
         <Stat
           label="Battery"

@@ -53,7 +53,7 @@ export default async function ConfirmContactPage(
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10">
       <div className="card space-y-4 p-8 text-center">
-        <p className="text-xs uppercase tracking-[0.2em] text-faint">Cheers safety</p>
+        <p className="text-xs uppercase tracking-[0.2em] text-faint">CheersJA safety</p>
         <p className="font-display text-2xl text-success">You&apos;re confirmed</p>
         <p className="text-sm text-muted">
           Thank you, {contact.name}. You&apos;ll receive a live tracking link

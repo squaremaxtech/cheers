@@ -30,6 +30,10 @@ export async function loadSafetyBoard(): Promise<SafetyBoardEntry[]> {
       session: safetySessions,
       code: bookings.code,
       address: bookings.address,
+      // The cadence this job was booked on. A monitor looking at a card with
+      // no check-in due for four hours must be able to tell "that's the job"
+      // from "something is wrong".
+      checkinIntervalMinutes: bookings.checkinIntervalMinutes,
       stageName: workers.stageName,
     })
     .from(safetySessions)
@@ -122,6 +126,7 @@ export async function loadSafetyBoard(): Promise<SafetyBoardEntry[]> {
         checkin?.dueAt.toISOString() ??
         row.session.nextCheckInAt?.toISOString() ??
         null,
+      checkinIntervalMinutes: row.checkinIntervalMinutes,
       expectedEndAt: row.session.expectedEndAt?.toISOString() ?? null,
       lastPing: ping
         ? { lat: ping.lat, lng: ping.lng, at: ping.recordedAt.toISOString() }

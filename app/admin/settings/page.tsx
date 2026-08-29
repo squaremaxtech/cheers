@@ -5,16 +5,16 @@ import {
   membershipPriceCents,
   PLATFORM_FEE_PERCENT,
   staffedSafetyDesk,
-  stripeConfigured,
 } from "@/lib/constants";
 import { freeAccessActive, freeAccessStatus } from "@/lib/membership";
+import { paymentsConfigured } from "@/lib/payments/powertranz";
 
 export const metadata: Metadata = { title: "Settings — Admin" };
 
 // Platform configuration is env-driven; this page surfaces the live values.
 export default function AdminSettingsPage() {
-  const stripeLive = stripeConfigured();
-  const freeAccess = freeAccessStatus(stripeLive);
+  const cardsLive = paymentsConfigured();
+  const freeAccess = freeAccessStatus(cardsLive);
   const settings = [
     {
       label: "Platform fee",
@@ -22,19 +22,14 @@ export default function AdminSettingsPage() {
       env: "PLATFORM_FEE_PERCENT",
     },
     {
-      label: "Online payments (Stripe)",
-      value: stripeConfigured()
-        ? "Live — card buttons and membership checkout shown"
-        : "Not set — dormant (cash-first, card UI hidden)",
-      env: "STRIPE_SECRET_KEY",
+      label: "Card payments (PowerTranz)",
+      value: cardsLive
+        ? "Live — memberships and commission statements can be charged"
+        : "Not set — dormant. Jobs are still paid directly to professionals; only platform billing is inactive.",
+      env: "POWERTRANZ_MERCHANT_ID",
     },
     {
-      label: "Stripe webhook",
-      value: process.env.STRIPE_WEBHOOK_SECRET ? "Configured" : "Not set",
-      env: "STRIPE_WEBHOOK_SECRET",
-    },
-    {
-      label: "Cheers Membership (monthly)",
+      label: "CheersJA Membership (monthly)",
       value: `${formatCents(membershipPriceCents())}/month`,
       env: "MEMBERSHIP_PRICE_CENTS",
     },
@@ -45,7 +40,7 @@ export default function AdminSettingsPage() {
       label: "Launch free-access window",
       value: freeAccessActive()
         ? `Active until ${process.env.FREE_ACCESS_UNTIL} — while active, membership (messaging and booking) is free for everyone`
-        : "Inactive — a Cheers Membership is required to message and book",
+        : "Inactive — a CheersJA Membership is required to message and book",
       env: "FREE_ACCESS_UNTIL",
     },
     {
@@ -73,9 +68,9 @@ export default function AdminSettingsPage() {
     <div>
       <h1 className="font-display text-2xl text-ink">Settings</h1>
 
-      {/* The membership gate covers chat AND booking. With Stripe dormant the
-          launch window is the only way through it, so a lapse closes the whole
-          funnel — warn while there is still time to change the date. */}
+      {/* The membership gate covers chat AND booking. While card payments are
+          dormant the launch window is the only way through it, so a lapse
+          closes the whole funnel — warn while there is time to change it. */}
       {freeAccess.needsAttention && (
         <div className="card mt-4 border-danger/60 bg-danger/5 p-5">
           <p className="text-sm font-medium text-ink">
@@ -86,7 +81,7 @@ export default function AdminSettingsPage() {
                 : "Free access has ended — nobody can message or book"}
           </p>
           <p className="mt-2 text-sm leading-6 text-muted">
-            A Cheers Membership is required to message a professional and to
+            A CheersJA Membership is required to message a professional and to
             book one, and online payments are not configured — so the launch
             window is the only thing granting access. When it lapses, every
             booking, quote request and job post stops platform-wide and no
@@ -95,7 +90,7 @@ export default function AdminSettingsPage() {
           <p className="mt-2 text-sm leading-6 text-muted">
             Push <span className="text-ink">FREE_ACCESS_UNTIL</span> forward in{" "}
             <span className="text-ink">.env</span> and restart, or configure
-            Stripe so memberships can actually be bought.
+            PowerTranz so memberships can actually be bought.
           </p>
         </div>
       )}

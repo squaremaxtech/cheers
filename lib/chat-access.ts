@@ -84,7 +84,7 @@ export function chatSenderLabel(
 
 // Coordination is never paywalled: a customer with a LIVE booking with this
 // worker may always message them — "here's my gate code, I'm running late"
-// cannot sit behind a subscription. The Cheers Membership buys the rest:
+// cannot sit behind a subscription. The CheersJA Membership buys the rest:
 // opening a conversation with any professional before (or without)
 // booking them.
 const LIVE_BOOKING_STATUSES = [

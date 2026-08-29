@@ -223,6 +223,25 @@ export default function WorkerProfileForm({
         </div>
       </div>
 
+      {/* Payment details are NOT here any more. A professional keeps several
+          ways to be paid and can point different gigs at different ones, so
+          they live on Earnings & fees where the money copy already is. */}
+      <div className="rounded-xl border border-hairline px-4 py-3">
+        <p className="text-sm text-ink">How customers pay you</p>
+        <p className="mt-0.5 text-xs leading-5 text-faint">
+          Customers pay you <strong>directly</strong> — CheersJA never holds your
+          money. Your bank account, Lynk number or “cash on the day” lives on
+          Earnings &amp; fees, and is shown only to a customer who already has a
+          confirmed booking with you — never on your public profile.
+        </p>
+        <Link
+          href="/worker/earnings"
+          className="mt-2 inline-block text-sm text-brand hover:text-brand-soft"
+        >
+          Manage how customers pay you →
+        </Link>
+      </div>
+
       <div>
         <p className="label">Languages</p>
         <div className="flex flex-wrap gap-2">
@@ -238,7 +257,7 @@ export default function WorkerProfileForm({
                   )
                 }
                 className={`btn px-4 py-1.5 text-xs ${
-                  on ? "bg-brand text-white" : "border border-hairline text-muted"
+                  on ? "bg-brand text-base" : "border border-hairline text-muted"
                 }`}
               >
                 {lang}

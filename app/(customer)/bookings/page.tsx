@@ -30,6 +30,10 @@ export default async function BookingsPage() {
   return (
     <div>
       <h1 className="font-display text-2xl text-ink">Booking history</h1>
+      <p className="mt-1 text-sm text-muted">
+        You pay each professional directly — cash, bank transfer or Lynk. Open
+        a confirmed booking to see their payment details and mark it paid.
+      </p>
       {rows.length === 0 ? (
         <div className="mt-6">
           <EmptyState

@@ -2,11 +2,12 @@ import Link from "next/link";
 import { and, count, eq, exists, gt, sum } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { bookings, gigs, jobRequests, payouts, quotes } from "@/db/schema";
+import { bookings, gigs, jobRequests, quotes } from "@/db/schema";
 import AcceptTermsBanner from "@/components/ui/AcceptTermsBanner";
 import Badge from "@/components/ui/Badge";
 import VisibilityToggle from "@/components/worker/VisibilityToggle";
 import { formatCents } from "@/lib/constants";
+import { workerBillingStatus } from "@/lib/billing";
 import { needsTermsAcceptance } from "@/lib/onboarding";
 import { isPremiumProvider } from "@/lib/premium";
 import { getWorkerContext } from "@/lib/worker-context";
@@ -24,7 +25,7 @@ export default async function WorkerDashboard() {
     [openJobCount],
     [upcomingCount],
     [completedStats],
-    [pendingPayout],
+    billing,
   ] =
     await Promise.all([
       db
@@ -88,12 +89,10 @@ export default async function WorkerDashboard() {
         .where(
           and(eq(bookings.workerId, worker.id), eq(bookings.status, "completed"))
         ),
-      db
-        .select({ amount: sum(payouts.amountCents), tips: sum(payouts.tipsCents) })
-        .from(payouts)
-        .where(
-          and(eq(payouts.workerId, worker.id), eq(payouts.status, "pending"))
-        ),
+      // The platform pays nobody out: a professional collects the job money
+      // directly. What is owed runs the other way — this month's commission,
+      // charged to their card (lib/billing.ts).
+      workerBillingStatus(worker.id),
     ]);
 
   const stats = [
@@ -103,10 +102,8 @@ export default async function WorkerDashboard() {
     { label: "Upcoming", value: String(upcomingCount?.n ?? 0), href: "/worker/bookings" },
     { label: "Jobs completed", value: String(completedStats?.n ?? 0), href: "/worker/earnings" },
     {
-      label: "Pending payout",
-      value: formatCents(
-        Number(pendingPayout?.amount ?? 0) + Number(pendingPayout?.tips ?? 0)
-      ),
+      label: "Commission this month",
+      value: formatCents(billing.openAmountCents),
       href: "/worker/earnings",
     },
   ];
@@ -162,7 +159,7 @@ export default async function WorkerDashboard() {
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
             {idVerified
               ? "Your ID has been checked. The Verified ID badge shows on your profile and your gigs."
-              : "Optional. Send one photo ID and earn a Verified ID badge on your profile and your gigs. Your document is deleted once it has been reviewed, and nothing on Cheers is blocked without it."}
+              : "Optional. Send one photo ID and earn a Verified ID badge on your profile and your gigs. Your document is deleted once it has been reviewed, and nothing on CheersJA is blocked without it."}
           </p>
         </div>
         <Link href="/worker/verification" className="btn-outline shrink-0">

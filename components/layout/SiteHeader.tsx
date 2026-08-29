@@ -19,9 +19,9 @@ export default async function SiteHeader() {
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:px-5">
         <Link
           href="/"
-          className="font-display shrink-0 text-xl font-extrabold tracking-tight text-brand sm:text-2xl"
+          className="font-display shrink-0 text-xl tracking-tight text-gold sm:text-2xl"
         >
-          Cheers
+          CheersJA
         </Link>
 
         <nav className="flex min-w-0 items-center gap-1 text-sm" style={{ overflow: "auto" }}>

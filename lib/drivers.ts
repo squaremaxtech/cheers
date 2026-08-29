@@ -128,7 +128,7 @@ export async function notifyDriversOfNewRide(ride: RideRow): Promise<void> {
     await sendPush(
       rows.map((r) => r.userId),
       {
-        title: "New ride request on Cheers",
+        title: "New ride request on CheersJA",
         body: summary,
         url: "/driver/requests",
         // Per-ride tag so separate requests don't collapse into one another

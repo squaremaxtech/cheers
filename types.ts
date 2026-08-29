@@ -11,8 +11,10 @@ import type {
   driverVerifications,
   drivers,
   escalations,
+  feeInvoices,
   gigAddons,
   gigCategories,
+  gigTags,
   gigs,
   identityVerifications,
   jobOffers,
@@ -22,8 +24,8 @@ import type {
   memberships,
   monitorShifts,
   notifications,
+  paymentCards,
   payments,
-  payouts,
   pushSubscriptions,
   quotes,
   reviews,
@@ -40,6 +42,7 @@ import type {
   wellnessChecks,
   workerCustomerBlocks,
   workerMedia,
+  workerPaymentMethods,
   workers,
 } from "@/db/schema";
 
@@ -57,10 +60,42 @@ export type SupportRole = NonNullable<UserRow["supportRole"]>;
 
 export type WorkerRow = typeof workers.$inferSelect;
 export type WorkerMediaRow = typeof workerMedia.$inferSelect;
+
+// One of the ways a professional accepts money DIRECTLY from a customer.
+// CheersJA never receives it — see lib/payment-methods.ts, which is also the
+// only module allowed to decide who may read `details`.
+export type WorkerPaymentMethodRow = typeof workerPaymentMethods.$inferSelect;
+export type WorkerPaymentKind = WorkerPaymentMethodRow["kind"];
+
+// The projection a CUSTOMER is allowed to see, and only ever with a confirmed
+// booking against that professional. Deliberately excludes workerId, active
+// and the timestamps — never widen it, and never render it on a public path.
+export type CustomerPaymentMethod = Pick<
+  WorkerPaymentMethodRow,
+  "id" | "kind" | "label" | "details"
+>;
+
+// A professional's method as their OWN editor sees it: the customer-facing
+// fields plus the two switches only they control.
+export type WorkerPaymentMethod = CustomerPaymentMethod &
+  Pick<WorkerPaymentMethodRow, "active" | "sortOrder">;
 export type GigCategoryRow = typeof gigCategories.$inferSelect;
 export type GigRow = typeof gigs.$inferSelect;
 export type GigPricingMode = GigRow["pricingMode"];
 export type GigAddonRow = typeof gigAddons.$inferSelect;
+export type GigTagRow = typeof gigTags.$inferSelect;
+
+// One pickable tag as the gig form sees it. gigs.tags[] stores the SLUG; the
+// name is display only. categoryId null = a general tag offered on every gig.
+export type GigTagOption = Pick<GigTagRow, "slug" | "name" | "categoryId">;
+
+// One tag row on /admin/catalog: the full record plus how many gigs already
+// carry it, so retiring is an informed decision (retiring hides the tag from
+// the picker and leaves those gigs untouched).
+export type GigTagAdminItem = Pick<
+  GigTagRow,
+  "id" | "slug" | "name" | "categoryId" | "active" | "sortOrder"
+> & { gigCount: number };
 export type QuoteRow = typeof quotes.$inferSelect;
 export type QuoteStatus = QuoteRow["status"];
 export type AvailabilityRow = typeof availability.$inferSelect;
@@ -85,12 +120,14 @@ export type BookingStatus = BookingRow["status"];
 export type BookingEventRow = typeof bookingEvents.$inferSelect;
 
 export type PaymentRow = typeof payments.$inferSelect;
-export type PayoutRow = typeof payouts.$inferSelect;
 export type MembershipRow = typeof memberships.$inferSelect;
 export type MembershipPaymentRow = typeof membershipPayments.$inferSelect;
 
-// Result of generateWeeklyPayouts — carries enough context for the admin UI
-// to explain a zero-worker run instead of a bare "0".
+// DEAD — the platform never pays anyone out. Job money goes customer →
+// professional directly and is only recorded (see lib/payments/ and
+// lib/billing.ts); nothing writes to the payouts table any more. These two
+// types survive only until actions/admin.ts drops its payout code, and go
+// with it.
 export type PayoutGeneration = {
   created: number;
   bookingsCovered: number;
@@ -181,6 +218,10 @@ export type SafetyBoardEntry = {
   lastHeartbeatAt: string | null;
   batteryPct: number | null;
   nextCheckInAt: string | null;
+  // The booking's cadence snapshot: null = platform default, 0 = start and
+  // end only. On the board so a monitor reading a quiet card knows whether the
+  // silence is expected.
+  checkinIntervalMinutes: number | null;
   expectedEndAt: string | null;
   lastPing: { lat: string; lng: string; at: string } | null;
   openAlerts: {
@@ -208,6 +249,12 @@ export type SafetyClientState = {
   secondsUntilEscalation: number | null;
   monitorName: string | null;
   alertOpen: boolean;
+  // The cadence this job actually runs on, already resolved (the platform
+  // default substituted for null). 0 = start and end only.
+  checkinIntervalMinutes: number;
+  // Snoozes left on this session, so the control can say so before it is
+  // pressed rather than refusing afterwards.
+  snoozesRemaining: number;
 };
 
 // Realtime events streamed to the booking room over SSE. "refresh" kinds
@@ -366,7 +413,7 @@ export type GigCard = PublicGig & {
   >;
 };
 
-// PublicDriver deliberately excludes userId and stripeAccountId.
+// PublicDriver deliberately excludes userId.
 export type PublicDriver = Pick<
   DriverRow,
   | "id"
@@ -437,3 +484,72 @@ export type JobBoardCard = {
     status: JobOfferStatus;
   } | null;
 };
+
+// --- Payments: money IN only (see lib/payments/) -----------------------------------
+//
+// CheersJA collects two things by card — the customer's membership and the
+// professional's 5% commission — and nothing else. Job money is paid customer
+// → professional directly and is only RECORDED here, so there is no payout
+// type on this side of the line and never will be.
+
+export type PaymentCardRow = typeof paymentCards.$inferSelect;
+export type FeeInvoiceRow = typeof feeInvoices.$inferSelect;
+export type FeeInvoiceStatus = FeeInvoiceRow["status"];
+
+// The card as any page may see it: recognisable, and structurally incapable of
+// carrying the gateway token.
+export type CardOnFile = {
+  brand: string | null;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+  addedAt: string; // ISO
+};
+
+// A professional's commission standing, as their earnings page and the gig
+// visibility rail both read it.
+export type WorkerBillingStatus = {
+  // Accruing right now — this month's fees, not yet billed.
+  openAmountCents: number;
+  openJobCount: number;
+  // Closed statements waiting on (or failing) a card charge.
+  dueAmountCents: number;
+  failedAmountCents: number;
+  // True once a failed statement is past the grace period over repeated
+  // attempts. This is the ONLY predicate anything is allowed to pause listings
+  // on (lib/billing.ts workerBillingBlocked).
+  blocked: boolean;
+  hasCard: boolean;
+};
+
+// What one runBilling() pass did. Returned so a cron route and the admin view
+// can report it instead of guessing from logs.
+export type BillingRunSummary = {
+  feesAccrued: number;
+  invoicesClosed: number;
+  invoicesPaid: number;
+  invoicesFailed: number;
+  membershipsCharged: number;
+  membershipsFailed: number;
+  membershipsCanceled: number;
+};
+
+// One recorded job payment as the admin ledger renders it. Read-only: the
+// platform never touched this money.
+export type RecordedJobPayment = {
+  id: string;
+  reference: string;
+  amountCents: number;
+  tipCents: number;
+  platformFeeCents: number;
+  method: PaymentRow["method"];
+  status: PaymentRow["status"];
+  note: string | null;
+  createdAt: string; // ISO
+};
+
+// What starting a membership needs next: the browser sent to the gateway to
+// store a card, or the card already on file charged and the period advanced.
+export type MembershipCheckout =
+  | { status: "card_required"; url: string }
+  | { status: "active"; periodEnd: string };

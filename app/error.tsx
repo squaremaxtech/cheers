@@ -11,8 +11,8 @@ export default function ErrorPage({
 }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-5 text-center">
-      <p className="font-display text-2xl font-extrabold tracking-tight text-brand">
-        Cheers
+      <p className="font-display text-2xl tracking-tight text-gold">
+        CheersJA
       </p>
       <h1 className="font-display mt-8 text-2xl tracking-tight text-ink">
         Something went wrong

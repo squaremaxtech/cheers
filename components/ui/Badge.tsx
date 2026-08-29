@@ -1,9 +1,11 @@
-// Tones read on the light theme: every pair is dark text on its own pale wash.
-// "gold" is the premium/accent tone — the gold token itself is too light to be
-// read as text on white, so gold-deep carries the letters and gold the border.
+// Tones read on the dark theme: light text on its own faint wash of the same
+// hue, all legible against the #171412 card surface. The washes stay low
+// (10–14%) because on a near-black ground a heavier fill starts to glow.
+// "brand" and "gold" are the same accent family by design — brand is the
+// quieter outline, gold the emphatic one.
 const tones = {
-  brand: "border-brand/40 text-brand bg-brand/10",
-  gold: "border-gold/50 text-gold-deep bg-gold/15",
+  brand: "border-brand/40 text-brand-soft bg-brand/10",
+  gold: "border-gold/50 text-gold-soft bg-gold/15",
   neutral: "border-hairline text-muted bg-raised",
   success: "border-success/40 text-success bg-success/10",
   danger: "border-danger/40 text-danger bg-danger/10",

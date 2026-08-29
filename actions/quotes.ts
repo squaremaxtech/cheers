@@ -321,6 +321,7 @@ export async function acceptQuoteOffer(
       gigId: quote.gigId,
       serviceName: row.gig.title,
       monitored: row.gig.safetyMonitored,
+      checkinIntervalMinutes: row.gig.checkinIntervalMinutes,
       date: data.date,
       startTime: data.startTime,
       durationMinutes: quote.offerDurationMinutes,

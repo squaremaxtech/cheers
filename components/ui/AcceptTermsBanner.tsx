@@ -67,8 +67,8 @@ export default function AcceptTermsBanner({
             Community Guidelines
           </Link>
           {professional
-            ? " to keep offering your services on Cheers."
-            : " to message and book professionals on Cheers."}
+            ? " to keep offering your services on CheersJA."
+            : " to message and book professionals on CheersJA."}
         </p>
       </div>
       <button

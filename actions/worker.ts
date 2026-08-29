@@ -89,7 +89,7 @@ export async function createWorkerProfile(
     await notifyAdmins({
       type: "worker_joined",
       title: "New professional joined",
-      body: `${profile.stageName} published a profile on Cheers.`,
+      body: `${profile.stageName} published a profile on CheersJA.`,
       meta: { url: "/admin/workers" },
       email: false,
     });

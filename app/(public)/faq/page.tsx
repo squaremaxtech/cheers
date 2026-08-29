@@ -12,7 +12,7 @@ import { freeAccessActive } from "@/lib/membership";
 export const metadata: Metadata = {
   title: "FAQ",
   description:
-    "How Cheers works — membership, bookings, payments, cancellations, the Verified ID badge, safety tools, rides, and offering your own services.",
+    "How CheersJA works — booking an event crew, membership, payments, cancellations, the Verified ID badge, safety tools, rides, and listing your own services.",
 };
 
 export default function FaqPage() {
@@ -23,17 +23,18 @@ export default function FaqPage() {
 
   const faqs: { q: string; a: React.ReactNode }[] = [
     {
-      q: "What is Cheers?",
+      q: "What is CheersJA?",
       a: (
         <>
-          Cheers is Jamaica&apos;s premium freelance platform. Independent
-          professionals publish their own services and prices — trades,
-          cleaning, events, beauty, photography, tutoring, tech, care, security
-          and more — and you search, compare, message and book them directly.
-          Cheers is the venue: the work itself is agreed between you and the
-          professional.{" "}
+          CheersJA is Jamaica&apos;s events and entertainment marketplace.
+          Independent professionals publish their own services and rates — DJs,
+          MCs and hosts, sound and lighting, live bands and performers,
+          catering, bar service, décor and staging, photo and video, event
+          security and equipment rental — and you search, compare, message and
+          book them directly. CheersJA is the venue: the work itself is agreed
+          between you and the professional.{" "}
           <Link href="/about" className="text-brand hover:underline">
-            More about Cheers
+            More about CheersJA
           </Link>
           .
         </>
@@ -43,7 +44,7 @@ export default function FaqPage() {
       q: "Do I need a membership?",
       a: (
         <>
-          Browsing and searching are always free. A Cheers Membership is what
+          Browsing and searching are always free. A CheersJA Membership is what
           unlocks <span className="text-ink">messaging</span> a professional and{" "}
           <span className="text-ink">placing a booking</span>, and it also
           covers posting a job request or accepting an offer.{" "}
@@ -60,11 +61,12 @@ export default function FaqPage() {
       q: "How do bookings work?",
       a: (
         <>
-          Pick a professional and one of their services, choose a date, time and
-          location, and send the request. The professional confirms it, and you
+          Pick a professional and one of their services, choose the date, the
+          time and the venue, and send the request. They confirm it, and you
           both get email and in-app updates at every step. Fixed-price services
-          can be booked straight away; for bigger jobs the professional sends
-          you a priced quote first.
+          — a four-hour DJ set, a photo package — can be booked straight away;
+          for a full event build the professional sends you a priced quote
+          first.
         </>
       ),
     },
@@ -74,9 +76,10 @@ export default function FaqPage() {
         <>
           Yes — free of charge up to {CANCEL_MIN_HOURS} hours before the start
           time. Inside that window the booking is locked, and anything later is
-          handled case by case. A card payment that has already gone through is
-          refunded in full; cash bookings are settled between you and the
-          professional. The full rules are in the{" "}
+          handled case by case. If you had already paid the professional, that
+          money went straight to them and CheersJA never held it, so the refund
+          is arranged between the two of you — we tell you both, and we will
+          step in and help if it stalls. The full rules are in the{" "}
           <Link
             href="/terms#cancellation"
             className="text-brand hover:underline"
@@ -91,11 +94,11 @@ export default function FaqPage() {
       q: "How do I pay?",
       a: (
         <>
-          Cash or card. Cash is paid directly to the professional, who records
-          the collection; card payments run through our payments provider where
-          online payments are switched on. Cheers takes a{" "}
-          {PLATFORM_FEE_PERCENT}% platform fee on every booking — the same on
-          cash and card — and tips go 100% to the professional.
+          You pay the professional directly — cash on the day, bank transfer or
+          Lynk — using the details they give you once the booking is confirmed.
+          CheersJA never receives, holds or forwards that money; the app just
+          records the payment so you both have the same history. The only card
+          payment on your side is your membership.
         </>
       ),
     },
@@ -103,11 +106,13 @@ export default function FaqPage() {
       q: "How do professionals get paid?",
       a: (
         <>
-          Weekly payouts covering completed bookings, less the{" "}
-          {PLATFORM_FEE_PERCENT}% platform fee. Cash a professional has already
-          collected is netted off the same statement, so a cash-heavy week can
-          settle to zero or to an amount owed back to the platform. Tips are
-          always passed through in full.
+          Directly by the customer, and they keep{" "}
+          <span className="text-ink">100%</span> of it — the whole job price and
+          the whole tip. There is no payout, because nothing ever passes through
+          us. CheersJA earns a {PLATFORM_FEE_PERCENT}% commission on completed
+          work, and it is never deducted from the job: it accrues on the
+          professional&apos;s monthly statement and is charged to the card they
+          have on file. Leaving it unpaid pauses their listings until it clears.
         </>
       ),
     },
@@ -158,13 +163,13 @@ export default function FaqPage() {
       q: "What if I can't find what I need — can I ask for quotes?",
       a: (
         <>
-          Yes, two ways. On a quote-priced service you describe the job and the
-          professional sends you one priced offer, which becomes a booking when
-          you accept it. Or post a{" "}
+          Yes, two ways. On a quote-priced service you describe the event and
+          the professional sends you one priced offer, which becomes a booking
+          when you accept it. Or post a{" "}
           <Link href="/requests/new" className="text-brand hover:underline">
             job request
           </Link>
-          : describe the work, name your budget, and professionals in that
+          : describe the event, name your budget, and professionals in that
           category send you offers — you pick, or let the first acceptance or
           the best price win automatically. Posting a request, requesting a
           quote and accepting an offer all need a membership, the same as
@@ -173,35 +178,18 @@ export default function FaqPage() {
       ),
     },
     {
-      q: "What is the premium tier?",
-      a: (
-        <>
-          A small, curated part of the platform. Some services are offered to
-          premium members only, and they are invisible to everyone else —
-          premium access is granted by us, not bought, and the same goes for the
-          professionals allowed to publish those services. If you would like to
-          be considered, email us at{" "}
-          <a
-            href={`mailto:${CONTACT_EMAILS.hello}`}
-            className="text-brand hover:underline"
-          >
-            {CONTACT_EMAILS.hello}
-          </a>
-          .
-        </>
-      ),
-    },
-    {
-      q: "How do I offer my services? Do I need to be approved?",
+      q: "How do I list my services? Do I need to be approved?",
       a: (
         <>
           No approval step and no invitation needed. Create an account, set up
           your profile and publish your services — your listings go live the
           moment you publish them, and your profile appears in search as soon as
-          one is live. You set your own prices, choose which jobs to take and
-          control your own schedule; joining is free and the only cut we take is
-          the {PLATFORM_FEE_PERCENT}% platform fee. We moderate after the fact
-          and remove anything that breaks the{" "}
+          one is live. You set your own rates, choose which gigs to take and
+          control your own calendar; joining is free, customers pay you directly
+          and you keep every cent of the job and the tip. Our only charge is a{" "}
+          {PLATFORM_FEE_PERCENT}% commission on completed work, billed to your
+          card once a month rather than taken out of your pay. We moderate after
+          the fact and remove anything that breaks the{" "}
           <Link href="/guidelines" className="text-brand hover:underline">
             Community Guidelines
           </Link>
@@ -213,7 +201,7 @@ export default function FaqPage() {
       ),
     },
     {
-      q: "What name do customers see?",
+      q: "What name do clients see?",
       a: (
         <>
           Your display name — that is what appears on your profile, your
@@ -226,7 +214,8 @@ export default function FaqPage() {
       q: "Can I get a ride?",
       a: (
         <>
-          Yes. Post your route with the fare you want to pay; independent
+          Yes — handy for getting a crew, or your guests, home after a late
+          night. Post your route with the fare you want to pay; independent
           drivers accept it or send a counter-offer, and you choose. Fares are
           paid in cash in the car for now. Drivers are the one group we check
           before they go live — licence and vehicle documents are reviewed by
@@ -242,7 +231,7 @@ export default function FaqPage() {
       q: "How old do I have to be?",
       a: (
         <>
-          You must be 18 or older to use Cheers, whether you are hiring or
+          You must be 18 or older to use CheersJA, whether you are booking or
           offering services. See{" "}
           <Link href="/terms#eligibility" className="text-brand hover:underline">
             eligibility in the Terms
@@ -282,7 +271,7 @@ export default function FaqPage() {
         Frequently asked questions
       </h1>
       <p className="mt-3 text-sm leading-7 text-muted">
-        How hiring, membership, payments and safety work on Cheers. The full
+        How booking, membership, payments and safety work on CheersJA. The full
         rules live in the{" "}
         <Link href="/terms" className="text-brand hover:underline">
           Terms

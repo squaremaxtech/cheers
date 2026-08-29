@@ -3,62 +3,29 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { markPayoutPaid } from "@/actions/admin";
 import { adminResolvePendingPayment, refundPayment } from "@/actions/payments";
 import type { ActionResult, PaymentRow } from "@/types";
 
-// Renders refund (for a payment) or mark-paid (for a payout) controls.
-// payoutOwed = negative payout (cash week — the worker owes the platform),
-// where "paid" means the fee settlement was collected/deducted.
+// Controls on one recorded job payment.
 //
-// Desk support may resolve a PENDING payment (the stuck-cash remedy); money
-// leaving the platform — refunds and payouts — is admin-only, so those
-// controls are not rendered for them at all rather than failing on click.
+// Nothing here moves money — the platform never held any of it. Resolving a
+// stuck claim records what actually happened between the customer and the
+// professional; "mark refunded" records a refund THEY made directly.
+//
+// Desk support may resolve a PENDING claim; marking a settled payment refunded
+// is admin-only, so that control is not rendered for them at all rather than
+// failing on click.
 export default function PaymentAdminActions({
   paymentId,
   status,
-  payoutId,
-  payoutOwed = false,
   isAdmin,
 }: {
-  paymentId?: string;
-  status?: PaymentRow["status"];
-  payoutId?: string;
-  payoutOwed?: boolean;
+  paymentId: string;
+  status: PaymentRow["status"];
   isAdmin: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-
-  if (payoutId) {
-    if (!isAdmin) return null;
-    return (
-      <button
-        type="button"
-        disabled={busy}
-        className="btn-primary px-3 py-1.5 text-xs"
-        onClick={async () => {
-          const confirmText = payoutOwed
-            ? "Record this settlement as collected from the worker (cash-week fees)?"
-            : "Mark this payout as paid?";
-          if (!window.confirm(confirmText)) return;
-          setBusy(true);
-          const res = await markPayoutPaid({ payoutId });
-          setBusy(false);
-          if (res.ok) {
-            toast.success(payoutOwed ? "Settlement recorded" : "Payout marked paid");
-            router.refresh();
-          } else {
-            toast.error(res.error);
-          }
-        }}
-      >
-        {busy ? "…" : payoutOwed ? "Mark settled" : "Mark paid"}
-      </button>
-    );
-  }
-
-  if (!paymentId) return null;
 
   async function act(
     confirmText: string,
@@ -86,14 +53,14 @@ export default function PaymentAdminActions({
           className="btn-primary px-3 py-1.5 text-xs"
           onClick={() =>
             act(
-              "Mark this payment as collected? The booking confirms if it was still awaiting payment.",
+              "Record this payment as received by the professional? The booking confirms if it was still awaiting confirmation.",
               () =>
                 adminResolvePendingPayment({ paymentId, to: "succeeded" }),
-              "Payment marked collected"
+              "Payment recorded"
             )
           }
         >
-          {busy ? "…" : "Mark collected"}
+          {busy ? "…" : "Mark recorded"}
         </button>
         <button
           type="button"
@@ -101,9 +68,9 @@ export default function PaymentAdminActions({
           className="btn-danger px-3 py-1.5 text-xs"
           onClick={() =>
             act(
-              "Void this pending payment? Use when it will never be collected.",
+              "Void this claim? Use when the money never actually changed hands.",
               () => adminResolvePendingPayment({ paymentId, to: "failed" }),
-              "Payment voided"
+              "Claim voided"
             )
           }
         >
@@ -122,13 +89,13 @@ export default function PaymentAdminActions({
       className="btn-danger px-3 py-1.5 text-xs"
       onClick={() =>
         act(
-          "Refund this payment? Card refunds go through Stripe.",
+          "Mark this payment refunded? This is a RECORD only — CheersJA never held the money, so the professional must return it to the customer themselves.",
           () => refundPayment({ paymentId }),
-          "Refund issued"
+          "Marked refunded"
         )
       }
     >
-      {busy ? "…" : "Refund"}
+      {busy ? "…" : "Mark refunded"}
     </button>
   );
 }

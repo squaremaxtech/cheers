@@ -31,7 +31,7 @@ export async function generateMetadata(props: PageProps<"/drivers/[slug]">) {
     title: driver.displayName,
     description:
       driver.bio?.slice(0, 155) ??
-      `Ride with ${driver.displayName} on Cheers — name your price, pay cash in the car.`,
+      `Ride with ${driver.displayName} on CheersJA — name your price, pay cash in the car.`,
   };
 }
 

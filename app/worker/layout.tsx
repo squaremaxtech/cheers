@@ -16,7 +16,7 @@ const nav = [
   { href: "/worker/media", label: "Media" },
   { href: "/worker/gigs", label: "Gigs" },
   { href: "/worker/availability", label: "Availability" },
-  { href: "/worker/earnings", label: "Earnings" },
+  { href: "/worker/earnings", label: "Earnings & fees" },
 ];
 
 export default async function WorkerLayout({

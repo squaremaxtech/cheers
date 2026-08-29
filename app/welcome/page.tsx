@@ -41,7 +41,7 @@ export default async function WelcomePage() {
       <SiteHeader />
       <main className="flex-1">
         <div className="mx-auto max-w-3xl px-5 py-12">
-          <h1 className="font-display text-3xl text-ink">Welcome to Cheers</h1>
+          <h1 className="font-display text-3xl text-ink">Welcome to CheersJA</h1>
           <p className="mt-2 max-w-xl text-sm leading-6 text-muted">
             Two quick steps and you&apos;re in: tell us how to reach you and
             accept our terms. The third step, the Verified ID badge, is

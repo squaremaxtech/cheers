@@ -6,6 +6,7 @@ import {
   CHECKIN_GRACE_MINUTES,
   CHECKIN_REMINDER_MINUTES,
   HEARTBEAT_GRACE_MINUTES,
+  resolveCheckinMinutes,
 } from "@/lib/constants";
 import { settleDueJobRequests } from "@/lib/jobs";
 import { bookingEventNow, publishBooking, publishSafetyDesk } from "@/lib/realtime";
@@ -110,6 +111,16 @@ export async function runTick(now: Date = new Date()): Promise<void> {
 //    Includes overrun and unresponsive sessions: a session running late or a
 //    phone gone quiet is MORE reason to keep demanding check-ins, not less —
 //    an unanswered one is what feeds the staff ladder.
+//
+//    NULL nextCheckInAt means NOTHING IS DUE — never "overdue". The
+//    isNotNull() below is what makes that true, and it carries the whole
+//    "start and end only" cadence (bookings.checkin_interval_minutes = 0,
+//    which lib/safety/session.ts nextCheckInFor turns into null): such a
+//    session is simply never selected here, so no check-in row is ever
+//    created for it, so no missed-check-in alert can ever be raised from it.
+//    Removing isNotNull() would make `lte(null, now)` the only guard — and in
+//    SQL that is NULL, not true, so it would still not fire, but the intent
+//    would stop being legible. Leave it explicit.
 async function dueCheckins(now: Date): Promise<void> {
   const sessions = await db
     .select()
@@ -160,14 +171,30 @@ async function dueCheckins(now: Date): Promise<void> {
 
 // 2. Pending check-ins: re-ping inside the grace window, then hand off to the
 //    staff ladder once the window closes.
+//
+//    The booking is joined for its cadence snapshot alone. A "start and end
+//    only" job structurally cannot reach this loop — dueCheckins never
+//    creates a row for it — but the promise made to a performer who chose
+//    that setting is absolute ("no periodic check-in will ever page anyone
+//    about you"), and this is the exact spot where a future bug would break
+//    it at 3am. A stray pending row is closed as answered instead.
 async function chaseUnansweredCheckins(now: Date): Promise<void> {
   const pending = await db
-    .select({ checkin: safetyCheckins, session: safetySessions })
+    .select({
+      checkin: safetyCheckins,
+      session: safetySessions,
+      cadence: bookings.checkinIntervalMinutes,
+    })
     .from(safetyCheckins)
     .innerJoin(safetySessions, eq(safetyCheckins.sessionId, safetySessions.id))
+    .innerJoin(bookings, eq(safetySessions.bookingId, bookings.id))
     .where(eq(safetyCheckins.status, "pending"));
 
-  for (const { checkin, session } of pending) {
+  for (const { checkin, session, cadence } of pending) {
+    if (resolveCheckinMinutes(cadence) <= 0) {
+      await closeCheckinWithoutCadence(checkin.id, session, now);
+      continue;
+    }
     const overdueMs = now.getTime() - checkin.dueAt.getTime();
     if (overdueMs < 0) continue;
 
@@ -236,6 +263,38 @@ async function chaseUnansweredCheckins(now: Date): Promise<void> {
       );
     }
   }
+}
+
+// Belt and braces for the "start and end only" cadence: retires a pending
+// check-in that should never have existed, and makes sure the session's clock
+// stays disarmed. Closed as answered rather than missed — nobody failed to do
+// anything, so nothing should escalate and nothing should show red on the
+// board. The event is recorded so an unexpected one is visible rather than
+// silent.
+async function closeCheckinWithoutCadence(
+  checkinId: string,
+  session: { id: string; bookingId: string },
+  now: Date
+): Promise<void> {
+  const claimed = await db
+    .update(safetyCheckins)
+    .set({ status: "ok", respondedAt: now, method: "auto" })
+    .where(
+      and(eq(safetyCheckins.id, checkinId), eq(safetyCheckins.status, "pending"))
+    )
+    .returning({ id: safetyCheckins.id });
+  if (claimed.length === 0) return;
+
+  await db
+    .update(safetySessions)
+    .set({ nextCheckInAt: null, updatedAt: now })
+    .where(eq(safetySessions.id, session.id));
+  await recordEvent({
+    sessionId: session.id,
+    bookingId: session.bookingId,
+    kind: "checkin_skipped_no_cadence",
+    payload: { checkinId },
+  });
 }
 
 // 3. The passive signal. No heartbeat means the phone's screen is off — which

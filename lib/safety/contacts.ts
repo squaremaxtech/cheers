@@ -1,9 +1,8 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { trustedContacts } from "@/db/schema";
-import { smsEnabled } from "@/lib/constants";
 import { emailLayout, sendEmail } from "@/lib/mailer";
-import { sendSms, smsLine } from "@/lib/safety/sms";
+import { sendSms, smsConfigured, smsLine } from "@/lib/safety/sms";
 import type { TrustedContactRow } from "@/types";
 
 // Everything the platform ever says to a worker's OWN people lives here.
@@ -38,7 +37,7 @@ export function contactChannels(contact: {
 }): { email: boolean; sms: boolean } {
   return {
     email: Boolean(contact.email),
-    sms: Boolean(contact.phone) && smsEnabled(),
+    sms: Boolean(contact.phone) && smsConfigured(),
   };
 }
 
@@ -115,7 +114,7 @@ export async function sendContactConfirmation(opts: {
   if (opts.email) {
     await sendEmail({
       to: opts.email,
-      subject: "Cheers — you've been added as a safety contact",
+      subject: "CheersJA — you've been added as a safety contact",
       html: emailLayout(
         "Confirm you're a safety contact",
         `<p><strong>${opts.workerName}</strong> listed you as a trusted safety contact.</p>
@@ -128,12 +127,12 @@ export async function sendContactConfirmation(opts: {
     });
   }
 
-  if (opts.phone && smsEnabled()) {
+  if (opts.phone && smsConfigured()) {
     await sendSms(
       [{ to: opts.phone, label: opts.contactName }],
       smsLine(
         [
-          `${opts.workerName} listed you as their Cheers safety contact.`,
+          `${opts.workerName} listed you as their CheersJA safety contact.`,
           "Confirm to be reached if they don't check in during a booking:",
         ],
         link
@@ -163,7 +162,7 @@ export async function sendTrackingLinks(
     await Promise.all(
       targets.map((contact) =>
         deliver(contact, {
-          subject: `Cheers — ${ctx.stageName} has started a booking`,
+          subject: `CheersJA — ${ctx.stageName} has started a booking`,
           heading: "Live tracking link",
           html: `<p><strong>${ctx.stageName}</strong> has started a monitored booking and listed you as a safety contact.</p>
              <p>You can follow their status and last known position here:</p>
@@ -173,7 +172,7 @@ export async function sendTrackingLinks(
              <p style="color:#6b6b6b;font-size:13px;">This link expires shortly after the booking ends. Our safety team monitors every session; you'll only hear from us again if something needs attention.</p>`,
           sms: smsLine(
             [
-              `${ctx.stageName} has started a monitored Cheers booking.`,
+              `${ctx.stageName} has started a monitored CheersJA booking.`,
               "Follow their status:",
             ],
             link
@@ -209,21 +208,21 @@ const OVERDUE_COPY: Record<
     subject: "has missed a check-in",
     heading: "Missed check-in",
     sentence: "They have missed a safety check-in during a booking.",
-    sms: "missed a Cheers safety check-in.",
+    sms: "missed a CheersJA safety check-in.",
   },
   unresponsive: {
     subject: "has missed a check-in, and their phone is quiet",
     heading: "Missed check-in — no signal",
     sentence:
       "They have missed a safety check-in during a booking, and their phone has stopped responding.",
-    sms: "missed a Cheers safety check-in and their phone is not responding.",
+    sms: "missed a CheersJA safety check-in and their phone is not responding.",
   },
   no_arrival: {
     subject: "hasn't confirmed arriving",
     heading: "No arrival confirmed",
     sentence:
       "They haven't confirmed arriving at a booking they were travelling to.",
-    sms: "hasn't confirmed arriving at a Cheers booking.",
+    sms: "hasn't confirmed arriving at a CheersJA booking.",
   },
   // Phrased to read correctly after "<display name> " — no possessives, or the
   // join produces "Maxx 's booking has run over".
@@ -232,14 +231,14 @@ const OVERDUE_COPY: Record<
     heading: "Booking running over",
     sentence:
       "Their booking has run past its expected end and they haven't checked out.",
-    sms: "hasn't checked out of a Cheers booking that has run over.",
+    sms: "hasn't checked out of a CheersJA booking that has run over.",
   },
   get_home_overdue: {
     subject: "hasn't confirmed getting home",
     heading: "No get-home confirmation",
     sentence:
       "They left a booking but haven't confirmed getting home safely.",
-    sms: "left a Cheers booking but hasn't confirmed getting home.",
+    sms: "left a CheersJA booking but hasn't confirmed getting home.",
   },
 };
 
@@ -247,7 +246,7 @@ const OVERDUE_FALLBACK = {
   subject: "may need checking on",
   heading: "Safety check",
   sentence: "Something during their booking needs checking on.",
-  sms: "may need checking on during a Cheers booking.",
+  sms: "may need checking on during a CheersJA booking.",
 };
 
 // Two different moments, deliberately worded differently:
@@ -286,7 +285,7 @@ export async function notifyContactsOfConcern(
 
         return trigger === "overdue"
           ? deliver(contact, {
-              subject: `Cheers — ${ctx.stageName} ${copy.subject}`,
+              subject: `CheersJA — ${ctx.stageName} ${copy.subject}`,
               heading: copy.heading,
               html: `<p>You are listed as a trusted contact for <strong>${ctx.stageName}</strong>.</p>
                  <p>${copy.sentence} Our safety team has already been alerted and is working on it.</p>
@@ -300,7 +299,7 @@ export async function notifyContactsOfConcern(
               ]),
             })
           : deliver(contact, {
-              subject: `Cheers — please check on ${ctx.stageName}`,
+              subject: `CheersJA — please check on ${ctx.stageName}`,
               heading: "Safety check requested",
               html: `<p>You are listed as a trusted contact for <strong>${ctx.stageName}</strong>.</p>
                  <p>Our safety team has not been able to confirm they are OK during a booking, and is actively working on it.</p>
@@ -308,7 +307,7 @@ export async function notifyContactsOfConcern(
                  ${linkNote}
                  <p style="color:#6b6b6b;font-size:13px;">If you believe they are in immediate danger, call 119.</p>`,
               sms: smsLine([
-                `Cheers safety: we cannot confirm ${ctx.stageName} is OK during a booking.`,
+                `CheersJA safety: we cannot confirm ${ctx.stageName} is OK during a booking.`,
                 "If you can reach them directly, please try now.",
                 "If you believe they are in danger, call 119.",
               ]),

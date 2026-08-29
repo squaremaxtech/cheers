@@ -1,23 +1,21 @@
 "use server";
 
-import { and, eq, gte, inArray, isNull, lte } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
-  bookings,
   driverVerifications,
   drivers,
   gigCategories,
+  gigTags,
   gigs,
-  payments,
-  payouts,
   sessions,
   users,
   workers,
 } from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
 import { writeAudit } from "@/lib/audit";
-import { formatCents } from "@/lib/constants";
+import { PREMIUM_CATEGORY_SLUG } from "@/lib/gigs";
 import {
   guardErrorMessage,
   requireAdmin,
@@ -25,7 +23,6 @@ import {
   requireVerificationReviewer,
 } from "@/lib/guards";
 import { notify } from "@/lib/notify";
-import { payoutContribution } from "@/lib/payouts";
 import { slugify, uniqueWorkerSlug } from "@/lib/slug";
 import { removeStoredUpload } from "@/lib/uploads";
 import {
@@ -34,13 +31,14 @@ import {
   adminUpdateDriverSchema,
   adminUpdateWorkerSchema,
   gigCategorySchema,
-  markPayoutPaidSchema,
+  gigTagSchema,
   setCustomerPremiumAccessSchema,
   setWorkerPremiumProviderSchema,
   updateGigCategorySchema,
+  updateGigTagSchema,
 } from "@/schemas/admin";
 import { reviewDriverVerificationSchema } from "@/schemas/driver";
-import type { ActionResult, PayoutGeneration } from "@/types";
+import type { ActionResult } from "@/types";
 
 // --- Drivers: document review + platform flags ---------------------------------
 
@@ -191,6 +189,15 @@ export async function adminUpdateDriver(
 }
 
 // --- Gigs: takedown + browse taxonomy -------------------------------------------
+//
+// The catalog (categories + the tag vocabulary) is managed at /admin/catalog.
+// Two rules there are structural rather than cosmetic:
+//   * The Premium category can be renamed but never retired or deleted — it is
+//     where every premium gig lives (lib/gigs.ts PREMIUM_CATEGORY_SLUG), so
+//     retiring it would strand the whole premium rail.
+//   * A tag's slug is frozen after creation. gigs.tags[] stores slugs, so a
+//     rename is display-only and never touches a gig; retiring a tag hides it
+//     from the picker and leaves the gigs carrying it exactly as they are.
 
 // Gigs auto-publish; this is the counterweight. Suspending hides the gig
 // everywhere without touching the worker's account.
@@ -279,6 +286,7 @@ export async function createGigCategory(
       after: { name: parsed.data.name },
     });
 
+    revalidatePath("/admin/catalog");
     revalidatePath("/admin/gigs");
     revalidatePath("/browse");
     return ok({ id: category.id });
@@ -302,6 +310,14 @@ export async function updateGigCategory(
       .from(gigCategories)
       .where(eq(gigCategories.id, categoryId));
     if (!category) return err(ERR.notFound);
+    // Every premium gig lives in this category and nowhere else: retiring it
+    // would strip the whole premium rail out of the taxonomy while the gigs
+    // stayed pointed at it. Rename and re-order it freely; never retire it.
+    if (category.slug === PREMIUM_CATEGORY_SLUG && data.active === false) {
+      return err(
+        "The Premium category can't be retired — every premium service is filed under it."
+      );
+    }
 
     await db
       .update(gigCategories)
@@ -316,8 +332,129 @@ export async function updateGigCategory(
       after: data,
     });
 
+    revalidatePath("/admin/catalog");
     revalidatePath("/admin/gigs");
     revalidatePath("/browse");
+    revalidatePath("/worker/gigs");
+    return ok(undefined);
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// --- Tags: the closed vocabulary workers pick from ------------------------------
+
+// Add a tag. The slug is derived from the name once and then frozen — a later
+// rename is copy only. Professionals cannot create tags; they email
+// CONTACT_EMAILS.hello and an admin adds one here.
+export async function createGigTag(
+  input: unknown
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const admin = await requireAdmin();
+    const parsed = gigTagSchema.safeParse(input);
+    if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
+
+    const slug = slugify(parsed.data.name);
+    const [taken] = await db
+      .select({ id: gigTags.id, active: gigTags.active })
+      .from(gigTags)
+      .where(eq(gigTags.slug, slug));
+    if (taken) {
+      return err(
+        taken.active
+          ? "That tag already exists."
+          : "That tag exists but is retired — reactivate it instead."
+      );
+    }
+
+    const categoryId = parsed.data.categoryId ?? null;
+    if (categoryId) {
+      const [category] = await db
+        .select({ id: gigCategories.id })
+        .from(gigCategories)
+        .where(eq(gigCategories.id, categoryId));
+      if (!category) return err("Pick a category, or leave the tag general.");
+    }
+
+    // New tags sort to the end of their own group (a category's tags, or the
+    // general pool) so adding one never re-orders the picker.
+    const siblings = await db
+      .select({ id: gigTags.id })
+      .from(gigTags)
+      .where(
+        categoryId
+          ? eq(gigTags.categoryId, categoryId)
+          : isNull(gigTags.categoryId)
+      );
+    const [tag] = await db
+      .insert(gigTags)
+      .values({
+        slug,
+        name: parsed.data.name,
+        categoryId,
+        sortOrder: siblings.length,
+      })
+      .returning({ id: gigTags.id });
+    await writeAudit({
+      actorUserId: admin.id,
+      action: "gig_tag.create",
+      entity: "gig_tags",
+      entityId: tag.id,
+      after: { slug, name: parsed.data.name, categoryId },
+    });
+
+    revalidatePath("/admin/catalog");
+    revalidatePath("/worker/gigs");
+    return ok({ id: tag.id });
+  } catch (error) {
+    return err(guardErrorMessage(error));
+  }
+}
+
+// Rename, re-home, re-order or retire a tag. The slug is never touched, so
+// gigs already carrying it keep it whatever happens here — retiring only
+// takes the tag out of the picker.
+export async function updateGigTag(
+  input: unknown
+): Promise<ActionResult<undefined>> {
+  try {
+    const admin = await requireAdmin();
+    const parsed = updateGigTagSchema.safeParse(input);
+    if (!parsed.success) return err(parsed.error.issues[0]?.message ?? ERR.badRequest);
+    const { tagId, ...fields } = parsed.data;
+    // An omitted field means "leave it alone"; categoryId: null genuinely
+    // means "make this tag general", so it must survive the filter.
+    const updates = {
+      ...(fields.name !== undefined && { name: fields.name }),
+      ...(fields.categoryId !== undefined && { categoryId: fields.categoryId }),
+      ...(fields.active !== undefined && { active: fields.active }),
+      ...(fields.sortOrder !== undefined && { sortOrder: fields.sortOrder }),
+    };
+    if (Object.keys(updates).length === 0) return err(ERR.badRequest);
+
+    const [tag] = await db.select().from(gigTags).where(eq(gigTags.id, tagId));
+    if (!tag) return err(ERR.notFound);
+    if (fields.categoryId) {
+      const [category] = await db
+        .select({ id: gigCategories.id })
+        .from(gigCategories)
+        .where(eq(gigCategories.id, fields.categoryId));
+      if (!category) return err("Pick a category, or leave the tag general.");
+    }
+
+    await db.update(gigTags).set(updates).where(eq(gigTags.id, tag.id));
+    await writeAudit({
+      actorUserId: admin.id,
+      action: "gig_tag.update",
+      entity: "gig_tags",
+      entityId: tag.id,
+      before: tag,
+      after: updates,
+    });
+
+    revalidatePath("/admin/catalog");
+    revalidatePath("/worker/gigs");
     return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));
@@ -447,11 +584,11 @@ export async function setCustomerPremiumAccess(
         ? "premium_access_granted"
         : "premium_access_revoked",
       title: parsed.data.enabled
-        ? "You have premium access on Cheers"
+        ? "You have premium access on CheersJA"
         : "Your premium access has ended",
       body: parsed.data.enabled
         ? "Premium services are now visible to you. Look for the Premium filter on Browse to see everything you can book."
-        : "Premium services are no longer part of your account. Everything else on Cheers works exactly as before.",
+        : "Premium services are no longer part of your account. Everything else on CheersJA works exactly as before.",
       meta: { url: parsed.data.enabled ? "/browse?premium=1" : "/dashboard" },
     });
 
@@ -602,243 +739,6 @@ export async function adminSuspendUser(input: unknown): Promise<ActionResult<und
     });
 
     revalidatePath("/admin");
-    return ok(undefined);
-  } catch (error) {
-    return err(guardErrorMessage(error));
-  }
-}
-
-// Compute pending weekly payouts from succeeded payments on completed
-// bookings in the given period, on the NET-SETTLEMENT model (workers keep
-// cash collected at meetings — see lib/payouts.ts payoutContribution): card
-// bookings credit the worker, cash bookings debit them the platform fee, so
-// a payout can be NEGATIVE (worker owes the platform for a cash week).
-// Each booking is linked to its payout via bookings.payoutId, so a booking
-// can NEVER be settled twice — re-runs and overlapping periods only pick up
-// bookings not yet covered. Re-running a period releases and rebuilds its
-// *pending* payouts; paid payouts and their bookings are never touched.
-//
-// Returns enough context for the UI to explain a zero (PayoutGeneration in
-// types.ts): how many bookings were covered, how many completed bookings
-// were skipped because no payment succeeded, and (when nothing matched)
-// where uncovered earnings actually sit so the admin can adjust the period.
-export async function generateWeeklyPayouts(input: {
-  periodStart: string; // YYYY-MM-DD
-  periodEnd: string;
-}): Promise<ActionResult<PayoutGeneration>> {
-  try {
-    const admin = await requireAdmin();
-    const { periodStart, periodEnd } = input;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart) || !/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) {
-      return err(ERR.badRequest);
-    }
-    if (periodEnd < periodStart) return err(ERR.badRequest);
-
-    const result = await db.transaction(async (tx) => {
-      // Release bookings held by this period's still-pending payouts, then
-      // drop those payouts (regeneration).
-      const pendingPayouts = await tx
-        .select({ id: payouts.id })
-        .from(payouts)
-        .where(
-          and(
-            eq(payouts.periodStart, periodStart),
-            eq(payouts.periodEnd, periodEnd),
-            eq(payouts.status, "pending")
-          )
-        );
-      if (pendingPayouts.length > 0) {
-        const ids = pendingPayouts.map((p) => p.id);
-        await tx
-          .update(bookings)
-          .set({ payoutId: null })
-          .where(inArray(bookings.payoutId, ids));
-        await tx.delete(payouts).where(inArray(payouts.id, ids));
-      }
-
-      // Only completed bookings in the period not already covered by a payout.
-      const completed = await tx
-        .select({
-          bookingId: bookings.id,
-          workerId: bookings.workerId,
-          priceCents: bookings.priceCents,
-          addonsCents: bookings.addonsCents,
-          platformFeeCents: bookings.platformFeeCents,
-        })
-        .from(bookings)
-        .where(
-          and(
-            eq(bookings.status, "completed"),
-            isNull(bookings.payoutId),
-            gte(bookings.date, periodStart),
-            lte(bookings.date, periodEnd)
-          )
-        );
-      if (completed.length === 0) {
-        return { created: 0, bookingsCovered: 0, unpaidSkipped: 0 };
-      }
-
-      // Succeeded payments per booking — payment METHOD decides whether the
-      // booking credits the worker (card) or debits them the fee (cash).
-      const paidRows = await tx
-        .select({
-          bookingId: payments.bookingId,
-          method: payments.method,
-          tipCents: payments.tipCents,
-        })
-        .from(payments)
-        .where(
-          and(
-            eq(payments.status, "succeeded"),
-            inArray(payments.bookingId, completed.map((b) => b.bookingId))
-          )
-        );
-      const paymentsByBooking = new Map<
-        string,
-        { method: "card" | "cash"; tipCents: number }[]
-      >();
-      for (const p of paidRows) {
-        if (!p.bookingId) continue; // ride payments have no booking
-        const list = paymentsByBooking.get(p.bookingId) ?? [];
-        list.push({ method: p.method, tipCents: p.tipCents });
-        paymentsByBooking.set(p.bookingId, list);
-      }
-
-      const byWorker = new Map<
-        string,
-        { amountCents: number; tipsCents: number; bookingIds: string[] }
-      >();
-      let unpaidSkipped = 0;
-      for (const b of completed) {
-        const pays = paymentsByBooking.get(b.bookingId);
-        if (!pays) {
-          unpaidSkipped += 1; // completed but no succeeded payment: not settleable
-          continue;
-        }
-        const contribution = payoutContribution(b, pays);
-        const entry =
-          byWorker.get(b.workerId) ??
-          { amountCents: 0, tipsCents: 0, bookingIds: [] };
-        entry.amountCents += contribution.amountCents;
-        entry.tipsCents += contribution.tipsCents;
-        entry.bookingIds.push(b.bookingId);
-        byWorker.set(b.workerId, entry);
-      }
-
-      let bookingsCovered = 0;
-      for (const [workerId, sums] of byWorker) {
-        const [payout] = await tx
-          .insert(payouts)
-          .values({
-            workerId,
-            periodStart,
-            periodEnd,
-            amountCents: sums.amountCents,
-            tipsCents: sums.tipsCents,
-          })
-          .returning({ id: payouts.id });
-        await tx
-          .update(bookings)
-          .set({ payoutId: payout.id })
-          .where(inArray(bookings.id, sums.bookingIds));
-        bookingsCovered += sums.bookingIds.length;
-      }
-      return { created: byWorker.size, bookingsCovered, unpaidSkipped };
-    });
-
-    // Nothing matched: point the admin at where uncovered paid earnings sit
-    // (usually the wrong week was selected).
-    let awaiting: PayoutGeneration["awaiting"] = null;
-    if (result.created === 0) {
-      const uncovered = await db
-        .selectDistinct({ bookingId: bookings.id, date: bookings.date })
-        .from(bookings)
-        .innerJoin(payments, eq(payments.bookingId, bookings.id))
-        .where(
-          and(
-            eq(bookings.status, "completed"),
-            isNull(bookings.payoutId),
-            eq(payments.status, "succeeded")
-          )
-        );
-      if (uncovered.length > 0) {
-        const dates = uncovered.map((b) => b.date).sort();
-        awaiting = {
-          count: uncovered.length,
-          from: dates[0],
-          to: dates[dates.length - 1],
-        };
-      }
-    }
-
-    await writeAudit({
-      actorUserId: admin.id,
-      action: "payouts.generate",
-      entity: "payouts",
-      entityId: `${periodStart}..${periodEnd}`,
-      after: { workers: result.created, bookings: result.bookingsCovered },
-    });
-
-    revalidatePath("/admin/payments");
-    return ok({ ...result, awaiting });
-  } catch (error) {
-    return err(guardErrorMessage(error));
-  }
-}
-
-export async function markPayoutPaid(input: unknown): Promise<ActionResult<undefined>> {
-  try {
-    const admin = await requireAdmin();
-    const parsed = markPayoutPaidSchema.safeParse(input);
-    if (!parsed.success) return err(ERR.badRequest);
-
-    const [payout] = await db
-      .select()
-      .from(payouts)
-      .where(eq(payouts.id, parsed.data.payoutId));
-    if (!payout) return err(ERR.notFound);
-    if (payout.status === "paid") return err("Payout is already marked paid.");
-
-    // CAS: a concurrent regenerate may have deleted/replaced this payout.
-    const updated = await db
-      .update(payouts)
-      .set({ status: "paid", paidAt: new Date(), note: parsed.data.note })
-      .where(and(eq(payouts.id, payout.id), eq(payouts.status, "pending")))
-      .returning({ id: payouts.id });
-    if (updated.length === 0) {
-      return err("This payout was just regenerated. Refresh and try again.");
-    }
-    await writeAudit({
-      actorUserId: admin.id,
-      action: "payout.mark_paid",
-      entity: "payouts",
-      entityId: payout.id,
-    });
-
-    const [worker] = await db
-      .select({ userId: workers.userId })
-      .from(workers)
-      .where(eq(workers.id, payout.workerId));
-    if (worker) {
-      // Negative payout = cash-heavy week where the worker owed the platform
-      // its fees; "paid" then means that settlement was collected/deducted.
-      const total = payout.amountCents + payout.tipsCents;
-      await notify({
-        userId: worker.userId,
-        type: "payout_paid",
-        title:
-          total >= 0
-            ? "Your weekly payout was sent"
-            : "Your weekly settlement is recorded",
-        body:
-          total >= 0
-            ? `Payout for ${payout.periodStart} to ${payout.periodEnd} has been paid out.`
-            : `Settlement for ${payout.periodStart} to ${payout.periodEnd} is recorded — ${formatCents(-total)} in platform fees from your cash bookings was settled.`,
-      });
-    }
-
-    revalidatePath("/admin/payments");
-    revalidatePath("/worker/earnings");
     return ok(undefined);
   } catch (error) {
     return err(guardErrorMessage(error));

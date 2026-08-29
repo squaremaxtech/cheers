@@ -28,11 +28,6 @@ export const adminSuspendUserSchema = z.object({
   suspended: z.boolean(),
 });
 
-export const markPayoutPaidSchema = z.object({
-  payoutId: z.string().uuid(),
-  note: z.string().trim().max(300).optional(),
-});
-
 // Admin can edit platform flags on any driver (approval, availability,
 // suspension). Profile fields stay the driver's own.
 export const adminUpdateDriverSchema = z.object({
@@ -59,6 +54,24 @@ export const updateGigCategorySchema = z.object({
   categoryId: z.string().uuid(),
   name: z.string().trim().min(2).max(60).optional(),
   blurb: z.string().trim().max(140).optional(),
+  active: z.boolean().optional(),
+  sortOrder: z.coerce.number().int().min(0).max(999).optional(),
+});
+
+// The tag vocabulary workers pick from. A tag's SLUG is generated from its
+// name on creation and then frozen: gigs.tags[] stores slugs, so renaming a
+// tag must never orphan the gigs carrying it. categoryId null = a general tag
+// offered on every gig.
+export const gigTagSchema = z.object({
+  name: z.string().trim().min(2).max(40),
+  categoryId: z.string().uuid().nullable().optional(),
+});
+
+export const updateGigTagSchema = z.object({
+  tagId: z.string().uuid(),
+  name: z.string().trim().min(2).max(40).optional(),
+  // null moves the tag to "general"; omitted leaves its home alone.
+  categoryId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
   sortOrder: z.coerce.number().int().min(0).max(999).optional(),
 });

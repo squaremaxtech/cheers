@@ -1,22 +1,19 @@
 // Customers may cancel up to this many hours before the booking start time.
 export const CANCEL_MIN_HOURS = 5;
 
-// Percent of the booking price (excluding tip) kept by the platform.
+// The platform's commission on a completed job. It is NOT deducted from what
+// the customer pays — the professional collects the full amount directly and
+// keeps it — it accrues on their monthly statement and is charged to their
+// card (lib/billing.ts). See docs: the platform never holds job money.
 export const PLATFORM_FEE_PERCENT = Number(
   process.env.PLATFORM_FEE_PERCENT ?? 5
 );
 
-// Charge currency (Stripe); amounts stored as integer cents.
+// Display currency; amounts are stored as integer cents. The gateway's own
+// numeric currency code lives in lib/payments/powertranz.ts.
 export const CURRENCY = "usd";
 
-// Stripe is the online-payments layer and it is OPTIONAL: the platform is
-// cash-first (Jamaica) and every flow works with no keys set. Card buttons,
-// the membership checkout and Connect payouts appear only once this is true.
-export function stripeConfigured(): boolean {
-  return Boolean(process.env.STRIPE_SECRET_KEY);
-}
-
-// Cheers Membership: the monthly subscription that unlocks messaging AND
+// CheersJA Membership: the monthly subscription that unlocks messaging AND
 // booking for customers. Browsing is always free; workers never need one; a
 // booked customer/worker pair can always chat regardless of membership.
 export const MEMBERSHIP_PERIOD_DAYS = 30;
@@ -194,6 +191,62 @@ export const WELLNESS_CHECK_INTERVAL_MINUTES = envMinutes(
   "SAFETY_CHECKIN_MINUTES",
   30
 );
+
+// What a professional may choose as the check-in cadence for one of their
+// gigs (gigs.checkin_interval_minutes). Presets, never a free-form number: a
+// text box invites "9999" and switches monitoring off by accident.
+//
+// This governs the periodic nudge ONLY. SOS, the duress PIN, the PIN-verified
+// start and the get-home-safe timer run on every monitored job regardless —
+// none of them interrupt anyone, they only fire when the worker asks for help
+// or fails to come home.
+export const CHECKIN_INTERVAL_OPTIONS = [
+  {
+    minutes: 30,
+    label: "Every 30 minutes",
+    hint: "Closest cover. Best for private, one-to-one work.",
+  },
+  {
+    minutes: 60,
+    label: "Every hour",
+    hint: "A sensible default for most jobs.",
+  },
+  {
+    minutes: 120,
+    label: "Every 2 hours",
+    hint: "Longer jobs where you can step away for a moment.",
+  },
+  {
+    minutes: 240,
+    label: "Every 4 hours",
+    hint: "Events and performances — about one check per set.",
+  },
+  {
+    minutes: 0,
+    label: "Start and end only",
+    hint: "No check-ins while you work. SOS, duress PIN and get-home-safe still run.",
+  },
+] as const;
+
+export function checkinIntervalLabel(minutes: number | null): string {
+  if (minutes === null) return "Platform default";
+  return (
+    CHECKIN_INTERVAL_OPTIONS.find((o) => o.minutes === minutes)?.label ??
+    `Every ${minutes} minutes`
+  );
+}
+
+// The cadence a live session should actually use. Null (nothing chosen on the
+// gig) falls back to the platform default; 0 means no periodic check-ins.
+export function resolveCheckinMinutes(snapshot: number | null): number {
+  return snapshot === null ? WELLNESS_CHECK_INTERVAL_MINUTES : snapshot;
+}
+
+// Mid-job relief valve: "I'm on stage, ask me later". Pushes the next check-in
+// out without weakening anything else, capped so a session cannot be snoozed
+// indefinitely into silence.
+export const CHECKIN_SNOOZE_MINUTES = 120;
+export const CHECKIN_SNOOZES_PER_SESSION = 3;
 
 // The safety screen pings this often while it is open. Missing heartbeats are
 // the passive signal that shows the desk a phone has gone quiet.

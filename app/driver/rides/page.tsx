@@ -155,7 +155,7 @@ export default async function DriverRidesPage() {
             Transport assignments
           </h2>
           <p className="mt-1 text-xs text-faint">
-            Bookings the Cheers team asked you to drive for. Open one for the
+            Bookings the CheersJA team asked you to drive for. Open one for the
             route and live details.
           </p>
           <div className="mt-4 space-y-3">

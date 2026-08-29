@@ -7,6 +7,7 @@ import {
   inArray,
   isNull,
   lte,
+  ne,
   or,
   sql,
   type SQL,
@@ -64,12 +65,45 @@ const publicGigColumns = {
   categoryName: gigCategories.name,
 };
 
-export async function getGigCategories(): Promise<GigCategoryRow[]> {
+// The hidden 15th category. Premium gigs ALWAYS live here and nowhere else:
+// actions/gigs.ts forces a premium gig onto it and refuses it to every other
+// gig, so "is this gig premium" and "is it in the Premium category" can never
+// drift apart. The category is itself part of the premium rail — a viewer who
+// cannot see premium must not learn the tier exists, so it is stripped from
+// every category list they are shown.
+export const PREMIUM_CATEGORY_SLUG = "premium";
+
+// The browse taxonomy for one viewer.
+//
+// The viewer is OPTIONAL and the default is the safe one: with no viewer (or a
+// viewer who cannot see premium) the Premium category is not in the result at
+// all. Every existing caller — browse filters, the home page, the job-request
+// category picker — passes nothing and is correct by default; only the
+// surfaces where premium is legitimately visible (the admin catalog, a premium
+// provider's own gig form) pass a viewer that can see it.
+export async function getGigCategories(
+  viewer?: PremiumViewer
+): Promise<GigCategoryRow[]> {
+  const conditions: SQL[] = [eq(gigCategories.active, true)];
+  if (!viewer?.canSeePremium) {
+    conditions.push(ne(gigCategories.slug, PREMIUM_CATEGORY_SLUG));
+  }
   return db
     .select()
     .from(gigCategories)
-    .where(eq(gigCategories.active, true))
+    .where(and(...conditions))
     .orderBy(asc(gigCategories.sortOrder), asc(gigCategories.name));
+}
+
+// The Premium category id, or null when the row is missing (a database seeded
+// before this taxonomy). Callers treat null as "premium listings are not
+// available right now" — never as licence to fall back to a normal category.
+export async function getPremiumCategoryId(): Promise<string | null> {
+  const [row] = await db
+    .select({ id: gigCategories.id })
+    .from(gigCategories)
+    .where(eq(gigCategories.slug, PREMIUM_CATEGORY_SLUG));
+  return row?.id ?? null;
 }
 
 // The browse page: gig cards with just enough worker context to render.

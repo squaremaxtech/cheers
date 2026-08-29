@@ -599,7 +599,7 @@ export async function notifyWorkersOfNewJob(
     await sendPush(
       recipients.map((r) => r.userId),
       {
-        title: "New job request on Cheers",
+        title: "New job request on CheersJA",
         body: `${request.title} — ${summary}`,
         url: "/worker/jobs",
         // Per-request tag so distinct postings don't collapse into one another

@@ -153,7 +153,7 @@ export default function BookingCalendar({
               onClick={() => onSelect(date)}
               className={`rounded-lg py-2 text-sm transition-colors ${
                 selected
-                  ? "bg-brand font-medium text-white"
+                  ? "bg-brand font-medium text-base"
                   : "text-ink hover:bg-raised"
               }`}
             >

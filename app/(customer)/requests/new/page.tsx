@@ -47,12 +47,12 @@ export default async function NewJobRequestPage() {
       ) : (
         <div className="card mt-6 p-6">
           <h2 className="font-display text-lg text-ink">
-            Cheers Membership required
+            CheersJA Membership required
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted">
             A matched request becomes a real booking, so posting one needs a
-            Cheers Membership — the same membership that unlocks messaging and
-            booking across Cheers.
+            CheersJA Membership — the same membership that unlocks messaging and
+            booking across CheersJA.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link href="/membership" className="btn-primary">

@@ -1,33 +1,56 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
-   Cheers — single light, professional theme.
+   CheersJA — the dark, elegant house theme.
+
+   SINGLE DARK THEME BY DESIGN. There is no light mode and no toggle: no
+   light/dark token pair, no `prefers-color-scheme` block and no `[data-theme]`
+   switch anywhere in this file. `color-scheme: dark` on <html> is what makes
+   the browser draw native controls — selects, scrollbars, date pickers,
+   autofill — on the same near-black ground instead of blazing white.
 
    The token NAMES are the contract: 100+ files use text-ink / bg-surface /
-   border-hairline / text-gold and must keep working. Only the values changed
-   when the product moved from the old dark theme to a light, professional
-   freelance marketplace. Deep Jamaican green is the action colour; gold is
-   kept for ratings, premium and highlights only.
+   border-hairline / text-gold / text-brand / text-gold-deep and must keep
+   working, so only the VALUES moved back to the dark palette.
+
+     --color-brand / --color-brand-soft
+       The accent, which is GOLD here (it was a deep green in the light
+       theme). Re-pointing rather than renaming keeps text-brand, bg-brand,
+       border-brand/40 and hover:border-brand/40 reading correctly on dark
+       across ~65 files.
+
+     --color-gold-deep
+       A gold that is legible ON DARK. The token only ever existed because
+       gold text failed contrast on white; on this ground gold text is fine,
+       so it points at the soft gold instead of being deleted out from under
+       the ~30 files that say text-gold-deep.
+
+   Class contract, likewise unchanged: .btn-primary is the gold primary
+   button (it is NOT renamed back to .btn-gold), .panel-brand is the velvet
+   hero panel (what .velvet used to be) and .brand-line is the gold shimmer
+   divider (what .gold-line used to be).
 --------------------------------------------------------------------------- */
 @theme {
-  --color-base: #f7f6f2; /* page background (warm off-white) */
-  --color-surface: #ffffff; /* cards, panels */
-  --color-raised: #f1efe9; /* hover / inputs */
-  --color-hairline: #e5e2da; /* borders */
-  --color-ink: #16140f; /* primary text */
-  --color-muted: #5b564d; /* secondary text */
-  --color-faint: #9c968b; /* tertiary text */
-  --color-brand: #0b6b4a; /* primary action (deep Jamaican green) */
-  --color-brand-soft: #118a61; /* hover / gradients */
-  --color-gold: #b8912a; /* accent: ratings, premium, highlights */
-  --color-gold-soft: #d6b45c; /* gold wash / decorative only */
-  --color-gold-deep: #7a5e15; /* gold TEXT on a light surface (6:1 on white) */
-  --color-success: #15803d;
-  --color-danger: #dc2626;
-  --color-warn: #d97706;
+  --color-base: #0c0a09; /* page background */
+  --color-surface: #171412; /* cards, panels */
+  --color-raised: #201c19; /* hover / inputs / elevated surfaces */
+  --color-hairline: #2c2724; /* borders */
+  --color-ink: #faf7f2; /* primary text */
+  --color-muted: #a89f94; /* secondary text */
+  --color-faint: #6b6259; /* tertiary text */
+  --color-gold: #d6b25e; /* accent */
+  --color-gold-soft: #e3c47a; /* lighter gold: gradients, gold text */
+  --color-gold-deep: #e3c47a; /* gold TEXT on dark — see the note above */
+  --color-brand: #d6b25e; /* primary action = the gold accent */
+  --color-brand-soft: #e3c47a; /* hover / gradients */
+  --color-wine: #7c2d3e; /* deep velvet accent for gradients */
+  --color-velvet: #2a1218; /* plush burgundy-black for deep surfaces */
+  --color-success: #4ade80;
+  --color-danger: #f87171;
+  --color-warn: #fbbf24;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display), Georgia, "Times New Roman", serif;
 }
 
 /* Mobile: stray wide content must never create page-level sideways scroll
@@ -40,34 +63,46 @@ body {
   max-width: 100%;
 }
 
+html {
+  color-scheme: dark;
+}
+
 body {
-  background: var(--color-base);
+  background:
+    radial-gradient(
+      120% 90% at 50% -10%,
+      rgba(124, 45, 62, 0.14),
+      transparent 60%
+    ),
+    var(--color-base);
   color: var(--color-ink);
   font-family: var(--font-sans);
 }
 
-/* Kept from the old theme: every direct child of <body> is its own stacking
-   context, which is what the fixed safety bar, the SOS takeover and the toast
-   layer currently order themselves against. The texture overlay that
-   originally needed it is gone; the stacking order is deliberately unchanged. */
+/* Suede grain: a whisper of texture over every surface. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Every direct child of <body> is its own stacking context: that is what
+   lifts the page above the grain overlay, and what the fixed safety bar, the
+   SOS takeover and the toast layer order themselves against. */
 body > * {
   position: relative;
   z-index: 1;
 }
 
-/* Display face (Manrope, loaded in app/layout.tsx). Family only — heading
-   weight and tracking stay in the utilities so a page can still override. */
+/* Serif display face (Playfair Display, loaded in app/layout.tsx). Family
+   only — heading weight and tracking stay in the utilities so a page can
+   still override. */
 .font-display {
   font-family: var(--font-display);
-}
-
-/* Tight headings, no italics. Element selectors on purpose: any tracking-*
-   utility on the element still wins. */
-h1,
-h2,
-h3,
-h4 {
-  letter-spacing: -0.02em;
 }
 
 /* ---------------------------------------------------------------------------
@@ -86,29 +121,41 @@ h4 {
    unlayered (a stray utility cannot resize a button).
 --------------------------------------------------------------------------- */
 @layer components {
+  /* The warm sheen is a background-IMAGE, so a `bg-raised` utility on a card
+     still recolours the surface underneath it. */
   .card {
     border-color: var(--color-hairline);
     background-color: var(--color-surface);
+    background-image: linear-gradient(
+      170deg,
+      rgba(250, 247, 242, 0.035),
+      transparent 45%
+    );
   }
 
   .input {
     border-color: var(--color-hairline);
-    background-color: var(--color-surface);
+    background-color: var(--color-raised);
     color: var(--color-ink);
   }
 
   .btn-primary {
-    background-color: var(--color-brand);
-    color: #ffffff;
+    background-color: var(--color-gold);
+    background-image: linear-gradient(
+      180deg,
+      var(--color-gold-soft),
+      var(--color-gold)
+    );
+    color: var(--color-base);
   }
 
   .btn-primary:hover {
-    background-color: var(--color-brand-soft);
+    filter: brightness(1.07);
   }
 
-  /* Transparent, not white: outline buttons also appear on the red SOS
-     takeover and inside .panel-brand, where a white fill would swallow the
-     white label. On a white card the result is identical. */
+  /* Transparent, not surface-filled: outline buttons also appear on the red
+     SOS takeover and inside .panel-brand, where a filled ground would fight
+     the panel. On a plain card the result is identical. */
   .btn-outline {
     border-color: var(--color-hairline);
     background-color: transparent;
@@ -116,8 +163,8 @@ h4 {
   }
 
   .btn-outline:hover {
-    border-color: color-mix(in srgb, var(--color-brand) 50%, transparent);
-    color: var(--color-brand);
+    border-color: color-mix(in srgb, var(--color-gold) 50%, transparent);
+    color: var(--color-gold-soft);
   }
 
   .btn-ghost {
@@ -136,16 +183,28 @@ h4 {
   }
 
   .btn-danger:hover {
-    background-color: color-mix(in srgb, var(--color-danger) 10%, transparent);
+    background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  }
+
+  /* A hairline against velvet is nearly invisible; lift the outline button so
+     the CTA pair on a hero panel still reads as two buttons. Placed after the
+     rules above so it wins on equal specificity. */
+  .panel-brand .btn-outline {
+    border-color: rgba(250, 247, 242, 0.22);
+  }
+
+  .panel-brand .btn-outline:hover {
+    border-color: color-mix(in srgb, var(--color-gold) 60%, transparent);
+    color: var(--color-gold-soft);
   }
 }
 
-/* Shared surfaces */
+/* Shared surfaces — velvet: soft sheen from above, plush shadow below. */
 .card {
-  @apply rounded-xl border;
+  @apply rounded-2xl border;
   box-shadow:
-    0 1px 2px rgba(22, 20, 15, 0.04),
-    0 10px 30px -18px rgba(22, 20, 15, 0.15);
+    0 1px 0 rgba(250, 247, 242, 0.04) inset,
+    0 18px 40px -24px rgba(0, 0, 0, 0.7);
 }
 
 /* Opt-in hover lift — only for cards that are themselves a link or a button. */
@@ -154,86 +213,37 @@ h4 {
 }
 
 .card-interactive:hover {
-  border-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
+  border-color: color-mix(in srgb, var(--color-gold) 40%, transparent);
   box-shadow:
-    0 1px 2px rgba(22, 20, 15, 0.05),
-    0 18px 36px -20px rgba(22, 20, 15, 0.22);
+    0 1px 0 rgba(250, 247, 242, 0.06) inset,
+    0 22px 48px -26px rgba(0, 0, 0, 0.85);
   transform: translateY(-1px);
 }
 
-/* Deep green panel for hero / feature moments. Everything inside sits on a
-   dark ground, so the ink/muted/faint text utilities are re-pointed to white
-   here instead of being overridden at every call site. */
+/* Deep velvet panel for hero / feature moments — the old `.velvet`, renamed
+   when the codebase was swept to new class names. Everything inside already
+   sits on a dark ground, so unlike the light theme the ink / muted / faint
+   utilities need no re-pointing here. */
 .panel-brand {
   background:
+    linear-gradient(170deg, rgba(250, 247, 242, 0.05), transparent 50%),
     radial-gradient(
-      120% 120% at 0% 0%,
-      color-mix(in srgb, var(--color-brand-soft) 85%, transparent),
-      transparent 55%
-    ),
-    linear-gradient(155deg, var(--color-brand) 0%, #0a3a2a 65%, #12100c 100%);
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.14);
-}
-
-.panel-brand .text-ink,
-.panel-brand .text-brand,
-.panel-brand .text-brand-soft {
-  color: #ffffff;
-}
-
-.panel-brand .text-muted,
-.panel-brand .text-faint {
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.panel-brand .text-gold,
-.panel-brand .text-gold-deep {
-  color: var(--color-gold-soft);
+      130% 100% at 50% 0%,
+      rgba(124, 45, 62, 0.42),
+      var(--color-velvet) 70%
+    );
+  border-color: rgba(250, 247, 242, 0.1);
 }
 
 .panel-brand .border-hairline,
 .panel-brand .hairline-top {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: rgba(250, 247, 242, 0.14);
 }
 
-/* Light chips (a neutral Badge, an inset note) would be white-on-white here. */
+/* An inset chip (a neutral Badge, a note) would otherwise sink into the wine. */
 .panel-brand .bg-raised,
 .panel-brand .bg-surface {
-  background-color: rgba(255, 255, 255, 0.14);
-}
-
-/* A green button on a green panel disappears — invert the CTA. */
-.panel-brand .btn-primary {
-  background: #ffffff;
-  color: var(--color-brand);
-  box-shadow: 0 10px 22px -14px rgba(0, 0, 0, 0.6);
-}
-
-.panel-brand .btn-primary:hover {
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--color-brand);
-}
-
-.panel-brand .btn-outline {
-  border-color: rgba(255, 255, 255, 0.5);
-  background: transparent;
-  color: #ffffff;
-}
-
-.panel-brand .btn-outline:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.7);
-  color: #ffffff;
-}
-
-.panel-brand .btn-ghost {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.panel-brand .btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  background-color: rgba(250, 247, 242, 0.07);
 }
 
 .hairline-top {
@@ -246,8 +256,8 @@ h4 {
 }
 
 .input:focus {
-  border-color: color-mix(in srgb, var(--color-brand) 60%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 22%, transparent);
+  border-color: color-mix(in srgb, var(--color-gold) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-gold) 18%, transparent);
 }
 
 .label {
@@ -263,18 +273,19 @@ h4 {
   @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50;
 }
 
-/* Colours for these four live in the @layer components block near the top so
-   a utility on the element can override them. */
+/* Colours for these four live in the @layer components block above so a
+   utility on the element can override them. */
 .btn-primary {
   box-shadow:
-    0 1px 2px rgba(22, 20, 15, 0.08),
-    0 10px 22px -14px rgba(11, 107, 74, 0.65);
+    0 1px 0 rgba(250, 247, 242, 0.32) inset,
+    0 10px 24px -12px rgba(214, 178, 94, 0.55);
 }
 
 .btn-outline,
 .btn-danger {
   @apply border;
 }
+
 
 /* ---------------------------------------------------------------------------
    Safety bar — the worker's permanent safety surface.
@@ -290,7 +301,7 @@ h4 {
   background: color-mix(in srgb, var(--color-surface) 94%, transparent);
   backdrop-filter: blur(12px);
   padding-bottom: env(safe-area-inset-bottom, 0);
-  box-shadow: 0 -10px 30px -18px rgba(22, 20, 15, 0.35);
+  box-shadow: 0 -12px 32px -18px rgba(0, 0, 0, 0.8);
 }
 
 /* Room to breathe under content on pages that carry the bar. */
@@ -298,31 +309,27 @@ h4 {
   padding-bottom: 11rem;
 }
 
-/* Subtle brand divider used on marketing pages */
+/* Subtle gold shimmer divider used on marketing pages — the old `.gold-line`. */
 .brand-line {
   height: 1px;
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, var(--color-brand) 45%, transparent),
+    rgba(214, 178, 94, 0.5),
     transparent
   );
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-brand) 20%, transparent);
+  background: rgba(214, 178, 94, 0.3);
   color: var(--color-ink);
 }
 
 /* Keyboard focus. :where() keeps specificity at 0 so component styles still
    win; .input draws its own ring above. */
 :where(a, button, [role="button"], summary):focus-visible {
-  outline: 2px solid var(--color-brand);
+  outline: 2px solid var(--color-gold);
   outline-offset: 2px;
-}
-
-.panel-brand :where(a, button, [role="button"]):focus-visible {
-  outline-color: #ffffff;
 }
 
 @media (prefers-reduced-motion: reduce) {

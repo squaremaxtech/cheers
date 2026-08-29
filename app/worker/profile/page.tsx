@@ -12,7 +12,9 @@ export default async function WorkerProfilePage() {
       <h1 className="font-display text-2xl text-ink">Profile</h1>
       <p className="mt-1 text-sm text-muted">
         Your display name is what customers see. Your legal name is never shown
-        publicly.
+        publicly. How customers pay you lives on Earnings &amp; fees — those
+        details are shown only to a customer who already has a confirmed
+        booking with you.
       </p>
       <div className="card mt-6 p-6">
         <WorkerProfileForm

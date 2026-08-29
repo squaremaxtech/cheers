@@ -16,7 +16,7 @@ export default function DriverOnboarding({ userName }: { userName: string }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl text-ink">Drive with Cheers</h1>
+        <h1 className="font-display text-2xl text-ink">Drive with CheersJA</h1>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
           Riders post a route and a price; you accept it or counter with your
           own. Cash fares, no commission at launch. Your profile goes live once

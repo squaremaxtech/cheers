@@ -1,14 +1,12 @@
 import Link from "next/link";
-import { asc, desc, eq, sql, type SQL } from "drizzle-orm";
+import { desc, eq, type SQL } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
 import { gigCategories, gigs, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
 import GigAdminActions from "@/components/admin/GigAdminActions";
-import GigCategoryManager, {
-  type GigCategoryItem,
-} from "@/components/admin/GigCategoryManager";
 import { formatCents } from "@/lib/constants";
+import { tagNamesBySlug } from "@/lib/tags";
 
 export const metadata: Metadata = { title: "Gigs — Admin" };
 
@@ -43,59 +41,37 @@ export default async function AdminGigsPage(
       ? eq(gigs.premium, false)
       : undefined;
 
-  const [categoryRows, gigRows] = await Promise.all([
-    db
-      .select({
-        category: gigCategories,
-        gigCount: sql<number>`(select count(*) from ${gigs} where ${gigs.categoryId} = ${gigCategories.id})`,
-      })
-      .from(gigCategories)
-      .orderBy(asc(gigCategories.sortOrder), asc(gigCategories.name)),
-    db
-      .select({
-        gig: gigs,
-        stageName: workers.stageName,
-        categoryName: gigCategories.name,
-      })
-      .from(gigs)
-      .innerJoin(workers, eq(gigs.workerId, workers.id))
-      .innerJoin(gigCategories, eq(gigs.categoryId, gigCategories.id))
-      .where(gigFilter)
-      .orderBy(desc(gigs.createdAt))
-      .limit(200),
-  ]);
-
-  const categories: GigCategoryItem[] = categoryRows.map(
-    ({ category, gigCount }) => ({
-      id: category.id,
-      slug: category.slug,
-      name: category.name,
-      blurb: category.blurb,
-      sortOrder: category.sortOrder,
-      active: category.active,
-      gigCount: Number(gigCount),
+  const gigRows = await db
+    .select({
+      gig: gigs,
+      stageName: workers.stageName,
+      categoryName: gigCategories.name,
     })
-  );
+    .from(gigs)
+    .innerJoin(workers, eq(gigs.workerId, workers.id))
+    .innerJoin(gigCategories, eq(gigs.categoryId, gigCategories.id))
+    .where(gigFilter)
+    .orderBy(desc(gigs.createdAt))
+    .limit(200);
+
+  // gigs.tags stores slugs; a slug with no row (retired, or from an older
+  // vocabulary) falls back to itself so nothing on this table goes blank.
+  const tagNames = await tagNamesBySlug(gigRows.flatMap((r) => r.gig.tags));
 
   return (
     <div className="space-y-10">
       <div>
         <h1 className="font-display text-2xl text-ink">Gigs</h1>
-        <p className="mt-1 text-sm text-muted">
-          Workers publish their own listings — categories below are the browse
-          taxonomy, not a limit on what can be offered. Retiring a category
-          hides it from filters; existing gigs keep their assignment.
+        <p className="mt-1 max-w-3xl text-sm text-muted">
+          Workers publish their own listings; takedown is the counterweight and
+          it never touches the worker&apos;s account. The categories and tags
+          those listings are filed under are managed on{" "}
+          <Link className="underline" href="/admin/catalog">
+            Catalog
+          </Link>
+          .
         </p>
       </div>
-
-      <section>
-        <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
-          Categories
-        </h2>
-        <div className="mt-4">
-          <GigCategoryManager categories={categories} />
-        </div>
-      </section>
 
       <section>
         <h2 className="text-sm font-medium uppercase tracking-wider text-muted">
@@ -118,12 +94,13 @@ export default async function AdminGigsPage(
           ))}
         </div>
         <div className="card mt-4 overflow-x-auto p-2">
-          <table className="w-full min-w-[860px] text-sm">
+          <table className="w-full min-w-[980px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-faint">
                 <th className="p-3">Title</th>
                 <th className="p-3">Worker</th>
                 <th className="p-3">Category</th>
+                <th className="p-3">Tags</th>
                 <th className="p-3">Mode</th>
                 <th className="p-3">Price</th>
                 <th className="p-3">Premium</th>
@@ -137,6 +114,11 @@ export default async function AdminGigsPage(
                   <td className="p-3 font-medium text-ink">{gig.title}</td>
                   <td className="p-3 text-muted">{stageName}</td>
                   <td className="p-3 text-muted">{categoryName}</td>
+                  <td className="p-3 text-muted">
+                    {gig.tags.length === 0
+                      ? "—"
+                      : gig.tags.map((t) => tagNames.get(t) ?? t).join(", ")}
+                  </td>
                   <td className="p-3 text-muted">
                     {gig.pricingMode === "quote" ? "By quote" : "Fixed"}
                   </td>

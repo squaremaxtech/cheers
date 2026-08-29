@@ -194,7 +194,7 @@ export default function ChatRoom({
         // only the composer locks.
         <div className="border-t border-hairline p-4 text-center">
           <p className="text-sm text-ink">
-            🔒 Messaging professionals needs a Cheers Membership
+            🔒 Messaging professionals needs a CheersJA Membership
           </p>
           <p className="mt-1 text-xs text-muted">
             Booked with {counterpartLabel}? Chat unlocks free the moment a

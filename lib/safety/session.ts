@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "crypto";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   bookings,
@@ -10,11 +10,13 @@ import {
   safetySessions,
 } from "@/db/schema";
 import {
+  CHECKIN_SNOOZE_MINUTES,
+  CHECKIN_SNOOZES_PER_SESSION,
   GET_HOME_SAFE_MINUTES,
   HEARTBEAT_GRACE_MINUTES,
   OVERRUN_GRACE_MINUTES,
+  resolveCheckinMinutes,
   TRACK_LINK_GRACE_MINUTES,
-  WELLNESS_CHECK_INTERVAL_MINUTES,
 } from "@/lib/constants";
 import { bookingStartDate } from "@/lib/bookings";
 import { bookingEventNow, publishBooking, publishSafetyDesk } from "@/lib/realtime";
@@ -39,6 +41,31 @@ export function hashToken(token: string): string {
 
 export function generateToken(): string {
   return randomBytes(32).toString("base64url");
+}
+
+// --- Check-in cadence ------------------------------------------------------------
+
+// THE one place a periodic check-in deadline is computed.
+//
+// The cadence is the professional's choice, snapshotted onto the booking when
+// it was made (bookings.checkin_interval_minutes). Null means they never chose
+// and the platform default applies; ZERO means "start and end only" — a
+// performer mid-set cannot answer a prompt, and pretending otherwise trains
+// people to ignore the one that matters.
+//
+// Zero returns NULL, and a null nextCheckInAt is the scheduler's "nothing is
+// due" — never "overdue". See lib/safety/scheduler.ts dueCheckins, which
+// filters on isNotNull(nextCheckInAt) before comparing it to the clock.
+export function checkinMinutesFor(booking: BookingRow): number {
+  return resolveCheckinMinutes(booking.checkinIntervalMinutes);
+}
+
+export function nextCheckInFor(
+  booking: BookingRow,
+  from: Date = new Date()
+): Date | null {
+  const minutes = checkinMinutesFor(booking);
+  return minutes > 0 ? minutesFromNow(minutes, from) : null;
 }
 
 // --- Session lifecycle ---------------------------------------------------------
@@ -100,17 +127,23 @@ export async function ensureSession(
 // Moves a session to on-site and starts the check-in clock. The FIRST check-in
 // is scheduled a full interval out — a worker who has just walked in should
 // not be pinged thirty seconds later.
+//
+// The booking carries the cadence, so it is required here: on a "start and end
+// only" job this sets nextCheckInAt to null and no periodic prompt ever fires.
+// Everything else about the session is unchanged.
 export async function startOnSite(
   session: SafetySessionRow,
-  actorUserId: string
+  actorUserId: string,
+  booking: BookingRow
 ): Promise<void> {
   const now = new Date();
+  const nextCheckInAt = nextCheckInFor(booking, now);
   await db
     .update(safetySessions)
     .set({
       state: "on_site",
       lastHeartbeatAt: now,
-      nextCheckInAt: minutesFromNow(WELLNESS_CHECK_INTERVAL_MINUTES, now),
+      nextCheckInAt,
       updatedAt: now,
     })
     .where(eq(safetySessions.id, session.id));
@@ -119,6 +152,10 @@ export async function startOnSite(
     bookingId: session.bookingId,
     kind: "arrived_on_site",
     actorUserId,
+    payload: {
+      checkinIntervalMinutes: checkinMinutesFor(booking),
+      nextCheckInAt: nextCheckInAt?.toISOString() ?? null,
+    },
   });
   publishSafetyDesk();
 }
@@ -272,6 +309,9 @@ export async function pendingCheckin(
 // silently scheduling a second interval.
 export async function answerCheckin(opts: {
   session: SafetySessionRow;
+  // Carries the cadence for THIS job — the answered check-in rolls the clock
+  // forward by the professional's chosen interval, not a platform constant.
+  booking: BookingRow;
   status: "ok" | "help";
   method: "in_app" | "push_action";
   covert?: boolean;
@@ -319,7 +359,9 @@ export async function answerCheckin(opts: {
     .update(safetySessions)
     .set({
       lastHeartbeatAt: now,
-      nextCheckInAt: minutesFromNow(WELLNESS_CHECK_INTERVAL_MINUTES, now),
+      // Null on a "start and end only" job: answering voluntarily must not
+      // switch periodic check-ins back on for a worker who chose to have none.
+      nextCheckInAt: nextCheckInFor(opts.booking, now),
       // An answered check-in IS proof of contact: a session marked
       // unresponsive (screen off, no heartbeats) comes back to on_site the
       // moment the worker answers from the lock screen. If it was actually
@@ -337,6 +379,105 @@ export async function answerCheckin(opts: {
     payload: { status: opts.status, method: opts.method, covert: opts.covert ?? false },
   });
   return true;
+}
+
+// --- Snooze: "I'm on stage, ask me later" ------------------------------------------
+
+// A professional mid-performance physically cannot answer a prompt, and the
+// honest options for them today are both bad: miss the check-in and page the
+// desk for nothing, or set the gig to "start and end only" and give up the
+// periodic cover entirely. Snooze is the middle: pressing it IS contact, so the
+// clock moves and nothing escalates.
+//
+// It moves the PERIODIC CHECK-IN ONLY. Get-home-safe (getHomeDueAt), the
+// arrival deadline (expectedArrivalAt), the overrun deadline (expectedEndAt),
+// the heartbeat, the SOS and the duress PIN are all untouched by every write
+// below — a snooze can never buy silence on any of them.
+//
+// Capped per session, counted from the append-only safety-event trail rather
+// than a column, so the desk sees every snooze in the same timeline as
+// everything else and there is no separate counter to drift.
+export const SNOOZE_EVENT_KIND = "checkin_snoozed";
+
+export type SnoozeOutcome =
+  | { ok: true; remaining: number; nextCheckInAt: Date }
+  | { ok: false; reason: "no_cadence" | "cap_reached" };
+
+export async function countSnoozes(sessionId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(safetyEvents)
+    .where(
+      and(
+        eq(safetyEvents.sessionId, sessionId),
+        eq(safetyEvents.kind, SNOOZE_EVENT_KIND)
+      )
+    );
+  return row?.n ?? 0;
+}
+
+export async function snoozeCheckin(opts: {
+  session: SafetySessionRow;
+  booking: BookingRow;
+  actorUserId: string;
+}): Promise<SnoozeOutcome> {
+  // Nothing to push out on a "start and end only" job — and re-arming a clock
+  // the professional switched off would be the opposite of what they asked for.
+  if (checkinMinutesFor(opts.booking) <= 0) return { ok: false, reason: "no_cadence" };
+
+  const used = await countSnoozes(opts.session.id);
+  if (used >= CHECKIN_SNOOZES_PER_SESSION) return { ok: false, reason: "cap_reached" };
+
+  const now = new Date();
+  const nextCheckInAt = minutesFromNow(CHECKIN_SNOOZE_MINUTES, now);
+  await db
+    .update(safetySessions)
+    .set({
+      nextCheckInAt,
+      // Tapping snooze is a live human on the device, so it counts as contact
+      // exactly as answering does — including clearing an unresponsive flag.
+      lastHeartbeatAt: now,
+      ...(opts.session.state === "unresponsive" ? { state: "on_site" as const } : {}),
+      updatedAt: now,
+    })
+    .where(eq(safetySessions.id, opts.session.id));
+
+  // A check-in already waiting is answered by the act of snoozing. Without
+  // this the pending row would still time out minutes later and page the desk
+  // about a worker who had just told us they were fine.
+  await db
+    .update(safetyCheckins)
+    .set({
+      status: "ok",
+      respondedAt: now,
+      method: "in_app",
+      note: "Snoozed",
+    })
+    .where(
+      and(
+        eq(safetyCheckins.sessionId, opts.session.id),
+        eq(safetyCheckins.status, "pending")
+      )
+    );
+
+  await recordEvent({
+    sessionId: opts.session.id,
+    bookingId: opts.session.bookingId,
+    kind: SNOOZE_EVENT_KIND,
+    actorUserId: opts.actorUserId,
+    payload: {
+      minutes: CHECKIN_SNOOZE_MINUTES,
+      nextCheckInAt: nextCheckInAt.toISOString(),
+      used: used + 1,
+      cap: CHECKIN_SNOOZES_PER_SESSION,
+    },
+  });
+  publishSafetyDesk();
+  return {
+    ok: true,
+    remaining: CHECKIN_SNOOZES_PER_SESSION - (used + 1),
+    nextCheckInAt,
+  };
 }
 
 // --- Events + breadcrumbs ---------------------------------------------------------

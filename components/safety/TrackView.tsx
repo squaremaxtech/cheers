@@ -67,7 +67,7 @@ export default function TrackView({
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10">
       <div className="card space-y-5 p-6 text-center">
         <p className="text-xs uppercase tracking-[0.2em] text-faint">
-          Cheers safety tracking
+          CheersJA safety tracking
         </p>
 
         <div>

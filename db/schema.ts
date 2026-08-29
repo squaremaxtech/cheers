@@ -129,7 +129,38 @@ export const bookingStatus = pgEnum("booking_status", [
   "refunded",
 ]);
 
-export const paymentMethod = pgEnum("payment_method", ["card", "cash"]);
+// How the CUSTOMER paid the PROFESSIONAL for the job. All of these settle
+// directly between the two of them — the platform never receives the money,
+// it records what was agreed so both sides (and the fee ledger) have a
+// number. "card" survives only for historical rows.
+export const paymentMethod = pgEnum("payment_method", [
+  "cash",
+  "bank",
+  "lynk",
+  "other",
+  "card",
+]);
+
+// How a professional accepts money from a customer, directly.
+export const workerPaymentKind = pgEnum("worker_payment_kind", [
+  "cash",
+  "bank",
+  "lynk",
+  "other",
+]);
+
+// A professional's monthly commission statement.
+export const feeInvoiceStatus = pgEnum("fee_invoice_status", [
+  // Accruing — the period is still open.
+  "open",
+  // Period closed, total fixed, waiting on the card charge.
+  "due",
+  "paid",
+  // The card was declined; listings pause until it clears.
+  "failed",
+  // Written off by an admin.
+  "waived",
+]);
 
 export const paymentStatus = pgEnum("payment_status", [
   "pending",
@@ -242,9 +273,9 @@ export const users = pgTable("users", {
   role: userRole("role").notNull().default("customer"),
   // Set iff role = 'support'; null for every other role.
   supportRole: supportRole("support_role"),
-  // Stripe Customer id — set lazily the first time this user pays online
-  // (membership, card checkout, card-on-file). Null until Stripe is live.
-  stripeCustomerId: text("stripe_customer_id"),
+  // Gateway customer handle (PowerTranz), set the first time this user stores
+  // a card. The card itself lives in payment_cards.
+  gatewayCustomerId: text("gateway_customer_id"),
   // Admin-granted premium access: this customer can see, search and book
   // premium gigs. Null = no. Set/cleared only by an audited admin action —
   // there is no self-serve path, no payment path and no env lever.
@@ -345,10 +376,12 @@ export const workers = pgTable(
     // anyone with read access silence an alarm. Null = fall back to
     // hold-to-cancel (see components/bookings/SosButton.tsx).
     cancelPinHash: text("cancel_pin_hash"),
-    // Stripe Connect recipient account for automatic payouts. Null until the
-    // worker completes Stripe onboarding (and until Stripe is live at all —
-    // cash-first: everything works without it).
-    stripeAccountId: text("stripe_account_id"),
+    // How this professional wants to be paid BY THE CUSTOMER, directly. Shown
+    // only to a customer with a confirmed booking (never on a public profile),
+    // because the platform does not stand between them: "Lynk 876-555-0123",
+    // "NCB acct 1234567 — J. Brown". Free text on purpose; we neither verify
+    // nor store bank credentials.
+    paymentInstructions: text("payment_instructions"),
     // active = worker's own visibility toggle; suspended = admin override
     active: boolean("active").notNull().default(true),
     suspended: boolean("suspended").notNull().default(false),
@@ -406,6 +439,32 @@ export const gigCategories = pgTable("gig_categories", {
   active: boolean("active").notNull().default(true),
 });
 
+// The tag vocabulary a worker picks from. Workers choose, they never type:
+// free-text tags fragment browse ("dj", "DJ", "deejay") and quietly ruin
+// search. Admin owns this list; a tag can be retired without touching the
+// gigs that already carry it.
+export const gigTags = pgTable(
+  "gig_tags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Stored in gigs.tags[] and matched on search — stable, lowercase.
+    slug: text("slug").notNull().unique(),
+    // What the picker and the gig card show.
+    name: text("name").notNull(),
+    // Optional home category: the picker surfaces a category's own tags
+    // first. Null = a general tag offered on every gig.
+    categoryId: uuid("category_id").references(() => gigCategories.id, {
+      onDelete: "set null",
+    }),
+    // Retired tags disappear from the picker; gigs already carrying them keep
+    // them until the worker edits the gig.
+    active: boolean("active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("gig_tags_category_idx").on(t.categoryId)]
+);
+
 export const gigs = pgTable(
   "gigs",
   {
@@ -432,6 +491,13 @@ export const gigs = pgTable(
     // party wants it; an electrician quoting a job usually doesn't. SOS and
     // location tools stay available either way.
     safetyMonitored: boolean("safety_monitored").notNull().default(true),
+    // How often the worker is asked to check in DURING a job of this gig, in
+    // minutes. Null = the platform default; 0 = no periodic check-ins at all
+    // (start and end only — a performer mid-set cannot answer a prompt).
+    // SOS, the duress PIN, PIN-verified start and get-home-safe never depend
+    // on this: what is configurable here is only the periodic nudge.
+    // See CHECKIN_INTERVAL_OPTIONS in lib/constants.ts.
+    checkinIntervalMinutes: smallint("checkin_interval_minutes"),
     // Premium gigs are invisible to everyone except premium customers and
     // staff. Only a premium provider (workers.premium_provider_at) may set
     // this — actions/gigs.ts forces it back to false for anyone else.
@@ -447,6 +513,67 @@ export const gigs = pgTable(
     index("gigs_worker_idx").on(t.workerId),
     index("gigs_category_idx").on(t.categoryId),
     uniqueIndex("gigs_worker_slug_idx").on(t.workerId, t.slug),
+  ]
+);
+
+// The ways a professional will take payment for a job. The platform never
+// receives this money — these are the details the CUSTOMER pays against, so
+// they are shown only to a customer who has a confirmed booking with this
+// professional, and they never appear in publicWorkerColumns or on a public
+// profile.
+//
+// A list rather than one free-text field because professionals genuinely have
+// several (a bank account for large jobs, Lynk for small ones, cash on the
+// night) and want different jobs pointed at different ones.
+export const workerPaymentMethods = pgTable(
+  "worker_payment_methods",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    kind: workerPaymentKind("kind").notNull(),
+    // What the PROFESSIONAL calls it, so they can tell two accounts apart:
+    // "NCB — main account". Shown to the customer as the option's name.
+    label: text("label").notNull(),
+    // What the customer needs in order to pay: an account number, a Lynk
+    // number, "cash on the night". Free text — we neither verify nor validate
+    // bank credentials, and we never store anything that could move money.
+    details: text("details"),
+    // Retired methods stop being offered without disturbing the gigs or the
+    // completed bookings that referenced them.
+    active: boolean("active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("worker_payment_methods_worker_idx").on(t.workerId)]
+);
+
+// Which of a professional's payment methods a particular gig accepts.
+//
+// NO ROWS FOR A GIG MEANS "every active method" — that is the default, so a
+// gig needs no setup at all and every existing gig keeps working. Rows mean an
+// explicit allowlist, for a professional who wants (say) a high-value booking
+// settled by bank transfer only.
+//
+// Deleting a method is refused when it would leave an allowlisted gig with
+// nothing active (see lib/payment-methods.ts): falling back to "all methods"
+// there would route money to an account the professional deliberately
+// excluded, and a payment into the wrong account cannot be undone.
+export const gigPaymentMethods = pgTable(
+  "gig_payment_methods",
+  {
+    gigId: uuid("gig_id")
+      .notNull()
+      .references(() => gigs.id, { onDelete: "cascade" }),
+    methodId: uuid("method_id")
+      .notNull()
+      .references(() => workerPaymentMethods.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.gigId, t.methodId] }),
+    index("gig_payment_methods_method_idx").on(t.methodId),
   ]
 );
 
@@ -567,6 +694,12 @@ export const bookings = pgTable(
     // scheduler only runs the full monitored-session machinery (check-ins,
     // heartbeats, deadlines) when true. SOS/location tools work regardless.
     monitored: boolean("monitored").notNull().default(true),
+    // Snapshot of gigs.checkin_interval_minutes at booking time, so editing
+    // the gig later never re-times a job already on the calendar.
+    checkinIntervalMinutes: smallint("checkin_interval_minutes"),
+    // The monthly commission statement this booking's 5% was billed on. Set
+    // once, so a job can never be charged for twice.
+    feeInvoiceId: uuid("fee_invoice_id"),
     date: date("date").notNull(),
     startTime: time("start_time").notNull(),
     durationMinutes: integer("duration_minutes").notNull(),
@@ -651,7 +784,7 @@ export const payments = pgTable(
     platformFeeCents: integer("platform_fee_cents").notNull().default(0),
     method: paymentMethod("method").notNull(),
     status: paymentStatus("status").notNull().default("pending"),
-    // Gateway (Stripe) transaction id of the settled charge — the
+    // Gateway (PowerTranz) transaction id of the settled charge — the
     // PaymentIntent id; refunds reference it.
     gatewayTransactionId: text("gateway_transaction_id"),
     // Cash bookings: worker uploads proof of collection
@@ -667,7 +800,69 @@ export const payments = pgTable(
   ]
 );
 
-// Weekly manual payout tracking (off-platform in V1, Stripe Connect later)
+// RETIRED. The platform never pays anyone out: a customer pays the
+// professional directly and the 5% commission is billed to the professional
+// (fee_invoices). Kept only so historical rows survive; nothing writes here.
+// One card per user, held at the gateway. We never store a PAN: `token` is
+// PowerTranz's stored-credential handle, and the display fields exist only so
+// a person can recognise which card they are about to be charged on.
+//
+// It backs both money-in flows: a customer's monthly membership, and a
+// professional's monthly commission invoice.
+export const paymentCards = pgTable(
+  "payment_cards",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    brand: text("brand"),
+    last4: text("last4"),
+    expMonth: smallint("exp_month"),
+    expYear: smallint("exp_year"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("payment_cards_user_idx").on(t.userId)]
+);
+
+// The 5% platform commission, accrued per completed booking and billed to the
+// professional's card once a month. This is what replaced payouts: money never
+// flows OUT of the platform, so there is nothing to pay — only to collect.
+export const feeInvoices = pgTable(
+  "fee_invoices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    // Sum of bookings.platform_fee_cents for the period.
+    amountCents: integer("amount_cents").notNull().default(0),
+    jobCount: integer("job_count").notNull().default(0),
+    status: feeInvoiceStatus("status").notNull().default("open"),
+    // PowerTranz transaction id for the successful charge.
+    gatewayTransactionId: text("gateway_transaction_id"),
+    // Why a charge failed / why it was waived — shown to the professional.
+    note: text("note"),
+    attempts: smallint("attempts").notNull().default(0),
+    dueAt: timestamp("due_at", { mode: "date" }),
+    paidAt: timestamp("paid_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("fee_invoices_period_idx").on(
+      t.workerId,
+      t.periodStart,
+      t.periodEnd
+    ),
+    index("fee_invoices_status_idx").on(t.status),
+  ]
+);
+
 export const payouts = pgTable(
   "payouts",
   {
@@ -688,17 +883,17 @@ export const payouts = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Cheers Membership (memberships table)
+// CheersJA Membership (memberships table)
 // ---------------------------------------------------------------------------
 
-// The monthly Cheers Membership: unlocks messaging AND booking for customers
+// The monthly CheersJA Membership: unlocks messaging AND booking for customers
 // (plan §2.3; lib/membership.ts hasMemberAccess). Browsing is free, workers
 // never need one, and a booked customer/worker pair can always chat
 // (coordination is never paywalled — lib/chat-access.ts).
 //
-// Until Stripe is live, access comes from the FREE_ACCESS_UNTIL launch flag.
-// Once Stripe Billing runs it, status/currentPeriodEnd are webhook-driven and
-// past_due/canceled finally get written.
+// Until card payments are live, access comes from the FREE_ACCESS_UNTIL launch
+// flag. Once PowerTranz is configured, lib/billing.ts renews the period against
+// the card in payment_cards and writes past_due/canceled.
 export const memberships = pgTable(
   "memberships",
   {
@@ -708,9 +903,11 @@ export const memberships = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     status: membershipStatus("status").notNull().default("none"),
     currentPeriodEnd: timestamp("current_period_end", { mode: "date" }),
-    // Stripe Billing linkage (null until the user subscribes via Stripe).
-    stripeCustomerId: text("stripe_customer_id"),
-    stripeSubscriptionId: text("stripe_subscription_id"),
+    // Set when the member's card is charged; renewal is driven by our own
+    // scheduler against the card in payment_cards, not by a gateway-side
+    // subscription (PowerTranz is a card gateway, not a billing engine).
+    lastChargeAt: timestamp("last_charge_at", { mode: "date" }),
+    lastChargeTransactionId: text("last_charge_transaction_id"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   },
@@ -955,8 +1152,9 @@ export const drivers = pgTable(
     // driver prices every ride by offer only.
     perKmRateCents: integer("per_km_rate_cents").notNull().default(0),
     minFareCents: integer("min_fare_cents").notNull().default(0),
-    // Stripe Connect recipient account (null until Stripe is live).
-    stripeAccountId: text("stripe_account_id"),
+    // How this driver takes payment from riders, directly. Fares settle in
+    // cash or by transfer between the two of them.
+    paymentInstructions: text("payment_instructions"),
     // verified = approval gate (profile hidden until staff approves);
     // active = driver's own availability toggle; suspended = admin override.
     verified: boolean("verified").notNull().default(false),
@@ -977,8 +1175,8 @@ export const drivers = pgTable(
 
 // Driver identity review, mirroring customer_verifications: government ID +
 // driver's licence, staff-reviewed, documents deleted from disk on decision
-// either way (temporary-holding policy). Swapped for Stripe Identity
-// automation once Stripe is live.
+// either way (temporary-holding policy). An automated identity provider could
+// replace the manual review later.
 export const driverVerifications = pgTable(
   "driver_verifications",
   {
@@ -1043,9 +1241,9 @@ export const rides = pgTable(
     // Locked when a driver is accepted.
     finalFareCents: integer("final_fare_cents"),
     status: rideStatus("status").notNull().default("requested"),
-    // Cash-first: rides settle in cash at launch; card appears when Stripe
-    // is live. Fee stays 0 on cash rides (no chasing drivers for pennies) —
-    // platform fee on rides starts with online payments.
+    // Rides settle directly between rider and driver, in cash. The platform
+    // takes no fee on rides (no chasing drivers for pennies) and never
+    // handles the fare.
     paymentMethod: paymentMethod("payment_method").notNull().default("cash"),
     platformFeeCents: integer("platform_fee_cents").notNull().default(0),
     cancellationReason: text("cancellation_reason"),

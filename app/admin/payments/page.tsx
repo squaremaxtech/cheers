@@ -1,23 +1,53 @@
-import { and, asc, desc, eq, inArray, isNull, isNotNull } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
-import { bookings, payments, payouts, rides, workers } from "@/db/schema";
+import { bookings, feeInvoices, payments, rides, workers } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
+import FeeInvoiceControls from "@/components/admin/FeeInvoiceControls";
 import PaymentAdminActions from "@/components/admin/PaymentAdminActions";
-import PayoutControls from "@/components/admin/PayoutControls";
 import { getUserRow } from "@/lib/auth";
-import { formatCents } from "@/lib/constants";
-import { payoutContribution } from "@/lib/payouts";
+import { periodLabel } from "@/lib/billing";
+import { formatCents, PLATFORM_FEE_PERCENT } from "@/lib/constants";
+import { jobPaymentMethodLabel } from "@/lib/payments/config";
+import { paymentsConfigured } from "@/lib/payments/powertranz";
+import type { FeeInvoiceStatus } from "@/types";
 
 export const metadata: Metadata = { title: "Payments — Admin" };
 
+const INVOICE_LABELS: Record<FeeInvoiceStatus, string> = {
+  open: "Accruing",
+  due: "Due",
+  paid: "Paid",
+  failed: "Charge failed",
+  waived: "Waived",
+};
+
+function invoiceTone(
+  status: FeeInvoiceStatus
+): "success" | "warn" | "danger" | "neutral" {
+  if (status === "paid") return "success";
+  if (status === "failed") return "danger";
+  if (status === "due") return "warn";
+  return "neutral";
+}
+
+// Two ledgers, and they are not the same kind of thing.
+//
+//   1. RECORDED JOB PAYMENTS — read-only. A customer paid their professional
+//      directly; CheersJA never received a cent of it. Staff can resolve a
+//      stuck claim or mark one refunded, but nothing here moves money.
+//   2. COMMISSION STATEMENTS — the platform's actual revenue: 5% of each
+//      completed job, billed monthly to the professional's card.
+//
+// There is no payout table on this page any more. Money only comes in.
 export default async function AdminPaymentsPage() {
-  // Desk support read this page; refunds and payouts are admin-only.
   const viewer = await getUserRow();
   const isAdmin = viewer?.role === "admin";
-  const [paymentRows, payoutRows, uncovered] = await Promise.all([
+  const paymentsLive = paymentsConfigured();
+
+  const [paymentRows, invoiceRows] = await Promise.all([
     // A payment belongs to a booking OR a ride (bookingId is nullable) —
-    // left-join both so ride card payments show up too once Stripe is live.
+    // left-join both so ride payments show up too.
     db
       .select({
         payment: payments,
@@ -30,137 +60,61 @@ export default async function AdminPaymentsPage() {
       .orderBy(desc(payments.createdAt))
       .limit(100),
     db
-      .select({ payout: payouts, stageName: workers.stageName })
-      .from(payouts)
-      .innerJoin(workers, eq(payouts.workerId, workers.id))
-      .orderBy(desc(payouts.periodStart))
-      .limit(100),
-    // Completed bookings not yet covered by any payout — the work queue for
-    // "Generate weekly payouts".
-    db
-      .select({
-        id: bookings.id,
-        code: bookings.code,
-        date: bookings.date,
-        priceCents: bookings.priceCents,
-        addonsCents: bookings.addonsCents,
-        platformFeeCents: bookings.platformFeeCents,
-        workerId: bookings.workerId,
-        stageName: workers.stageName,
-      })
-      .from(bookings)
-      .innerJoin(workers, eq(bookings.workerId, workers.id))
-      .where(and(eq(bookings.status, "completed"), isNull(bookings.payoutId)))
-      .orderBy(asc(bookings.date)),
+      .select({ invoice: feeInvoices, stageName: workers.stageName })
+      .from(feeInvoices)
+      .innerJoin(workers, eq(feeInvoices.workerId, workers.id))
+      .orderBy(desc(feeInvoices.periodStart), desc(feeInvoices.createdAt))
+      .limit(200),
   ]);
 
-  // Two independent follow-ups — issue them concurrently: succeeded payments
-  // of the uncovered bookings (method decides credit vs fee-debit), and the
-  // booking codes behind each payout.
-  const [paymentRowsForUncovered, payoutBookingRows] = await Promise.all([
-    uncovered.length > 0
-      ? db
-          .select({
-            bookingId: payments.bookingId,
-            method: payments.method,
-            tipCents: payments.tipCents,
-          })
-          .from(payments)
-          .where(
-            and(
-              eq(payments.status, "succeeded"),
-              inArray(payments.bookingId, uncovered.map((b) => b.id))
-            )
-          )
-      : Promise.resolve([]),
-    payoutRows.length > 0
-      ? db
-          .select({ payoutId: bookings.payoutId, code: bookings.code })
+  // The completed jobs behind each statement — the verification trail.
+  const invoiceIds = invoiceRows.map((r) => r.invoice.id);
+  const invoiceBookingRows =
+    invoiceIds.length > 0
+      ? await db
+          .select({ feeInvoiceId: bookings.feeInvoiceId, code: bookings.code })
           .from(bookings)
-          .where(
-            and(
-              isNotNull(bookings.payoutId),
-              inArray(bookings.payoutId, payoutRows.map((p) => p.payout.id))
-            )
-          )
-      : Promise.resolve([]),
-  ]);
+          .where(inArray(bookings.feeInvoiceId, invoiceIds))
+      : [];
+  const invoiceBookings = new Map<string, string[]>();
+  for (const row of invoiceBookingRows) {
+    if (!row.feeInvoiceId) continue;
+    const list = invoiceBookings.get(row.feeInvoiceId) ?? [];
+    list.push(row.code);
+    invoiceBookings.set(row.feeInvoiceId, list);
+  }
 
-  const paymentsByBooking = new Map<
-    string,
-    { method: "card" | "cash"; tipCents: number }[]
-  >();
-  for (const r of paymentRowsForUncovered) {
-    if (!r.bookingId) continue; // ride payments carry rideId instead
-    const list = paymentsByBooking.get(r.bookingId) ?? [];
-    list.push({ method: r.method, tipCents: r.tipCents });
-    paymentsByBooking.set(r.bookingId, list);
-  }
-  const awaitingByWorker = new Map<
-    string,
-    {
-      stageName: string;
-      codes: string[];
-      netCents: number;
-      tipsCents: number;
-      minDate: string;
-      maxDate: string;
-    }
-  >();
-  const unpaidCompleted: { code: string; date: string }[] = [];
-  for (const b of uncovered) {
-    const pays = paymentsByBooking.get(b.id);
-    if (!pays) {
-      unpaidCompleted.push({ code: b.code, date: b.date });
-      continue;
-    }
-    // Same net-settlement math as generation (lib/payouts.ts): card credits
-    // the worker, cash debits them the platform fee.
-    const contribution = payoutContribution(b, pays);
-    const entry = awaitingByWorker.get(b.workerId) ?? {
-      stageName: b.stageName,
-      codes: [],
-      netCents: 0,
-      tipsCents: 0,
-      minDate: b.date,
-      maxDate: b.date,
-    };
-    entry.codes.push(b.code);
-    entry.netCents += contribution.amountCents;
-    entry.tipsCents += contribution.tipsCents;
-    if (b.date < entry.minDate) entry.minDate = b.date;
-    if (b.date > entry.maxDate) entry.maxDate = b.date;
-    awaitingByWorker.set(b.workerId, entry);
-  }
-  const awaiting = [...awaitingByWorker.values()];
-  const awaitingDates = awaiting
-    .flatMap((a) => [a.minDate, a.maxDate])
-    .sort();
-  const defaultStart = awaitingDates[0];
-  const defaultEnd = awaitingDates[awaitingDates.length - 1];
-
-  // Booking codes behind each payout — the admin's verification trail.
-  const payoutBookings = new Map<string, string[]>();
-  for (const r of payoutBookingRows) {
-    if (!r.payoutId) continue;
-    const list = payoutBookings.get(r.payoutId) ?? [];
-    list.push(r.code);
-    payoutBookings.set(r.payoutId, list);
-  }
+  const outstanding = invoiceRows
+    .filter((r) => r.invoice.status === "due" || r.invoice.status === "failed")
+    .reduce((sum, r) => sum + r.invoice.amountCents, 0);
+  const collected = invoiceRows
+    .filter((r) => r.invoice.status === "paid")
+    .reduce((sum, r) => sum + r.invoice.amountCents, 0);
 
   return (
     <div className="space-y-10">
       <div>
         <h1 className="font-display text-2xl text-ink">Payments</h1>
-        <div className="card mt-6 overflow-x-auto p-2">
-          <table className="w-full min-w-[680px] text-sm">
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+          Customers pay professionals <strong>directly</strong> — cash, bank
+          transfer or Lynk. CheersJA never receives, holds or forwards that money,
+          so the table below is a record, not a balance, and there is nothing to
+          pay out. Platform revenue is the {PLATFORM_FEE_PERCENT}% commission
+          billed to professionals monthly, and customer memberships.
+        </p>
+      </div>
+
+      <div>
+        <h2 className="font-display text-xl text-ink">Recorded job payments</h2>
+        <div className="card mt-4 overflow-x-auto p-2">
+          <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-faint">
                 <th className="p-3">Booking / Ride</th>
-                <th className="p-3">Amount</th>
+                <th className="p-3">Paid to professional</th>
                 <th className="p-3">Tip</th>
-                <th className="p-3">Fee</th>
-                <th className="p-3">Method</th>
+                <th className="p-3">Commission</th>
+                <th className="p-3">How</th>
                 <th className="p-3">Status</th>
                 <th className="p-3">Actions</th>
               </tr>
@@ -171,22 +125,21 @@ export default async function AdminPaymentsPage() {
                   <td className="p-3 text-faint">
                     {bookingCode ?? rideCode ?? "—"}
                   </td>
-                  <td className="p-3 text-ink">{formatCents(payment.amountCents)}</td>
-                  <td className="p-3 text-muted">{formatCents(payment.tipCents)}</td>
+                  <td className="p-3 text-ink">
+                    {formatCents(payment.amountCents)}
+                  </td>
+                  <td className="p-3 text-muted">
+                    {formatCents(payment.tipCents)}
+                  </td>
                   <td className="p-3 text-muted">
                     {formatCents(payment.platformFeeCents)}
                   </td>
                   <td className="p-3 text-muted">
-                    {payment.method}
+                    {jobPaymentMethodLabel(payment.method)}
                     {payment.cashProofUrl && (
-                      <a
-                        href={payment.cashProofUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-1 text-brand hover:text-brand-soft"
-                      >
-                        proof
-                      </a>
+                      <span className="ml-1 text-xs text-faint">
+                        · {payment.cashProofUrl}
+                      </span>
                     )}
                   </td>
                   <td className="p-3">
@@ -200,7 +153,11 @@ export default async function AdminPaymentsPage() {
                             : "warn"
                       }
                     >
-                      {payment.status}
+                      {payment.status === "pending"
+                        ? "claimed"
+                        : payment.status === "succeeded"
+                          ? "confirmed"
+                          : payment.status}
                     </Badge>
                   </td>
                   <td className="p-3">
@@ -215,135 +172,81 @@ export default async function AdminPaymentsPage() {
             </tbody>
           </table>
           {paymentRows.length === 0 && (
-            <p className="p-6 text-sm text-faint">No payments yet.</p>
+            <p className="p-6 text-sm text-faint">No payments recorded yet.</p>
           )}
         </div>
-      </div>
-
-      {/* What still needs a payout — feeds the generate controls below. */}
-      <div>
-        <h2 className="font-display text-xl text-ink">Awaiting payout</h2>
-        <p className="mt-1 text-sm text-muted">
-          Paid, completed bookings not yet covered by a payout. Card bookings
-          credit the worker; cash bookings (money already in their hand)
-          debit the platform fee — a negative net means the worker owes the
-          platform for that span. Generate a period below that covers the
-          service dates.
+        <p className="mt-3 text-xs text-faint">
+          &ldquo;Claimed&rdquo; means the customer says they paid and the
+          professional has not confirmed it yet. Marking one recorded or
+          refunded here changes the record only — no money moves either way.
         </p>
-        <div className="card mt-4 overflow-x-auto p-2">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-faint">
-                <th className="p-3">Worker</th>
-                <th className="p-3">Bookings</th>
-                <th className="p-3">Service dates</th>
-                <th className="p-3">Net</th>
-                <th className="p-3">Card tips</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-hairline">
-              {awaiting.map((a) => (
-                <tr key={a.stageName}>
-                  <td className="p-3 text-ink">{a.stageName}</td>
-                  <td className="p-3 text-muted" title={a.codes.join(", ")}>
-                    {a.codes.length} ({a.codes.join(", ")})
-                  </td>
-                  <td className="p-3 text-muted">
-                    {a.minDate === a.maxDate
-                      ? a.minDate
-                      : `${a.minDate} → ${a.maxDate}`}
-                  </td>
-                  <td className={`p-3 ${a.netCents < 0 ? "text-warn" : "text-ink"}`}>
-                    {formatCents(a.netCents)}
-                    {a.netCents < 0 && (
-                      <span className="ml-1 text-xs text-faint">
-                        owes platform
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-3 text-muted">{formatCents(a.tipsCents)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {awaiting.length === 0 && (
-            <p className="p-6 text-sm text-faint">
-              Nothing awaiting payout — every paid, completed booking is
-              covered.
-            </p>
-          )}
-        </div>
-        {unpaidCompleted.length > 0 && (
-          <p className="mt-3 text-xs text-warn">
-            {unpaidCompleted.length} completed booking(s) have no recorded
-            payment and can&apos;t be paid out:{" "}
-            {unpaidCompleted.map((b) => b.code).join(", ")} — resolve them in
-            the payments table above.
-          </p>
-        )}
       </div>
 
       <div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-display text-xl text-ink">Weekly payouts</h2>
-          {isAdmin && (
-            <PayoutControls defaultStart={defaultStart} defaultEnd={defaultEnd} />
-          )}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="font-display text-xl text-ink">
+              Commission statements
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              {formatCents(collected)} collected · {formatCents(outstanding)}{" "}
+              outstanding.
+              {!paymentsLive &&
+                " Card payments aren't configured, so statements accrue and close but nothing is charged."}
+            </p>
+          </div>
         </div>
         <div className="card mt-4 overflow-x-auto p-2">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-faint">
-                <th className="p-3">Worker</th>
+                <th className="p-3">Professional</th>
                 <th className="p-3">Period</th>
-                <th className="p-3">Bookings</th>
-                <th className="p-3">Earnings</th>
-                <th className="p-3">Tips</th>
+                <th className="p-3">Jobs</th>
+                <th className="p-3">Amount</th>
                 <th className="p-3">Status</th>
+                <th className="p-3">Note</th>
                 <th className="p-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-hairline">
-              {payoutRows.map(({ payout, stageName }) => {
-                const codes = payoutBookings.get(payout.id) ?? [];
-                const owes = payout.amountCents + payout.tipsCents < 0;
+              {invoiceRows.map(({ invoice, stageName }) => {
+                const codes = invoiceBookings.get(invoice.id) ?? [];
                 return (
-                  <tr key={payout.id}>
+                  <tr key={invoice.id}>
                     <td className="p-3 text-ink">{stageName}</td>
-                    <td className="p-3 text-muted">
-                      {payout.periodStart} → {payout.periodEnd}
-                    </td>
+                    <td className="p-3 text-muted">{periodLabel(invoice)}</td>
                     <td className="p-3 text-muted" title={codes.join(", ")}>
-                      {codes.length}
+                      {invoice.jobCount}
                     </td>
-                    <td className={`p-3 ${owes ? "text-warn" : "text-ink"}`}>
-                      {formatCents(payout.amountCents)}
-                      {owes && (
-                        <span className="ml-1 text-xs text-faint">
-                          owes platform
-                        </span>
-                      )}
+                    <td className="p-3 text-ink">
+                      {formatCents(invoice.amountCents)}
                     </td>
-                    <td className="p-3 text-muted">{formatCents(payout.tipsCents)}</td>
                     <td className="p-3">
-                      <Badge tone={payout.status === "paid" ? "success" : "warn"}>
-                        {payout.status}
+                      <Badge tone={invoiceTone(invoice.status)}>
+                        {INVOICE_LABELS[invoice.status]}
                       </Badge>
-                      {payout.status === "paid" && payout.paidAt && (
-                        <span
-                          className="ml-2 text-xs text-faint"
-                          title={payout.note ?? undefined}
-                        >
-                          {payout.paidAt.toISOString().slice(0, 10)}
+                      {invoice.attempts > 0 && invoice.status !== "paid" && (
+                        <span className="ml-2 text-xs text-faint">
+                          {invoice.attempts} attempt
+                          {invoice.attempts === 1 ? "" : "s"}
+                        </span>
+                      )}
+                      {invoice.paidAt && (
+                        <span className="ml-2 text-xs text-faint">
+                          {invoice.paidAt.toISOString().slice(0, 10)}
                         </span>
                       )}
                     </td>
+                    <td className="p-3 text-xs text-faint">
+                      {invoice.note ?? "—"}
+                    </td>
                     <td className="p-3">
-                      {payout.status === "pending" && (
-                        <PaymentAdminActions
-                          payoutId={payout.id}
-                          payoutOwed={owes}
-                          isAdmin={isAdmin}
+                      {isAdmin && invoice.status !== "open" && (
+                        <FeeInvoiceControls
+                          invoiceId={invoice.id}
+                          status={invoice.status}
+                          paymentsLive={paymentsLive}
                         />
                       )}
                     </td>
@@ -352,12 +255,19 @@ export default async function AdminPaymentsPage() {
               })}
             </tbody>
           </table>
-          {payoutRows.length === 0 && (
+          {invoiceRows.length === 0 && (
             <p className="p-6 text-sm text-faint">
-              No payouts generated yet — use “Generate weekly payouts”.
+              No statements yet — the first one opens when a job completes.
             </p>
           )}
         </div>
+        <p className="mt-3 text-xs text-faint">
+          Statements close at the end of each month and are charged to the
+          professional&apos;s card a few days later. Failed charges retry daily;
+          after that they are chased here. A professional whose commission has
+          failed past the grace period has their listings paused until it
+          clears.
+        </p>
       </div>
     </div>
   );

@@ -85,7 +85,7 @@ export async function openChatRoom(
     // never paywalled).
     if (!(await customerCanSendChat(user.id, worker.id))) {
       return err(
-        "Messaging professionals needs an active Cheers Membership. Get yours from the Membership page."
+        "Messaging professionals needs an active CheersJA Membership. Get yours from the Membership page."
       );
     }
     // Anti-spam: cap brand-new conversations, not returning to old ones.
@@ -142,7 +142,7 @@ export async function sendChatMessage(
       !(await customerCanSendChat(user.id, access.worker.id))
     ) {
       return err(
-        "Your Cheers Membership has lapsed. Renew it from the Membership page to keep messaging professionals."
+        "Your CheersJA Membership has lapsed. Renew it from the Membership page to keep messaging professionals."
       );
     }
     // Flood control: generous for humans, a wall for scripts.

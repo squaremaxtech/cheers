@@ -32,11 +32,11 @@ export default function LoginPage() {
   return (
     <div className="card w-full max-w-sm p-8">
       <h1 className="font-display text-2xl tracking-tight text-ink">
-        Welcome to Cheers
+        Welcome to CheersJA
       </h1>
       <p className="mt-1 text-sm text-muted">
         Sign in or create your account — one link, no passwords. The same
-        account hires professionals and offers services.
+        account books an event crew and gets you booked.
       </p>
 
       <form onSubmit={handleEmail} className="mt-6 space-y-4">
@@ -75,7 +75,7 @@ export default function LoginPage() {
 
       <div className="mt-6 space-y-2 text-center text-xs leading-5 text-faint">
         <p>
-          You must be 18 or older to use Cheers —{" "}
+          You must be 18 or older to use CheersJA —{" "}
           <Link href="/terms#eligibility" className="text-brand hover:underline">
             eligibility
           </Link>

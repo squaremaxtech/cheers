@@ -173,7 +173,7 @@ export default function OnboardingWizard({
               Accept our terms
             </h2>
             <p className="mt-1 max-w-lg text-sm text-muted">
-              Cheers is a marketplace for independent professionals. These
+              CheersJA is a marketplace for independent professionals. These
               documents cover how bookings, payments and safety work, and what
               we all agree to.
             </p>

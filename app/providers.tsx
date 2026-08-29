@@ -14,13 +14,14 @@ export default function Providers({
       <Toaster
         position="top-right"
         toastOptions={{
-          // Light theme: a white card with hairline border and ink text,
-          // matching .card in globals.css.
+          // Dark theme: a raised card with a hairline border and ink text,
+          // matching .card in globals.css. react-hot-toast renders these
+          // inline, outside the stylesheet, so the values are literal.
           style: {
-            background: "#ffffff",
-            color: "#16140f",
-            border: "1px solid #e5e2da",
-            boxShadow: "0 10px 30px -18px rgba(22, 20, 15, 0.35)",
+            background: "#201c19",
+            color: "#faf7f2",
+            border: "1px solid #2c2724",
+            boxShadow: "0 18px 40px -24px rgba(0, 0, 0, 0.8)",
           },
         }}
       />
