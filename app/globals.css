@@ -224,14 +224,28 @@ body > * {
    when the codebase was swept to new class names. Everything inside already
    sits on a dark ground, so unlike the light theme the ink / muted / faint
    utilities need no re-pointing here. */
+/* Deep velvet panel for hero and feature moments — the old `.velvet`.
+   Built to survive BOTH uses: a full-bleed <section> on the home page and a
+   contained `card panel-brand` on the dashboards.
+
+   Three layers, and the order matters:
+     1. a sheen catching the top edge, as on .card;
+     2. the wine glow — hottest just above the top edge so the falloff is
+        visible inside the band, and fading to TRANSPARENT rather than to a
+        solid colour, so it reads as light rather than as a fill;
+     3. a vertical settle from velvet into the page background, so a
+        full-width band melts into the page instead of ending on a hard
+        maroon edge. On a card this just deepens it toward the bottom. */
 .panel-brand {
   background:
-    linear-gradient(170deg, rgba(250, 247, 242, 0.05), transparent 50%),
+    linear-gradient(180deg, rgba(250, 247, 242, 0.055), transparent 42%),
     radial-gradient(
-      130% 100% at 50% 0%,
-      rgba(124, 45, 62, 0.42),
-      var(--color-velvet) 70%
-    );
+      115% 125% at 50% -18%,
+      rgba(124, 45, 62, 0.62),
+      rgba(124, 45, 62, 0.15) 42%,
+      transparent 72%
+    ),
+    linear-gradient(180deg, var(--color-velvet), var(--color-base) 88%);
   border-color: rgba(250, 247, 242, 0.1);
 }
 
@@ -241,6 +255,20 @@ body > * {
 }
 
 /* An inset chip (a neutral Badge, a note) would otherwise sink into the wine. */
+/* A quiet full-bleed strip: a whisper of gold at the top edge over the raised
+   surface. A flat tint (`bg-brand-soft/10`) was doing this job and, spread
+   across the full width with nothing to shade it, came out as a murky slab —
+   a wash needs a falloff to read as light rather than as paint. */
+.band-warm {
+  background:
+    radial-gradient(
+      85% 130% at 50% 0%,
+      rgba(214, 178, 94, 0.09),
+      transparent 68%
+    ),
+    var(--color-surface);
+}
+
 .panel-brand .bg-raised,
 .panel-brand .bg-surface {
   background-color: rgba(250, 247, 242, 0.07);

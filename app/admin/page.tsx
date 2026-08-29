@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { count, desc, eq, isNotNull, isNull, ne, sum } from "drizzle-orm";
+import { count, desc, eq, isNull, ne, sum } from "drizzle-orm";
 import type { Metadata } from "next";
 import { db } from "@/db";
 import {
@@ -13,7 +13,6 @@ import {
   workers,
 } from "@/db/schema";
 import Badge from "@/components/ui/Badge";
-import { getUserRow } from "@/lib/auth";
 import { formatCents } from "@/lib/constants";
 import { freeAccessStatus } from "@/lib/membership";
 import { statusTone } from "@/lib/status";
@@ -22,20 +21,16 @@ export const metadata: Metadata = { title: "Admin" };
 
 export default async function AdminDashboard() {
   const [
-    viewer,
     [revenue],
     [bookingCount],
     [customerCount],
     [workerCount],
     [pendingVerifications],
-    [premiumCustomers],
-    [premiumProviders],
     [pendingDrivers],
     recent,
     [openAlerts],
     [liveSessions],
   ] = await Promise.all([
-    getUserRow(),
     db
       .select({ total: sum(payments.amountCents), fees: sum(payments.platformFeeCents) })
       .from(payments)
@@ -47,14 +42,6 @@ export default async function AdminDashboard() {
       .select({ n: count() })
       .from(identityVerifications)
       .where(eq(identityVerifications.status, "pending")),
-    db
-      .select({ n: count() })
-      .from(users)
-      .where(isNotNull(users.premiumAccessAt)),
-    db
-      .select({ n: count() })
-      .from(workers)
-      .where(isNotNull(workers.premiumProviderAt)),
     db
       .select({ n: count() })
       .from(driverVerifications)
@@ -74,8 +61,6 @@ export default async function AdminDashboard() {
       .where(ne(safetySessions.state, "ended")),
   ]);
 
-  const premiumCount = (premiumCustomers?.n ?? 0) + (premiumProviders?.n ?? 0);
-
   const cards = [
     {
       label: "Gross revenue",
@@ -94,16 +79,6 @@ export default async function AdminDashboard() {
       value: String(workerCount?.n ?? 0),
       href: "/admin/workers",
     },
-    // Promote is admin-only, so the quick link is too.
-    ...(viewer?.role === "admin"
-      ? [
-          {
-            label: "Premium accounts",
-            value: String(premiumCount),
-            href: "/admin/promote",
-          },
-        ]
-      : []),
   ];
 
   const pendingCount = pendingVerifications?.n ?? 0;

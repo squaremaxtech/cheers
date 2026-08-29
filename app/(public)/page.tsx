@@ -211,7 +211,7 @@ export default async function HomePage() {
       </section>
 
       {/* Offer your services */}
-      <section className="bg-brand-soft/10 hairline-top">
+      <section className="band-warm hairline-top">
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-16 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-xl">
             <h2 className="font-display text-2xl tracking-tight text-ink sm:text-3xl">
