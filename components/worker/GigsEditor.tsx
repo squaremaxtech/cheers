@@ -11,6 +11,7 @@ import {
   updateGig,
 } from "@/actions/gigs";
 import Badge from "@/components/ui/Badge";
+import Select from "@/components/ui/Select";
 import {
   CHECKIN_INTERVAL_OPTIONS,
   CONTACT_EMAILS,
@@ -342,10 +343,6 @@ function GigForm({
     return [...own, ...general];
   }, [tags, categoryId, premiumLocked, premiumCategoryId]);
 
-  const checkinHint = CHECKIN_INTERVAL_OPTIONS.find(
-    (o) => String(o.minutes) === checkin
-  )?.hint;
-
   function togglePremium() {
     const next = !premium;
     setPremium(next);
@@ -453,35 +450,33 @@ function GigForm({
           <label className="label" htmlFor={`g-category-${gig?.id ?? "new"}`}>
             Category
           </label>
-          <select
+          <Select
             id={`g-category-${gig?.id ?? "new"}`}
             name="categoryId"
             required={!premiumLocked}
             disabled={premiumLocked}
+            placeholder={premiumLocked ? undefined : "Select…"}
             value={premiumLocked ? "premium-locked" : categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className={`input ${premiumLocked ? "cursor-not-allowed opacity-60" : ""}`}
-          >
-            {premiumLocked ? (
-              <option value="premium-locked">{premiumCategoryName}</option>
-            ) : (
-              <>
-                <option value="" disabled>
-                  Select…
-                </option>
-                {retiredCategory && gig && (
-                  <option value={gig.categoryId}>
-                    Current (retired category)
-                  </option>
-                )}
-                {selectableCategories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </>
-            )}
-          </select>
+            onChange={(v) => setCategoryId(v)}
+            options={
+              premiumLocked
+                ? [{ value: "premium-locked", label: premiumCategoryName }]
+                : [
+                    ...(retiredCategory && gig
+                      ? [
+                          {
+                            value: gig.categoryId,
+                            label: "Current (retired category)",
+                          },
+                        ]
+                      : []),
+                    ...selectableCategories.map((c) => ({
+                      value: c.id,
+                      label: c.name,
+                    })),
+                  ]
+            }
+          />
           {premiumLocked && (
             <p className="mt-1.5 text-xs text-faint">
               Premium services are listed under {premiumCategoryName}. Switch
@@ -593,23 +588,25 @@ function GigForm({
           <label className="label" htmlFor={`g-checkin-${gig?.id ?? "new"}`}>
             Check-in cadence
           </label>
-          <select
+          {/* Each cadence explains itself in the list — what used to be a line
+              of copy under the closed control. */}
+          <Select
             id={`g-checkin-${gig?.id ?? "new"}`}
             value={checkin}
-            onChange={(e) => setCheckin(e.target.value)}
-            className="input"
-          >
-            <option value="">Platform default</option>
-            {CHECKIN_INTERVAL_OPTIONS.map((o) => (
-              <option key={o.minutes} value={o.minutes}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1.5 text-xs text-faint">
-            {checkinHint ??
-              "We use the platform's standard cadence for jobs of this length."}
-          </p>
+            onChange={(v) => setCheckin(v)}
+            options={[
+              {
+                value: "",
+                label: "Platform default",
+                hint: "We use the platform's standard cadence for jobs of this length.",
+              },
+              ...CHECKIN_INTERVAL_OPTIONS.map((o) => ({
+                value: String(o.minutes),
+                label: o.label,
+                hint: o.hint,
+              })),
+            ]}
+          />
           <p className="mt-1.5 text-xs leading-5 text-faint">
             This only changes the periodic prompt. SOS, the duress PIN,
             PIN-verified start and get-home-safe always run.

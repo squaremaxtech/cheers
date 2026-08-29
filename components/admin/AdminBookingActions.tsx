@@ -10,6 +10,7 @@ import {
   declineBooking,
   reassignBooking,
 } from "@/actions/bookings";
+import Select from "@/components/ui/Select";
 import type { ActionResult, BookingStatus } from "@/types";
 
 // Force-cancel is the desk remedy for a complaint and is available to desk
@@ -104,18 +105,18 @@ export default function AdminBookingActions({
 
       {isAdmin && (
         <span className="ml-2 flex items-center gap-1">
-          <select
-            className="input w-40 py-1.5 text-xs"
+          <Select
+            size="sm"
+            className="w-44"
+            ariaLabel="Reassign to"
+            placeholder="Reassign to…"
             value={reassignTo}
-            onChange={(e) => setReassignTo(e.target.value)}
-          >
-            <option value="">Reassign to…</option>
-            {workers.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.stageName}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setReassignTo(v)}
+            options={workers.map((w) => ({
+              value: w.id,
+              label: w.stageName,
+            }))}
+          />
           <button
             type="button"
             className="btn-outline px-3 py-1.5 text-xs"

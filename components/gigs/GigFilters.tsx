@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Select from "@/components/ui/Select";
 import { JAMAICA_PARISHES, LANGUAGES } from "@/lib/constants";
 
 // The browse filter bar — reads and writes the URL so results are shareable
@@ -58,59 +59,47 @@ export default function GigFilters({
           }}
         />
       </div>
-      <div>
+      <div className="w-44">
         <label className="label" htmlFor="f-category">
           Category
         </label>
-        <select
+        <Select
           id="f-category"
-          className="input"
           value={get("category")}
-          onChange={(e) => setParam("category", e.target.value)}
-        >
-          <option value="">Any</option>
-          {browseCategories.map((c) => (
-            <option key={c.slug} value={c.slug}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setParam("category", v)}
+          options={[
+            { value: "", label: "Any" },
+            ...browseCategories.map((c) => ({ value: c.slug, label: c.name })),
+          ]}
+        />
       </div>
-      <div>
+      <div className="w-40">
         <label className="label" htmlFor="f-parish">
           Parish
         </label>
-        <select
+        <Select
           id="f-parish"
-          className="input"
           value={get("parish")}
-          onChange={(e) => setParam("parish", e.target.value)}
-        >
-          <option value="">All</option>
-          {JAMAICA_PARISHES.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setParam("parish", v)}
+          options={[
+            { value: "", label: "All" },
+            ...JAMAICA_PARISHES.map((p) => ({ value: p, label: p })),
+          ]}
+        />
       </div>
-      <div>
+      <div className="w-36">
         <label className="label" htmlFor="f-language">
           Language
         </label>
-        <select
+        <Select
           id="f-language"
-          className="input"
           value={get("language")}
-          onChange={(e) => setParam("language", e.target.value)}
-        >
-          <option value="">Any</option>
-          {LANGUAGES.map((l) => (
-            <option key={l} value={l}>
-              {l}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setParam("language", v)}
+          options={[
+            { value: "", label: "Any" },
+            ...LANGUAGES.map((l) => ({ value: l, label: l })),
+          ]}
+        />
       </div>
       <div className="w-24">
         <label className="label" htmlFor="f-maxPrice">
@@ -125,23 +114,19 @@ export default function GigFilters({
           onBlur={(e) => setParam("maxPrice", e.target.value)}
         />
       </div>
-      <div>
+      <div className="w-28">
         <label className="label" htmlFor="f-minRating">
           Min rating
         </label>
-        <select
+        <Select
           id="f-minRating"
-          className="input"
           value={get("minRating")}
-          onChange={(e) => setParam("minRating", e.target.value)}
-        >
-          <option value="">Any</option>
-          {[3, 4, 4.5].map((r) => (
-            <option key={r} value={r}>
-              {r}+ ★
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setParam("minRating", v)}
+          options={[
+            { value: "", label: "Any" },
+            ...[3, 4, 4.5].map((r) => ({ value: String(r), label: `${r}+ ★` })),
+          ]}
+        />
       </div>
       {canSeePremium && (
         <div>

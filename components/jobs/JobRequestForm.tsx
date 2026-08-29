@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { postJobRequest } from "@/actions/jobs";
 import LocationPicker from "@/components/maps/LocationPicker";
+import Select from "@/components/ui/Select";
 import {
   BOOKING_DURATIONS_MINUTES,
   JAMAICA_PARISHES,
@@ -141,20 +142,17 @@ export default function JobRequestForm({
           <label className="label" htmlFor="job-category">
             Service category
           </label>
-          <select
+          <Select
             id="job-category"
-            className="input"
             required
             value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-          >
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.blurb ? ` — ${c.blurb}` : ""}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setCategoryId(v)}
+            options={categories.map((c) => ({
+              value: c.id,
+              label: c.name,
+              hint: c.blurb ?? undefined,
+            }))}
+          />
           <p className="mt-1 text-xs text-faint">
             Only professionals with a live service in this category can respond.
           </p>
@@ -215,20 +213,14 @@ export default function JobRequestForm({
             <label className="label" htmlFor="job-parish">
               Parish
             </label>
-            <select
+            <Select
               id="job-parish"
-              className="input"
               required
+              placeholder="Choose…"
               value={parish}
-              onChange={(e) => setParish(e.target.value)}
-            >
-              <option value="">Choose…</option>
-              {JAMAICA_PARISHES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setParish(v)}
+              options={JAMAICA_PARISHES.map((p) => ({ value: p, label: p }))}
+            />
           </div>
           <div>
             <label className="label" htmlFor="job-area">
@@ -293,18 +285,15 @@ export default function JobRequestForm({
             <label className="label" htmlFor="job-duration">
               Duration
             </label>
-            <select
+            <Select
               id="job-duration"
-              className="input"
-              value={duration}
-              onChange={(e) => setDuration(Number(e.target.value))}
-            >
-              {DURATIONS.map((d) => (
-                <option key={d} value={d}>
-                  {d < 60 ? `${d} min` : `${d / 60} hr${d === 60 ? "" : "s"}`}
-                </option>
-              ))}
-            </select>
+              value={String(duration)}
+              onChange={(v) => setDuration(Number(v))}
+              options={DURATIONS.map((d) => ({
+                value: String(d),
+                label: d < 60 ? `${d} min` : `${d / 60} hr${d === 60 ? "" : "s"}`,
+              }))}
+            />
           </div>
         </div>
         <p className="text-xs text-faint">

@@ -8,6 +8,7 @@ import {
   removeAvailabilityException,
   setWeeklyAvailability,
 } from "@/actions/worker";
+import Select from "@/components/ui/Select";
 import { jamaicaTodayISO } from "@/lib/constants";
 import type { AvailabilityRow } from "@/types";
 
@@ -113,19 +114,16 @@ export default function AvailabilityEditor({
           <ul className="mt-4 space-y-3">
             {draft.map((slot, i) => (
               <li key={i} className="flex flex-wrap items-center gap-2">
-                <select
-                  className="input w-36"
-                  value={slot.dayOfWeek}
-                  onChange={(e) =>
-                    updateSlot(i, { dayOfWeek: Number(e.target.value) })
-                  }
-                >
-                  {dayNames.map((d, di) => (
-                    <option key={d} value={di}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  className="w-36"
+                  ariaLabel="Day of the week"
+                  value={String(slot.dayOfWeek)}
+                  onChange={(v) => updateSlot(i, { dayOfWeek: Number(v) })}
+                  options={dayNames.map((d, di) => ({
+                    value: String(di),
+                    label: d,
+                  }))}
+                />
                 <input
                   type="time"
                   className="input w-32"

@@ -7,6 +7,7 @@ import { createBooking, getBookingSlots } from "@/actions/bookings";
 import LocationPicker from "@/components/maps/LocationPicker";
 import BookingCalendar from "@/components/bookings/BookingCalendar";
 import TimeSlotPicker from "@/components/bookings/TimeSlotPicker";
+import Select from "@/components/ui/Select";
 import { BOOKING_DURATIONS_MINUTES, formatCents } from "@/lib/constants";
 import type { TimeSlot } from "@/types";
 
@@ -234,21 +235,24 @@ export default function BookingForm({
           <label className="label" htmlFor="b-duration">
             Duration
           </label>
-          <select
+          <Select
             id="b-duration"
-            className="input sm:max-w-56"
-            value={duration}
-            onChange={(e) => setDuration(Number(e.target.value))}
-          >
-            {/* Standard durations plus this gig's own duration */}
-            {[...new Set([selectedGig?.durationMinutes ?? 60, ...BOOKING_DURATIONS_MINUTES])]
+            className="sm:max-w-56"
+            value={String(duration)}
+            onChange={(v) => setDuration(Number(v))}
+            /* Standard durations plus this gig's own duration */
+            options={[
+              ...new Set([
+                selectedGig?.durationMinutes ?? 60,
+                ...BOOKING_DURATIONS_MINUTES,
+              ]),
+            ]
               .sort((a, b) => a - b)
-              .map((d) => (
-                <option key={d} value={d}>
-                  {d < 120 ? `${d} min` : `${d / 60} hours`}
-                </option>
-              ))}
-          </select>
+              .map((d) => ({
+                value: String(d),
+                label: d < 120 ? `${d} min` : `${d / 60} hours`,
+              }))}
+          />
         </div>
         <div>
           <p className="label">Date</p>

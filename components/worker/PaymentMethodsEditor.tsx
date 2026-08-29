@@ -11,6 +11,7 @@ import {
   setPaymentMethodActive,
   updatePaymentMethod,
 } from "@/actions/payment-methods";
+import Select from "@/components/ui/Select";
 import { JOB_PAYMENT_METHODS } from "@/lib/payments/config";
 import {
   PAYMENT_KIND_ICONS,
@@ -327,9 +328,6 @@ function MethodForm({
     });
   }
 
-  const hint =
-    JOB_PAYMENT_METHODS.find((m) => m.value === kind)?.hint ?? "";
-
   return (
     <form onSubmit={handleSubmit} className="mt-3 space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -337,19 +335,18 @@ function MethodForm({
           <label className="label" htmlFor={`${idBase}-kind`}>
             Type
           </label>
-          <select
+          {/* Each type's guidance rides along as the option's own hint, so it
+              is readable while choosing rather than after. */}
+          <Select
             id={`${idBase}-kind`}
-            className="input"
             value={kind}
-            onChange={(e) => setKind(toKind(e.target.value))}
-          >
-            {JOB_PAYMENT_METHODS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1.5 text-xs text-faint">{hint}</p>
+            onChange={(v) => setKind(toKind(v))}
+            options={JOB_PAYMENT_METHODS.map((m) => ({
+              value: m.value,
+              label: m.label,
+              hint: m.hint,
+            }))}
+          />
         </div>
         <div>
           <label className="label" htmlFor={`${idBase}-label`}>

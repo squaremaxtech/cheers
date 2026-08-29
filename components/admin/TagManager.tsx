@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { createGigTag, updateGigTag } from "@/actions/admin";
+import Select from "@/components/ui/Select";
 import type { GigTagAdminItem } from "@/types";
 
 // The tag vocabulary workers pick from. Three rules make this list safe to
@@ -93,24 +94,25 @@ export default function TagManager({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
-        <div>
+        <div className="w-56">
           <label className="label" htmlFor="tag-filter">
             Show
           </label>
-          <select
+          <Select
             id="tag-filter"
-            className="input"
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          >
-            <option value="all">All tags ({tags.length})</option>
-            <option value="general">General ({generalCount})</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({tags.filter((t) => t.categoryId === c.id).length})
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setFilter(v)}
+            options={[
+              { value: "all", label: `All tags (${tags.length})` },
+              { value: "general", label: `General (${generalCount})` },
+              ...categories.map((c) => ({
+                value: c.id,
+                label: `${c.name} (${
+                  tags.filter((t) => t.categoryId === c.id).length
+                })`,
+              })),
+            ]}
+          />
         </div>
         <p className="pb-2 text-xs text-faint">
           Renaming a tag is copy only — its slug never changes, so gigs keep
@@ -161,20 +163,18 @@ export default function TagManager({
               <label className="label" htmlFor={`tag-cat-${t.id}`}>
                 Category
               </label>
-              <select
+              <Select
                 id={`tag-cat-${t.id}`}
                 name="categoryId"
                 defaultValue={t.categoryId ?? ""}
-                className="input"
-              >
-                <option value="">General (every gig)</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.active ? "" : " (retired)"}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "General (every gig)" },
+                  ...categories.map((c) => ({
+                    value: c.id,
+                    label: `${c.name}${c.active ? "" : " (retired)"}`,
+                  })),
+                ]}
+              />
             </div>
             <div className="flex items-center gap-2 pb-0.5">
               <button
@@ -226,19 +226,15 @@ export default function TagManager({
           <label className="label" htmlFor="tag-new-category">
             Category
           </label>
-          <select
+          <Select
             id="tag-new-category"
             value={newCategoryId}
-            onChange={(e) => setNewCategoryId(e.target.value)}
-            className="input"
-          >
-            <option value="">General (every gig)</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setNewCategoryId(v)}
+            options={[
+              { value: "", label: "General (every gig)" },
+              ...categories.map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
         </div>
         <button type="submit" className="btn-primary py-2 text-xs" disabled={busy}>
           Add tag

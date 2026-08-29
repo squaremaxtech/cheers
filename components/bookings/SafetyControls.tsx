@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { startServiceWithPin, startTravelling } from "@/actions/safety";
+import Select from "@/components/ui/Select";
 import type { BookingStatus, BookingViewerRole } from "@/types";
 
 // Arrival controls for the booking room: declaring travel, then verifying the
@@ -73,18 +74,16 @@ export default function SafetyControls({
             <label className="label" htmlFor="s-eta">
               I&apos;ll arrive in
             </label>
-            <select
+            <Select
               id="s-eta"
-              className="input w-32"
-              value={eta}
-              onChange={(e) => setEta(Number(e.target.value))}
-            >
-              {[15, 30, 45, 60, 90, 120].map((m) => (
-                <option key={m} value={m}>
-                  {m} min
-                </option>
-              ))}
-            </select>
+              className="w-32"
+              value={String(eta)}
+              onChange={(v) => setEta(Number(v))}
+              options={[15, 30, 45, 60, 90, 120].map((m) => ({
+                value: String(m),
+                label: `${m} min`,
+              }))}
+            />
           </div>
           <button
             type="button"

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import StarRating from "@/components/ui/StarRating";
 import EmptyState from "@/components/ui/EmptyState";
+import Select from "@/components/ui/Select";
 import { formatCents, JAMAICA_PARISHES } from "@/lib/constants";
 import { getPublicDrivers, vehicleLabel } from "@/lib/drivers";
 import type { DriverBrowseFilters } from "@/types";
@@ -64,39 +65,35 @@ export default async function DriversPage(props: PageProps<"/drivers">) {
             defaultValue={q ?? ""}
           />
         </div>
-        <div>
+        <div className="w-44">
           <label className="label" htmlFor="drv-parish">
             Parish
           </label>
-          <select
+          <Select
             id="drv-parish"
             name="parish"
-            className="input"
             defaultValue={parish ?? ""}
-          >
-            <option value="">All parishes</option>
-            {JAMAICA_PARISHES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "All parishes" },
+              ...JAMAICA_PARISHES.map((p) => ({ value: p, label: p })),
+            ]}
+          />
         </div>
-        <div>
+        <div className="w-36">
           <label className="label" htmlFor="drv-rating">
             Rating
           </label>
-          <select
+          <Select
             id="drv-rating"
             name="minRating"
-            className="input"
             defaultValue={minRating ? String(minRating) : ""}
-          >
-            <option value="">Any</option>
-            <option value="3">3★ and up</option>
-            <option value="4">4★ and up</option>
-            <option value="5">5★ only</option>
-          </select>
+            options={[
+              { value: "", label: "Any" },
+              { value: "3", label: "3★ and up" },
+              { value: "4", label: "4★ and up" },
+              { value: "5", label: "5★ only" },
+            ]}
+          />
         </div>
         <button type="submit" className="btn-outline">
           Apply

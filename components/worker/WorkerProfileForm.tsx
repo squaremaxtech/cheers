@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { createWorkerProfile, updateWorkerProfile } from "@/actions/worker";
+import Select from "@/components/ui/Select";
 import {
   JAMAICA_PARISHES,
   LANGUAGES,
@@ -176,22 +177,14 @@ export default function WorkerProfileForm({
           <label className="label" htmlFor="w-parish">
             Parish
           </label>
-          <select
+          <Select
             id="w-parish"
             name="parish"
             required
+            placeholder="Select…"
             defaultValue={initial?.parish ?? ""}
-            className="input"
-          >
-            <option value="" disabled>
-              Select…
-            </option>
-            {JAMAICA_PARISHES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+            options={JAMAICA_PARISHES.map((p) => ({ value: p, label: p }))}
+          />
         </div>
         <div>
           <label className="label" htmlFor="w-city">

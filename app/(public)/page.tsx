@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Form from "next/form";
+import Select from "@/components/ui/Select";
 import WorkerCard from "@/components/workers/WorkerCard";
 import {
   formatCents,
@@ -62,19 +63,16 @@ export default async function HomePage() {
             <label htmlFor="home-category" className="sr-only">
               Category
             </label>
-            <select
+            <Select
               id="home-category"
               name="category"
-              className="input sm:w-56"
+              className="sm:w-56"
               defaultValue=""
-            >
-              <option value="">All categories</option>
-              {categories.map((c) => (
-                <option key={c.slug} value={c.slug}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "All categories" },
+                ...categories.map((c) => ({ value: c.slug, label: c.name })),
+              ]}
+            />
             <button type="submit" className="btn-primary px-8">
               Search
             </button>

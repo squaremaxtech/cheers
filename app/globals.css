@@ -280,7 +280,42 @@ body > * {
 
 /* Form controls */
 .input {
-  @apply w-full rounded-xl border px-4 py-2.5 text-sm placeholder:text-faint outline-none transition-colors;
+  @apply w-full appearance-none rounded-xl border px-4 py-2.5 text-sm placeholder:text-faint outline-none transition-colors;
+}
+
+/* WebKit gives input[type="search"] its own control appearance: it draws a
+   native clear button and, in a flex row, refuses to grow — which is why the
+   home-page search box rendered as a tiny box with a stray x in Safari. The
+   appearance reset above fixes the sizing; these drop the leftover native
+   decorations so the field is ours in every browser. */
+.input::-webkit-search-cancel-button,
+.input::-webkit-search-decoration,
+.input::-webkit-search-results-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* A native <select> keeps its own arrow after appearance:none is applied, and
+   loses it entirely in some browsers — so draw one. components/ui/Select.tsx
+   renders its own chevron and opts out with .select-bare. */
+select.input:not(.select-bare) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 20 20%27 fill=%27none%27 stroke=%27%236b6259%27 stroke-width=%271.75%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Cpath d=%27M5 7.5 10 12.5 15 7.5%27/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 1rem 1rem;
+  padding-right: 2.4rem;
+}
+
+/* Compact variant for dense rows. Declared after .input and unlayered on
+   purpose: .input sets its padding unlayered too, so a utility class on the
+   element cannot override it. */
+.input-sm {
+  @apply px-3 py-1.5 text-xs;
+}
+
+select.input-sm:not(.select-bare) {
+  background-position: right 0.6rem center;
+  padding-right: 1.9rem;
 }
 
 .input:focus {

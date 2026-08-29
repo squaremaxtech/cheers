@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { createMonitorShift, deleteMonitorShift } from "@/actions/safety-desk";
+import Select from "@/components/ui/Select";
 
 type Shift = { id: string; who: string; startsAt: string; endsAt: string };
 
@@ -74,19 +75,16 @@ export default function RotaEditor({
               <label className="label" htmlFor="r-who">
                 Who
               </label>
-              <select
+              <Select
                 id="r-who"
-                className="input"
                 value={userId}
-                onChange={(e) => setUserId(e.target.value)}
+                onChange={(v) => setUserId(v)}
                 required
-              >
-                {candidates.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
+                options={candidates.map((c) => ({
+                  value: c.id,
+                  label: c.label,
+                }))}
+              />
             </div>
             <div>
               <label className="label" htmlFor="r-start">

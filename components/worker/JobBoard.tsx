@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { sendJobOffer, withdrawJobOffer } from "@/actions/jobs";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
+import Select from "@/components/ui/Select";
 import {
   JOB_MODE_SHORT,
   JOB_OFFER_STATUS_LABELS,
@@ -345,18 +346,13 @@ function JobCard({
               {countering ? "Close" : liveOffer ? "Change my offer" : "Counter-offer"}
             </button>
             {gigs.length > 1 && (
-              <select
-                className="input sm:max-w-60"
+              <Select
+                className="w-full sm:max-w-60"
                 value={gigId}
-                onChange={(e) => setGigId(e.target.value)}
-                aria-label="Fulfil with gig"
-              >
-                {gigs.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.title}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setGigId(v)}
+                ariaLabel="Fulfil with gig"
+                options={gigs.map((g) => ({ value: g.id, label: g.title }))}
+              />
             )}
           </div>
 

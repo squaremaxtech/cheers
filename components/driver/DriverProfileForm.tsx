@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { createDriverProfile, updateDriverProfile } from "@/actions/drivers";
 import FileUploadButton from "@/components/ui/FileUploadButton";
+import Select from "@/components/ui/Select";
 import { JAMAICA_PARISHES } from "@/lib/constants";
 
 export type DriverProfileInitial = {
@@ -145,20 +146,14 @@ export default function DriverProfileForm({
             <label className="label" htmlFor="drv-parish">
               Parish
             </label>
-            <select
+            <Select
               id="drv-parish"
-              className="input"
               required
+              placeholder="Select…"
               value={parish}
-              onChange={(e) => setParish(e.target.value)}
-            >
-              <option value="">Select…</option>
-              {JAMAICA_PARISHES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setParish(v)}
+              options={JAMAICA_PARISHES.map((p) => ({ value: p, label: p }))}
+            />
           </div>
           <div>
             <label className="label" htmlFor="drv-city">

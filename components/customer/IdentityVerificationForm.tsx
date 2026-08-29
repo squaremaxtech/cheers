@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { submitIdentityVerification } from "@/actions/verification";
 import FileUploadButton from "@/components/ui/FileUploadButton";
+import Select from "@/components/ui/Select";
 import { ID_DOCUMENT_TYPES } from "@/lib/constants";
 import type { IdDocumentType } from "@/types";
 
@@ -66,23 +67,18 @@ export default function IdentityVerificationForm({
         <label className="label" htmlFor="idv-type">
           Document type
         </label>
-        <select
+        <Select
           id="idv-type"
-          className="input"
           value={documentType}
-          onChange={(e) => {
-            const value = ID_DOCUMENT_TYPES.find(
-              (t) => t.value === e.target.value
-            );
+          onChange={(v) => {
+            const value = ID_DOCUMENT_TYPES.find((t) => t.value === v);
             if (value) setDocumentType(value.value);
           }}
-        >
-          {ID_DOCUMENT_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
+          options={ID_DOCUMENT_TYPES.map((t) => ({
+            value: t.value,
+            label: t.label,
+          }))}
+        />
       </div>
 
       <div className="space-y-3">

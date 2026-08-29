@@ -10,6 +10,7 @@ import {
   declineBooking,
 } from "@/actions/bookings";
 import { recordJobPayment } from "@/actions/payments";
+import Select from "@/components/ui/Select";
 import { formatCents, PLATFORM_FEE_PERCENT } from "@/lib/constants";
 import {
   JOB_PAYMENT_METHODS,
@@ -183,18 +184,16 @@ export default function WorkerBookingActions({
               <label className="label" htmlFor="pay-method">
                 How were you paid?
               </label>
-              <select
+              <Select
                 id="pay-method"
-                className="input"
                 value={method}
-                onChange={(e) => setMethod(toJobPaymentMethod(e.target.value))}
-              >
-                {JOB_PAYMENT_METHODS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setMethod(toJobPaymentMethod(v))}
+                options={JOB_PAYMENT_METHODS.map((m) => ({
+                  value: m.value,
+                  label: m.label,
+                  hint: m.hint,
+                }))}
+              />
             </div>
             <div>
               <label className="label" htmlFor="pay-tip">

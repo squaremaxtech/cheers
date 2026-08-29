@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { markJobPaymentSent } from "@/actions/payments";
+import Select from "@/components/ui/Select";
 import { formatCents } from "@/lib/constants";
 import { JOB_PAYMENT_METHODS } from "@/lib/payments/config";
 import { PAYMENT_KIND_ICONS } from "@/schemas/payment-method";
@@ -150,18 +151,16 @@ export default function PaymentPanel({
             <label className="label" htmlFor={`paid-with-${bookingId}`}>
               Which one did you use?
             </label>
-            <select
+            <Select
               id={`paid-with-${bookingId}`}
-              className="input"
               value={usedId}
-              onChange={(e) => setUsedId(e.target.value)}
-            >
-              {methods.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label} · {kindLabel(m.kind)}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setUsedId(v)}
+              options={methods.map((m) => ({
+                value: m.id,
+                label: m.label,
+                hint: kindLabel(m.kind),
+              }))}
+            />
           </div>
           <div>
             <label className="label" htmlFor={`paid-note-${bookingId}`}>

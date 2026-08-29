@@ -8,6 +8,7 @@ import {
   setWorkerMediaGig,
 } from "@/actions/worker";
 import FileUploadButton from "@/components/ui/FileUploadButton";
+import Select from "@/components/ui/Select";
 import type { WorkerMediaRow } from "@/types";
 
 // Just enough gig to label the tag dropdown.
@@ -80,8 +81,10 @@ export default function MediaManager({
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {media.map((m) => (
-            <div key={m.id} className="card group relative overflow-hidden">
-              <div className="aspect-square bg-raised">
+            // NOT overflow-hidden: the gig dropdown below opens a panel that
+            // has to escape this card. The media is clipped on its own.
+            <div key={m.id} className="card group relative">
+              <div className="aspect-square overflow-hidden rounded-t-2xl bg-raised">
                 {m.type === "video" ? (
                   <video src={m.url} className="h-full w-full object-cover" muted />
                 ) : (
@@ -101,19 +104,21 @@ export default function MediaManager({
                   Video
                 </span>
               )}
-              <select
-                className="input mt-0 w-full rounded-none border-x-0 border-b-0 text-xs"
-                value={m.gigId ?? ""}
-                onChange={(e) => handleGig(m.id, e.target.value)}
-                aria-label="Show on gig"
-              >
-                <option value="">Show on: all gigs</option>
-                {gigs.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    Show on: {g.title}
-                  </option>
-                ))}
-              </select>
+              <div className="p-2">
+                <Select
+                  size="sm"
+                  value={m.gigId ?? ""}
+                  onChange={(v) => handleGig(m.id, v)}
+                  ariaLabel="Show on gig"
+                  options={[
+                    { value: "", label: "Show on: all gigs" },
+                    ...gigs.map((g) => ({
+                      value: g.id,
+                      label: `Show on: ${g.title}`,
+                    })),
+                  ]}
+                />
+              </div>
             </div>
           ))}
         </div>
