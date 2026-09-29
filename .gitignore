@@ -45,3 +45,6 @@ next-env.d.ts
 
 # database backups (npm run db:backup) — contain personal data
 /backups
+
+# screenshots from scripts/test-browser.mjs
+/.test-shots

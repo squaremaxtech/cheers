@@ -1,7 +1,33 @@
 import { and, eq, isNull, ne, or } from "drizzle-orm";
 import { db } from "@/db";
 import { notifications, users } from "@/db/schema";
+import { getUserRow } from "@/lib/auth";
 import { emailLayout, sendEmail } from "@/lib/mailer";
+import {
+  isTestEmail,
+  recipientsForActor,
+  testModeEnabled,
+} from "@/lib/test-mode";
+
+// Was this notification caused by a test account (lib/test-mode.ts)? If so it
+// may only reach other test accounts — a scripted run must never land in a
+// real person's feed or inbox.
+//
+// A caller that knows the subject says so (`testActivity` — the safety ladder
+// does, it runs off a clock with nobody signed in). Otherwise the signed-in
+// user is asked, and only where a test session can exist at all: a dev build
+// with test mode on. Production never pays for the lookup.
+async function causedByTestAccount(explicit?: boolean): Promise<boolean> {
+  if (explicit !== undefined) return explicit;
+  if (!testModeEnabled()) return false;
+  try {
+    const actor = await getUserRow();
+    return actor !== null && isTestEmail(actor.email);
+  } catch {
+    // Outside a request there is no session to read.
+    return false;
+  }
+}
 
 // Emails deep-link to the thing they are about: an explicit in-app path in
 // meta.url (job requests, boards), else the live booking room for
@@ -35,8 +61,21 @@ export async function notify(opts: {
   body: string;
   meta?: Record<string, string>;
   email?: boolean;
+  // Set by callers with no signed-in user to ask (see causedByTestAccount).
+  testActivity?: boolean;
 }): Promise<void> {
   try {
+    const [user] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, opts.userId));
+    if (
+      user &&
+      !isTestEmail(user.email) &&
+      (await causedByTestAccount(opts.testActivity))
+    ) {
+      return;
+    }
     await db.insert(notifications).values({
       userId: opts.userId,
       type: opts.type,
@@ -45,10 +84,6 @@ export async function notify(opts: {
       meta: opts.meta,
     });
     if (opts.email === false) return;
-    const [user] = await db
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.id, opts.userId));
     if (user?.email) {
       await sendEmail({
         to: user.email,
@@ -65,7 +100,7 @@ export async function notify(opts: {
 }
 
 async function notifyMany(
-  recipients: { id: string; email: string }[],
+  everyone: { id: string; email: string }[],
   opts: {
     type: string;
     title: string;
@@ -74,6 +109,8 @@ async function notifyMany(
     email?: boolean;
   }
 ): Promise<void> {
+  if (everyone.length === 0) return;
+  const recipients = recipientsForActor(everyone, await causedByTestAccount());
   if (recipients.length === 0) return;
   await db.insert(notifications).values(
     recipients.map((a) => ({

@@ -13,7 +13,12 @@
     "db:backup": "tsx db/backup.ts",
     "db:seed": "tsx db/seed.ts",
     "typecheck": "tsc --noEmit",
-    "db:seed-accounts": "tsx db/seed-accounts.ts"
+    "db:seed-accounts": "tsx db/seed-accounts.ts",
+    "test:dev": "next dev --port 3011",
+    "test:seed": "tsx db/test-accounts.ts seed",
+    "test:status": "tsx db/test-accounts.ts status",
+    "test:clean": "tsx db/test-accounts.ts clean",
+    "test:shot": "node scripts/test-browser.mjs"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",

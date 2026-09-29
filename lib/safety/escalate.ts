@@ -24,6 +24,7 @@ import { sendPush } from "@/lib/safety/push";
 import { usersWithVerifiedPhone } from "@/lib/safety/risk";
 import { sendSms, smsConfigured } from "@/lib/safety/sms";
 import { MINUTE_MS, recordEvent } from "@/lib/safety/session";
+import { isTestEmail, recipientsForActor } from "@/lib/test-mode";
 import type { SafetyAlertKind, SafetyAlertRow } from "@/types";
 
 // The ladder turns "something is wrong" into "a named human knows about it".
@@ -34,9 +35,11 @@ import type { SafetyAlertKind, SafetyAlertRow } from "@/types";
 
 // --- Audience resolution --------------------------------------------------------
 
-async function onDutyMonitors(now: Date): Promise<string[]> {
-  const rows = await db
-    .selectDistinct({ userId: monitorShifts.userId })
+async function onDutyMonitors(
+  now: Date
+): Promise<{ id: string; email: string }[]> {
+  return db
+    .selectDistinct({ id: monitorShifts.userId, email: users.email })
     .from(monitorShifts)
     .innerJoin(users, eq(users.id, monitorShifts.userId))
     .where(
@@ -46,7 +49,6 @@ async function onDutyMonitors(now: Date): Promise<string[]> {
         eq(users.suspended, false)
       )
     );
-  return rows.map((r) => r.userId);
 }
 
 async function allDeskStaff(): Promise<{ id: string; email: string }[]> {
@@ -209,6 +211,11 @@ type AlertContext = {
   stageName: string;
   workerUserId: string | null;
   sessionId: string | null;
+  // The worker is a seeded test account (lib/test-mode.ts): a scripted visit,
+  // nobody in the field. Its alerts page test staff only. Decided by the
+  // WORKER alone — a real professional is always paged for in full, whoever
+  // booked them.
+  testActivity: boolean;
 };
 
 async function contextFor(alert: SafetyAlertRow): Promise<AlertContext> {
@@ -218,9 +225,11 @@ async function contextFor(alert: SafetyAlertRow): Promise<AlertContext> {
       address: bookings.address,
       stageName: workers.stageName,
       workerUserId: workers.userId,
+      workerEmail: users.email,
     })
     .from(bookings)
     .innerJoin(workers, eq(bookings.workerId, workers.id))
+    .innerJoin(users, eq(workers.userId, users.id))
     .where(eq(bookings.id, alert.bookingId));
   return {
     code: row?.code ?? "unknown",
@@ -228,6 +237,7 @@ async function contextFor(alert: SafetyAlertRow): Promise<AlertContext> {
     stageName: row?.stageName ?? "A worker",
     workerUserId: row?.workerUserId ?? null,
     sessionId: alert.sessionId,
+    testActivity: isTestEmail(row?.workerEmail),
   };
 }
 
@@ -312,7 +322,10 @@ async function dispatch(
   const { alert, ctx, title, body, pushBody, deskUrl, stage } = args;
 
   if (audience === "on_duty") {
-    const monitors = await onDutyMonitors(new Date());
+    const monitors = recipientsForActor(
+      await onDutyMonitors(new Date()),
+      ctx.testActivity
+    ).map((m) => m.id);
     // Nobody rostered? Do not swallow it — fall straight through to the whole
     // desk. An unstaffed rota must never mean an unanswered emergency.
     if (monitors.length === 0) {
@@ -321,7 +334,14 @@ async function dispatch(
     }
     await Promise.all(
       monitors.map((userId) =>
-        notify({ userId, type: "safety_alert", title, body, meta: { bookingId: alert.bookingId } })
+        notify({
+          userId,
+          type: "safety_alert",
+          title,
+          body,
+          meta: { bookingId: alert.bookingId },
+          testActivity: ctx.testActivity,
+        })
       )
     );
     await sendPush(monitors, {
@@ -337,7 +357,10 @@ async function dispatch(
   }
 
   if (audience === "all_desk" || audience === "admins") {
-    const staff = audience === "admins" ? await admins() : await allDeskStaff();
+    const staff = recipientsForActor(
+      audience === "admins" ? await admins() : await allDeskStaff(),
+      ctx.testActivity
+    );
     const ids = staff.map((s) => s.id);
     await Promise.all(
       staff.map((s) =>
@@ -347,6 +370,7 @@ async function dispatch(
           title,
           body,
           meta: { bookingId: alert.bookingId },
+          testActivity: ctx.testActivity,
         })
       )
     );

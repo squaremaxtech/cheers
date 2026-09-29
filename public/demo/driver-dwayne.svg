@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Dwayne — demo driver">
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a1218"/>
+      <stop offset="1" stop-color="#171412"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="400" fill="url(#ground)"/>
+  <circle cx="200" cy="158" r="72" fill="#d6b25e"/>
+  <path d="M64 400c0-82 60-140 136-140s136 58 136 140z" fill="#d6b25e"/>
+  <text x="200" y="182" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="76" fill="#171412">D</text>
+</svg>

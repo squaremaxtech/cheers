@@ -388,9 +388,13 @@ export async function cancelBooking(input: unknown): Promise<ActionResult<undefi
       return err("Bookings can only be cancelled at least 5 hours before the start time.");
     }
 
+    // `?? null`, not the bare value: the customer's and the professional's
+    // Cancel buttons send no reason, and an update whose only value is
+    // undefined is refused outright ("No values to set") — which made every
+    // cancellation without a reason fail.
     await db
       .update(bookings)
-      .set({ cancellationReason: parsed.data.reason })
+      .set({ cancellationReason: parsed.data.reason ?? null })
       .where(eq(bookings.id, ctx.booking.id));
     await transitionBooking({
       booking: ctx.booking,

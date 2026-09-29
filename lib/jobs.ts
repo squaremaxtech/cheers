@@ -31,6 +31,7 @@ import { notify } from "@/lib/notify";
 import { publishJobBoard, publishJobRequest } from "@/lib/realtime";
 import { sendPush } from "@/lib/safety/push";
 import { workerHasBlocked, workersBlockingCustomer } from "@/lib/safety/risk";
+import { isTestUser, sameSideAs } from "@/lib/test-isolation";
 import { publicWorkerConditions } from "@/lib/workers";
 import type {
   JobBoardCard,
@@ -124,6 +125,9 @@ export async function eligibleGigs(
 //
 // Premium requests appear only for premium providers — everyone else sees no
 // trace of them.
+//
+// Test accounts and real accounts never see each other's postings
+// (lib/test-isolation.ts).
 export async function getJobBoard(opts: {
   workerId: string;
   workerUserId: string;
@@ -134,6 +138,7 @@ export async function getJobBoard(opts: {
     .from(workerCustomerBlocks)
     .where(eq(workerCustomerBlocks.workerId, opts.workerId));
   const blockedIds = blocked.map((b) => b.customerId);
+  const workerIsTest = await isTestUser(opts.workerUserId);
 
   const rows = await db
     .select({
@@ -146,11 +151,13 @@ export async function getJobBoard(opts: {
     })
     .from(jobRequests)
     .innerJoin(gigCategories, eq(jobRequests.categoryId, gigCategories.id))
+    .innerJoin(users, eq(jobRequests.customerId, users.id))
     .where(
       and(
         eq(jobRequests.status, "open"),
         gt(jobRequests.expiresAt, new Date()),
         ne(jobRequests.customerId, opts.workerUserId),
+        sameSideAs(workerIsTest, users.email),
         ...(opts.premiumProvider ? [] : [eq(jobRequests.premium, false)]),
         ...(blockedIds.length > 0
           ? [notInArray(jobRequests.customerId, blockedIds)]
@@ -566,17 +573,22 @@ export async function notifyWorkersOfNewJob(
   categoryName: string
 ): Promise<void> {
   try {
+    // A test customer's posting reaches test professionals only, and a real
+    // one never reaches them (lib/test-isolation.ts).
+    const customerIsTest = await isTestUser(request.customerId);
     const rows = await db
       .selectDistinct({ workerId: workers.id, userId: workers.userId })
       .from(gigs)
       .innerJoin(workers, eq(gigs.workerId, workers.id))
+      .innerJoin(users, eq(workers.userId, users.id))
       .where(
         and(
           eq(gigs.categoryId, request.categoryId),
           eq(gigs.premium, request.premium),
           ...publicGigConditions(STAFF_VIEWER),
           ...publicWorkerConditions(),
-          ne(workers.userId, request.customerId)
+          ne(workers.userId, request.customerId),
+          sameSideAs(customerIsTest, users.email)
         )
       );
     if (rows.length === 0) return;

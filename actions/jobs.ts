@@ -30,6 +30,8 @@ import { hasPremiumAccess, isPremiumProvider } from "@/lib/premium";
 import { rateLimit } from "@/lib/rate-limit";
 import { publishJobBoard, publishJobRequest } from "@/lib/realtime";
 import { workerHasBlocked } from "@/lib/safety/risk";
+import { isTestUser } from "@/lib/test-isolation";
+import { isTestEmail } from "@/lib/test-mode";
 import {
   jobOfferDecisionSchema,
   jobOfferSchema,
@@ -386,6 +388,11 @@ export async function sendJobOffer(
     }
     // A worker's private block reads as "gone" — the customer is never told.
     if (await workerHasBlocked(worker.id, request.customerId)) {
+      return err("This request is no longer open.");
+    }
+    // Test and real accounts never trade on the board — the same rule the
+    // board itself is read under (lib/test-isolation.ts).
+    if ((await isTestUser(request.customerId)) !== isTestEmail(user.email)) {
       return err("This request is no longer open.");
     }
 

@@ -1,8 +1,9 @@
 import { and, asc, desc, eq, ilike, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { drivers, notifications } from "@/db/schema";
+import { drivers, notifications, users } from "@/db/schema";
 import { formatCents } from "@/lib/constants";
 import { sendPush } from "@/lib/safety/push";
+import { isTestUser, sameSideAs } from "@/lib/test-isolation";
 import type {
   DriverBrowseFilters,
   DriverRow,
@@ -101,10 +102,20 @@ export function vehicleLabel(d: {
 // endpoint is down.
 export async function notifyDriversOfNewRide(ride: RideRow): Promise<void> {
   try {
+    // A test rider's request reaches test drivers only, and a real one never
+    // reaches them (lib/test-isolation.ts).
+    const riderIsTest = await isTestUser(ride.riderUserId);
     const rows = await db
       .select({ userId: drivers.userId })
       .from(drivers)
-      .where(and(...publicDriverConditions(), ne(drivers.userId, ride.riderUserId)));
+      .innerJoin(users, eq(drivers.userId, users.id))
+      .where(
+        and(
+          ...publicDriverConditions(),
+          ne(drivers.userId, ride.riderUserId),
+          sameSideAs(riderIsTest, users.email)
+        )
+      );
     if (rows.length === 0) return;
 
     const when = ride.scheduledAt

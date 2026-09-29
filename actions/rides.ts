@@ -1,9 +1,17 @@
 "use server";
 
-import { and, eq, gt, ne } from "drizzle-orm";
+import { and, eq, getTableColumns, gt, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { bookings, drivers, rideOffers, rideReviews, rides, workers } from "@/db/schema";
+import {
+  bookings,
+  drivers,
+  rideOffers,
+  rideReviews,
+  rides,
+  users,
+  workers,
+} from "@/db/schema";
 import { err, ok, ERR } from "@/lib/action-result";
 import {
   notifyDriversOfNewRide,
@@ -26,6 +34,8 @@ import {
 import { guardErrorMessage, requireDriver, requireUser } from "@/lib/guards";
 import { notify } from "@/lib/notify";
 import { rateLimit } from "@/lib/rate-limit";
+import { isTestUser, sameSideAs } from "@/lib/test-isolation";
+import { isTestEmail } from "@/lib/test-mode";
 import {
   publishDriverBoard,
   publishRide,
@@ -159,9 +169,18 @@ async function requireBiddableDriver() {
   return { user, driver };
 }
 
-async function loadOpenRide(rideId: string): Promise<RideRow | null> {
+// An open ride as one driver may act on it. Test and real accounts never trade
+// on the board (lib/test-isolation.ts), so a request from the other side reads
+// exactly like one that has closed.
+async function loadOpenRide(
+  rideId: string,
+  driverUser: UserRow
+): Promise<RideRow | null> {
   const [ride] = await db.select().from(rides).where(eq(rides.id, rideId));
   if (!ride || ride.status !== "requested" || rideExpired(ride)) return null;
+  if ((await isTestUser(ride.riderUserId)) !== isTestEmail(driverUser.email)) {
+    return null;
+  }
   return ride;
 }
 
@@ -174,7 +193,7 @@ export async function driverAcceptRequest(
     if (!parsed.success) return err(ERR.badRequest);
     const { user, driver } = await requireBiddableDriver();
 
-    const ride = await loadOpenRide(parsed.data.rideId);
+    const ride = await loadOpenRide(parsed.data.rideId, user);
     if (!ride) return err("This request is no longer open.");
     if (ride.riderUserId === user.id) return err("You cannot take your own request.");
 
@@ -224,7 +243,7 @@ export async function driverMakeOffer(
       return err("Slow down — too many offers at once.");
     }
 
-    const ride = await loadOpenRide(parsed.data.rideId);
+    const ride = await loadOpenRide(parsed.data.rideId, user);
     if (!ride) return err("This request is no longer open.");
     if (ride.riderUserId === user.id) return err("You cannot bid on your own request.");
 
@@ -593,11 +612,21 @@ export async function submitRideReview(
 
 // Open requests for the driver board (filtered client-side by parish via the
 // pickup address; server keeps it to live, unexpired, unmatched requests).
-export async function getOpenRideRequests() {
-  await requireBiddableDriver();
+//
+// Test and real accounts never see each other's requests
+// (lib/test-isolation.ts).
+export async function getOpenRideRequests(): Promise<RideRow[]> {
+  const { user } = await requireBiddableDriver();
   return db
-    .select()
+    .select(getTableColumns(rides))
     .from(rides)
-    .where(and(eq(rides.status, "requested"), gt(rides.expiresAt, new Date())))
+    .innerJoin(users, eq(rides.riderUserId, users.id))
+    .where(
+      and(
+        eq(rides.status, "requested"),
+        gt(rides.expiresAt, new Date()),
+        sameSideAs(isTestEmail(user.email), users.email)
+      )
+    )
     .orderBy(rides.createdAt);
 }

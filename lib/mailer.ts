@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { isTestEmail } from "@/lib/test-mode";
 
 // SMTP settings resolve from either naming convention: EMAIL_SERVER_* (this
 // project's .env.example) or SMTP_* (the owner's existing .env). Gmail defaults.
@@ -35,6 +36,9 @@ export async function sendEmail(opts: {
   subject: string;
   html: string;
 }): Promise<void> {
+  // Test accounts sit on a reserved domain that can never receive mail
+  // (lib/test-mode.ts) — sending would only produce a bounce.
+  if (isTestEmail(opts.to)) return;
   try {
     await transporter.sendMail({
       from: mailFrom,
