@@ -190,10 +190,17 @@ export async function openBrowser({
       }
       await send("Page.navigate", { url });
       await sleep(wait);
-      return evaluate("location.pathname + location.search + location.hash");
+      return browser.path();
     },
 
-    path: () => evaluate("location.pathname + location.search + location.hash"),
+    // Where the browser is now. The secret is taken out: when a sign-in is
+    // refused the address is still the sign-in URL, and it must not end up in
+    // a terminal or a log.
+    path: async () =>
+      ((await evaluate("location.pathname + location.search + location.hash")) ?? "").replace(
+        /([?&]secret=)[^&#]*/,
+        "$1***"
+      ),
 
     // Click the first visible, enabled button / link / tab whose text or
     // aria-label contains the label. `exact` matches the whole text instead —
